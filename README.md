@@ -138,22 +138,19 @@ Config lives at `~/.config/wtx/config.json`.
   "ide": "cursor",
   "default_main_branch": "main",
   "repos": {
-    "metamask-extension": {
+    "my-frontend": {
       "main_branch": "auto",
-      "sync_files": [".metamaskrc", ".env.yarn"],
+      "sync_files": [".env", ".env.local"],
       "post_create": ["wtx deps"],
       "post_sync": ["wtx deps"]
     },
-    "metamask-mobile": {
+    "my-backend": {
       "main_branch": "auto",
-      "sync_files": [".js.env"],
-      "post_create": [
-        "cp -r {main}/build {wt}/build",
-        "wtx deps"
-      ],
+      "sync_files": [".env"],
+      "post_create": ["wtx deps"],
       "post_sync": ["wtx deps"]
     },
-    "core": {
+    "shared-libs": {
       "main_branch": "auto",
       "post_create": ["wtx deps"],
       "post_sync": ["wtx deps"]
@@ -183,7 +180,7 @@ Available in `post_create` and `post_sync` command strings:
 | Variable | Expands to |
 |---|---|
 | `{root}` | Value of `root` config key |
-| `{repo}` | Repo name (e.g. `metamask-extension`) |
+| `{repo}` | Repo name (e.g. `my-frontend`) |
 | `{branch}` | Worktree branch name |
 | `{main}` | Absolute path to main checkout |
 | `{wt}` | Absolute path to the worktree |
@@ -208,11 +205,11 @@ Lockfile detection order: `yarn.lock`, `package-lock.json`, `pnpm-lock.yaml`, `b
 ```bash
 $ wtx deps ogp/my-feature
 
-── metamask-extension ─────────────────────────────────
-  node_modules: symlinked             → ~/Repos/metamask-extension/node_modules
+── my-frontend ─────────────────────────────────────────
+  node_modules: symlinked             → ~/Repos/my-frontend/node_modules
   yarn.lock:    matches main
 
-── metamask-mobile ────────────────────────────────────
+── my-backend ──────────────────────────────────────────
   node_modules: independent
   yarn.lock:    differs from main
 ```
@@ -221,17 +218,17 @@ $ wtx deps ogp/my-feature
 
 ```bash
 # Switch from symlink to full install
-wtx deps ogp/my-feature --repo metamask-extension --install
+wtx deps ogp/my-feature --repo my-frontend --install
 
 # Switch back to symlink (frees disk space)
-wtx deps ogp/my-feature --repo metamask-extension --symlink
+wtx deps ogp/my-feature --repo my-frontend --symlink
 ```
 
 When `wtx sync` detects that a symlinked worktree now has a diverged lockfile, it warns you:
 
 ```
   ⚠ yarn.lock differs from main — node_modules is symlinked
-    Run: wtx deps ogp/my-feature --repo metamask-extension --install
+    Run: wtx deps ogp/my-feature --repo my-frontend --install
 ```
 
 ---
@@ -249,16 +246,16 @@ The wrapper intercepts `wtx cd <repo> <branch>` and runs the `cd` in your curren
 
 ```bash
 # Navigate to a worktree
-wtx cd metamask-extension ogp/my-feature
+wtx cd my-frontend ogp/my-feature
 
 # Equivalent to:
-cd ~/Repos/metamask-extension-wt/ogp/my-feature
+cd ~/Repos/my-frontend-wt/ogp/my-feature
 ```
 
 If the worktree doesn't exist:
 
 ```
-✗ No worktree at ~/Repos/metamask-extension-wt/ogp/nonexistent
+✗ No worktree at ~/Repos/my-frontend-wt/ogp/nonexistent
 ```
 
 ---
@@ -302,9 +299,9 @@ wtx skill show claude >> CLAUDE.md
 If you run a `wtx` command from inside a repo directory without `--repo`, it scopes to that repo automatically.
 
 ```bash
-cd ~/Repos/metamask-extension
-wtx create ogp/my-feature     # only creates for metamask-extension
-wtx ls                         # only lists metamask-extension worktrees
+cd ~/Repos/my-frontend
+wtx create ogp/my-feature     # only creates for my-frontend
+wtx ls                         # only lists my-frontend worktrees
 ```
 
 Outside a configured repo directory, commands without `--repo` target all configured repos.
