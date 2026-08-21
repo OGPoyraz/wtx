@@ -8,16 +8,35 @@ Designed for monorepo-heavy workflows where you regularly context-switch between
 
 ## Installation
 
+### npm (recommended)
+
+```bash
+npm install -g @ogpoyraz/wtx
+```
+
+Requires [Bun](https://bun.sh) runtime. The binary name is `wtx`.
+
+### Compiled binary
+
+Download a prebuilt binary from [GitHub Releases](https://github.com/OGPoyraz/wtx/releases) — no runtime dependencies needed:
+
+```bash
+curl -fsSL https://github.com/OGPoyraz/wtx/releases/latest/download/wtx-darwin-arm64 -o /usr/local/bin/wtx
+chmod +x /usr/local/bin/wtx
+```
+
+Available binaries: `wtx-darwin-arm64`, `wtx-darwin-x64`, `wtx-linux-x64`.
+
 ### From source
 
 ```bash
-git clone https://github.com/ogpoyraz/wtx.git
+git clone https://github.com/OGPoyraz/wtx.git
 cd wtx
 bun install
 make install
 ```
 
-This compiles a self-contained binary to `/usr/local/bin/wtx`. No Node or Bun required on the target machine.
+Compiles a self-contained binary to `/usr/local/bin/wtx`.
 
 ### Shell integration
 
