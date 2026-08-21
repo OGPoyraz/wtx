@@ -1,0 +1,29 @@
+{
+  "name": "wtx",
+  "version": "0.1.0",
+  "description": "Multi-repo git worktree manager",
+  "type": "module",
+  "bin": {
+    "wtx": "./dist/wtx"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts --",
+    "build": "bun build src/index.ts --compile --outfile dist/wtx",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^26.2.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "chalk": "^6.0.0",
+    "commander": "^15.0.0",
+    "execa": "^10.0.1",
+    "zod": "^4.4.3"
+  },
+  "license": "MIT"
+}
