@@ -4,14 +4,31 @@
   "description": "Multi-repo git worktree manager",
   "type": "module",
   "bin": {
-    "wtx": "./dist/wtx"
+    "wtx": "./src/index.ts"
   },
+  "files": [
+    "src",
+    "share",
+    "skills",
+    "completions"
+  ],
   "scripts": {
     "dev": "bun run src/index.ts --",
     "build": "bun build src/index.ts --compile --outfile dist/wtx",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "git",
+    "worktree",
+    "monorepo",
+    "multi-repo",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OGPoyraz/wtx.git"
   },
   "devDependencies": {
     "@types/bun": "latest",
