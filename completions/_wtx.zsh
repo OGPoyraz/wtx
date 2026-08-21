@@ -1,6 +1,4 @@
 #compdef wtx
-# Zsh tab completion for wtx CLI
-# Install: copy to a directory in $fpath (e.g. /usr/local/share/zsh/site-functions/)
 
 _wtx_get_repos() {
   local config_file
@@ -22,6 +20,27 @@ _wtx_repos() {
   local repos
   repos=($(_wtx_get_repos))
   _describe 'repo' repos
+}
+
+_wtx_branches() {
+  local config_file root postfix branches
+  if [ -n "$XDG_CONFIG_HOME" ]; then
+    config_file="${XDG_CONFIG_HOME}/wtx/config.json"
+  else
+    config_file="${HOME}/.config/wtx/config.json"
+  fi
+  branches=()
+  if [ -f "$config_file" ] && command -v jq >/dev/null 2>&1; then
+    root=$(jq -r '.root' "$config_file" 2>/dev/null)
+    root="${root/#\~/$HOME}"
+    for repo in $(jq -r '.repos | keys[]' "$config_file" 2>/dev/null); do
+      if [ -d "${root}/${repo}" ]; then
+        branches+=($(git -C "${root}/${repo}" worktree list --porcelain 2>/dev/null | \
+          grep '^branch refs/heads/' | sed 's|^branch refs/heads/||'))
+      fi
+    done
+  fi
+  _describe 'branch' branches
 }
 
 _wtx() {
@@ -59,29 +78,29 @@ _wtx() {
           _arguments \
             ':branch:' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
-            '--base[Base ref to create branch from]:ref:(main master develop dev)' \
+            '--base[Base ref]:ref:(main master develop dev)' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
         remove)
           _arguments \
-            ':branch:' \
+            ':branch:_wtx_branches' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
-            {-f,--force}'[Force removal even with uncommitted changes]' \
+            {-f,--force}'[Force removal]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
         open)
           _arguments \
-            ':branch:' \
+            ':branch:_wtx_branches' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
-            '--ide[IDE to open with]:editor:(cursor code vscode code-insiders vscodium idea webstorm goland pycharm zed vim nvim emacs sublime atom)' \
+            '--ide[IDE to open with]:editor:(cursor code vscode idea webstorm zed vim nvim emacs)' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
         rebase)
           _arguments \
-            ':branch:' \
+            ':branch:_wtx_branches' \
             '--repo[Target specific repo(s)]:repo:_wtx_repos' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
@@ -94,14 +113,14 @@ _wtx() {
           ;;
         sync)
           _arguments \
-            ':branch:' \
+            ':branch:_wtx_branches' \
             '--repo[Target specific repo(s)]:repo:_wtx_repos' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
         deps)
           _arguments \
-            '::branch:' \
+            '::branch:_wtx_branches' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             '--install[Switch to independent node_modules]' \
             '--symlink[Switch to symlinked node_modules]' \
@@ -117,11 +136,11 @@ _wtx() {
         cd)
           _arguments \
             ':repo:_wtx_repos' \
-            ':branch:'
+            ':branch:_wtx_branches'
           ;;
         status)
           _arguments \
-            ':branch:' \
+            ':branch:_wtx_branches' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
@@ -158,9 +177,9 @@ _wtx_config() {
         add-repo)
           _arguments \
             ':name:' \
-            '--sync-files[Comma-separated files to sync]:files:' \
-            '--post-create[Comma-separated post-create commands]:cmds:' \
-            '--post-sync[Comma-separated post-sync commands]:cmds:'
+            '--sync-files[Files to sync]:files:' \
+            '--post-create[Post-create commands]:cmds:' \
+            '--post-sync[Post-sync commands]:cmds:'
           ;;
         remove-repo)
           _arguments \

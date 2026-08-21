@@ -3,7 +3,7 @@ import chalk from "chalk";
 const c = chalk;
 
 export function repoHeader(name: string): void {
-  console.log(`\n${c.bold(`── ${name} ─────────────────────────────────────────────`)}`);
+  console.log(`\n  ${c.bold(c.dim(name))}`);
 }
 
 export function stepProgress(message: string, detail?: string): void {
@@ -27,11 +27,11 @@ export function stepError(message: string, detail?: string): void {
 }
 
 export function summary(message: string): void {
-  console.log(`\n${c.green("✓")} ${message}`);
+  console.log(`\n${c.green("✓")} ${message}\n`);
 }
 
 export function summaryWarning(message: string): void {
-  console.log(`\n${c.yellow("⚠")} ${message}`);
+  console.log(`\n${c.yellow("⚠")} ${message}\n`);
 }
 
 export function info(message: string): void {
@@ -39,7 +39,7 @@ export function info(message: string): void {
 }
 
 export function error(message: string): void {
-  console.error(`${c.red("error:")} ${message}`);
+  console.error(`${c.red("error:")} ${message}\n`);
 }
 
 export function verbose(message: string, isVerbose: boolean): void {

@@ -1,6 +1,3 @@
-# completions/wtx.bash — Bash tab completion for wtx CLI
-# Install: source this file in your .bashrc, or copy to /etc/bash_completion.d/
-
 _wtx_get_repos() {
   local config_file
   if [ -n "$XDG_CONFIG_HOME" ]; then
@@ -17,6 +14,27 @@ _wtx_get_repos() {
   fi
 }
 
+_wtx_get_branches() {
+  local config_file root postfix
+  if [ -n "$XDG_CONFIG_HOME" ]; then
+    config_file="${XDG_CONFIG_HOME}/wtx/config.json"
+  else
+    config_file="${HOME}/.config/wtx/config.json"
+  fi
+  if [ -f "$config_file" ] && command -v jq >/dev/null 2>&1; then
+    root=$(jq -r '.root' "$config_file" 2>/dev/null)
+    root="${root/#\~/$HOME}"
+    postfix=$(jq -r '.postfix // "-wt"' "$config_file" 2>/dev/null)
+    for repo in $(jq -r '.repos | keys[]' "$config_file" 2>/dev/null); do
+      local wt_dir="${root}/${repo}${postfix}"
+      if [ -d "$wt_dir" ]; then
+        git -C "${root}/${repo}" worktree list --porcelain 2>/dev/null | \
+          grep '^branch refs/heads/' | sed 's|^branch refs/heads/||'
+      fi
+    done | sort -u
+  fi
+}
+
 _wtx_completions() {
   local cur prev cword
   _init_completion 2>/dev/null || {
@@ -30,7 +48,7 @@ _wtx_completions() {
   local skill_subcommands="show path list"
   local skill_names="opencode cursor claude"
   local config_set_keys="root postfix ide default_main_branch"
-  local ides="cursor code vscode code-insiders vscodium idea webstorm goland pycharm zed vim nvim emacs sublime atom"
+  local ides="cursor code vscode code-insiders vscodium idea webstorm zed vim nvim emacs"
 
   local subcommand="" subsubcommand=""
   local i=1
@@ -104,10 +122,7 @@ _wtx_completions() {
       fi
       case "$subsubcommand" in
         set)
-          if [ "$prev" = "set" ]; then
-            COMPREPLY=($(compgen -W "$config_set_keys" -- "$cur"))
-            return 0
-          fi
+          [ "$prev" = "set" ] && COMPREPLY=($(compgen -W "$config_set_keys" -- "$cur")) && return 0
           ;;
         remove-repo)
           COMPREPLY=($(compgen -W "$(_wtx_get_repos)" -- "$cur"))
@@ -132,10 +147,10 @@ _wtx_completions() {
       esac
       ;;
     cd)
-      if [ "$prev" = "cd" ]; then
-        COMPREPLY=($(compgen -W "$(_wtx_get_repos)" -- "$cur"))
-        return 0
-      fi
+      [ "$prev" = "cd" ] && COMPREPLY=($(compgen -W "$(_wtx_get_repos)" -- "$cur")) && return 0
+      ;;
+    rebase|open|status|remove|sync|deps)
+      [ "$prev" = "$subcommand" ] && COMPREPLY=($(compgen -W "$(_wtx_get_branches)" -- "$cur")) && return 0
       ;;
   esac
 

@@ -1,42 +1,16 @@
 # wtx
 
-Multi-repo git worktree manager. Create, remove, and operate on worktrees across all your configured repositories with a single command.
+Multi-repo git worktree manager. Create, remove, and operate on worktrees across multiple repositories with a single command.
 
-Designed for monorepo-heavy workflows where you regularly context-switch between feature branches across multiple repos. Configurable per-repo hooks handle sync files and dependency installation automatically. Smart `node_modules` handling symlinks when lockfiles match main and falls back to a full install when they don't.
+Configurable per-repo hooks handle sync files and dependency installation automatically. Smart `node_modules` handling symlinks when lockfiles match main and falls back to a full install when they don't.
 
 ---
 
 ## Installation
 
-### npm (recommended)
-
 ```bash
 npm install -g @ogpoyraz/wtx
 ```
-
-Requires [Bun](https://bun.sh) runtime. The binary name is `wtx`.
-
-### Compiled binary
-
-Download a prebuilt binary from [GitHub Releases](https://github.com/OGPoyraz/wtx/releases) — no runtime dependencies needed:
-
-```bash
-curl -fsSL https://github.com/OGPoyraz/wtx/releases/latest/download/wtx-darwin-arm64 -o /usr/local/bin/wtx
-chmod +x /usr/local/bin/wtx
-```
-
-Available binaries: `wtx-darwin-arm64`, `wtx-darwin-x64`, `wtx-linux-x64`.
-
-### From source
-
-```bash
-git clone https://github.com/OGPoyraz/wtx.git
-cd wtx
-bun install
-make install
-```
-
-Compiles a self-contained binary to `/usr/local/bin/wtx`.
 
 ### Shell integration
 
@@ -46,7 +20,7 @@ Add to `~/.zshrc` (or `~/.bashrc`):
 eval "$(wtx init zsh)"
 ```
 
-This installs a shell wrapper that enables `wtx cd` to actually change directories in your current shell session.
+This enables `wtx cd` to change directories in your current shell session.
 
 ### First-time config
 
@@ -54,7 +28,7 @@ This installs a shell wrapper that enables `wtx cd` to actually change directori
 wtx config init
 ```
 
-Creates `~/.config/wtx/config.json` interactively with your repos and preferences.
+Creates `~/.config/wtx/config.json` interactively.
 
 ---
 
@@ -63,15 +37,15 @@ Creates `~/.config/wtx/config.json` interactively with your repos and preference
 Configure a repo:
 
 ```bash
-wtx config add-repo myrepo \
+wtx config add-repo my-frontend \
   --sync-files ".env,.env.local" \
   --post-create "yarn install"
 ```
 
-Create a worktree across all configured repos:
+Create a worktree:
 
 ```bash
-wtx create ogp/my-feature
+wtx create ogp/my-feature --repo my-frontend
 ```
 
 List worktrees:
@@ -79,7 +53,7 @@ List worktrees:
 ```bash
 $ wtx ls
 
-── myrepo ─────────────────────────────────────────────
+  my-frontend
   main              a1b2c3d  [main checkout]
   ogp/my-feature    e4f5g6h  clean
 ```
@@ -89,7 +63,7 @@ Check status:
 ```bash
 $ wtx status ogp/my-feature
 
-── myrepo ─────────────────────────────────────────────
+  my-frontend
   Branch:    ogp/my-feature
   Status:    clean
   vs main:   3 ahead, 0 behind
@@ -101,7 +75,7 @@ Rebase against main:
 ```bash
 $ wtx rebase ogp/my-feature
 
-── myrepo ─────────────────────────────────────────────
+  my-frontend
   ◌ Fetching origin/main...           → a1b2c3d "fix: resolve token issue"
   ◌ Rebasing ogp/my-feature onto main...
   ✓ Rebased                           → 3 commits replayed
@@ -135,13 +109,12 @@ wtx remove ogp/my-feature
 | `config add-repo` | `<name>` | `--sync-files`, `--post-create`, `--post-sync` | Add or update a repo |
 | `config remove-repo` | `<name>` | | Remove a repo from config |
 | `skill show` | `<platform>` | | Print skill file to stdout |
-| `skill path` | `<platform>` | | Print skill file path |
 | `skill list` | | | List available platforms |
 | `init` | `<bash\|zsh>` | | Output shell wrapper for eval |
 
-**Global flags:** `--verbose` (show git commands as they run), `--dry-run` (show what would happen), `-v` / `--version`, `-h` / `--help`
+**Global flags:** `--verbose`, `--dry-run`, `-v` / `--version`, `-h` / `--help`
 
-`--repo` accepts comma-separated values (`--repo a,b`) or can be repeated (`--repo a --repo b`). Omit it to target all configured repos.
+`--repo` accepts comma-separated values (`--repo a,b`) or can be repeated (`--repo a --repo b`). Omit it to target all configured repos, or run from inside a repo directory to auto-scope.
 
 ---
 
@@ -168,11 +141,6 @@ Config lives at `~/.config/wtx/config.json`.
       "sync_files": [".env"],
       "post_create": ["wtx deps"],
       "post_sync": ["wtx deps"]
-    },
-    "shared-libs": {
-      "main_branch": "auto",
-      "post_create": ["wtx deps"],
-      "post_sync": ["wtx deps"]
     }
   }
 }
@@ -182,148 +150,50 @@ Config lives at `~/.config/wtx/config.json`.
 
 | Field | Default | Description |
 |---|---|---|
-| `version` | `1` | Config schema version |
-| `root` | required | Base directory where repos live. `~` is expanded at read time. |
-| `postfix` | `"-wt"` | Suffix appended to repo name for the worktree directory |
-| `ide` | `"cursor"` | IDE binary to use for `wtx open`. Overrideable per-command with `--ide`. |
+| `root` | required | Base directory where repos live. `~` expanded at read time. |
+| `postfix` | `"-wt"` | Suffix for the worktree directory (`<repo><postfix>/`) |
+| `ide` | `"cursor"` | Default IDE for `wtx open` |
 | `default_main_branch` | `"main"` | Fallback when auto-detection fails |
-| `repos.<name>.main_branch` | `"auto"` | `"auto"` detects via `git symbolic-ref refs/remotes/origin/HEAD`, or set explicitly |
-| `repos.<name>.sync_files` | `[]` | Files copied from main checkout to worktree on create and sync |
-| `repos.<name>.post_create` | `[]` | Commands run after worktree creation (cwd = worktree) |
-| `repos.<name>.post_sync` | `[]` | Commands run after sync. Falls back to `post_create` if not set. |
+| `repos.<name>.main_branch` | `"auto"` | Auto-detects via `git symbolic-ref`, or set explicitly |
+| `repos.<name>.sync_files` | `[]` | Files copied from main checkout on create and sync |
+| `repos.<name>.post_create` | `[]` | Commands run after worktree creation |
+| `repos.<name>.post_sync` | `[]` | Commands run after sync (falls back to `post_create`) |
 
 ### Template variables
 
-Available in `post_create` and `post_sync` command strings:
+Available in `post_create` and `post_sync` commands:
 
 | Variable | Expands to |
 |---|---|
-| `{root}` | Value of `root` config key |
-| `{repo}` | Repo name (e.g. `my-frontend`) |
+| `{root}` | Config `root` value |
+| `{repo}` | Repo name |
 | `{branch}` | Worktree branch name |
 | `{main}` | Absolute path to main checkout |
 | `{wt}` | Absolute path to the worktree |
-| `{postfix}` | Value of `postfix` config key |
+| `{postfix}` | Config `postfix` value |
 
 ---
 
 ## Smart Dependencies
 
-`wtx deps` manages `node_modules` per worktree without wasting disk space.
-
-**Auto-detect mode** (called automatically from `post_create`):
-
-- Compares the worktree's lockfile against the main checkout
-- If they match: symlinks `node_modules` from main (`ln -s`)
-- If they differ: runs the appropriate install command (`yarn install`, `npm install`, `pnpm install`, or `bun install`)
-
-Lockfile detection order: `yarn.lock`, `package-lock.json`, `pnpm-lock.yaml`, `bun.lockb`/`bun.lock`. If none found, deps are skipped.
-
-**Inspect current state:**
+`wtx deps` manages `node_modules` per worktree. Auto-detect mode (used in `post_create`) compares lockfiles — symlinks when they match main, runs install when they differ.
 
 ```bash
-$ wtx deps ogp/my-feature
-
-── my-frontend ─────────────────────────────────────────
-  node_modules: symlinked             → ~/Repos/my-frontend/node_modules
-  yarn.lock:    matches main
-
-── my-backend ──────────────────────────────────────────
-  node_modules: independent
-  yarn.lock:    differs from main
-```
-
-**Explicit switches:**
-
-```bash
-# Switch from symlink to full install
-wtx deps ogp/my-feature --repo my-frontend --install
-
-# Switch back to symlink (frees disk space)
-wtx deps ogp/my-feature --repo my-frontend --symlink
-```
-
-When `wtx sync` detects that a symlinked worktree now has a diverged lockfile, it warns you:
-
-```
-  ⚠ yarn.lock differs from main — node_modules is symlinked
-    Run: wtx deps ogp/my-feature --repo my-frontend --install
-```
-
----
-
-## Shell Integration
-
-`wtx init <zsh|bash>` outputs a shell wrapper function. Sourcing it via `eval` enables `wtx cd`.
-
-```bash
-# ~/.zshrc
-eval "$(wtx init zsh)"
-```
-
-The wrapper intercepts `wtx cd <repo> <branch>` and runs the `cd` in your current shell (a subprocess can't change the parent's directory). All other subcommands are passed through to the `wtx` binary unchanged.
-
-```bash
-# Navigate to a worktree
-wtx cd my-frontend ogp/my-feature
-
-# Equivalent to:
-cd ~/Repos/my-frontend-wt/ogp/my-feature
-```
-
-If the worktree doesn't exist:
-
-```
-✗ No worktree at ~/Repos/my-frontend-wt/ogp/nonexistent
+wtx deps ogp/my-feature                              # inspect
+wtx deps ogp/my-feature --repo my-frontend --install  # force install
+wtx deps ogp/my-feature --repo my-frontend --symlink   # force symlink
 ```
 
 ---
 
 ## AI Agent Skills
 
-`wtx` ships with skill files for AI coding agents. Install the skill for your platform so the agent understands the `wtx` CLI and can run worktree operations on your behalf.
-
 ```bash
-$ wtx skill list
-Available skills:
-  opencode    AI agent skill for opencode
-  cursor      AI agent skill for cursor
-  claude      AI agent skill for claude code
-```
-
-**opencode:**
-
-```bash
-wtx skill show opencode >> ~/.config/opencode/skills/wtx.md
-```
-
-**Cursor:**
-
-```bash
-wtx skill show cursor >> .cursor/rules/wtx.mdc
-```
-
-**Claude Code:**
-
-```bash
+wtx skill list                                         # list platforms
+wtx skill show opencode > ~/.config/opencode/commands/wtx.md
+wtx skill show cursor > .cursor/rules/wtx.mdc
 wtx skill show claude >> CLAUDE.md
 ```
-
-`wtx skill path <platform>` prints the path to the installed skill file (only available when installed via `make install`). Use `wtx skill show` to get the content regardless of install method.
-
----
-
-## cwd Auto-Detection
-
-If you run a `wtx` command from inside a repo directory without `--repo`, it scopes to that repo automatically.
-
-```bash
-cd ~/Repos/my-frontend
-wtx create ogp/my-feature     # only creates for my-frontend
-wtx ls                         # only lists my-frontend worktrees
-```
-
-Outside a configured repo directory, commands without `--repo` target all configured repos.
 
 ---
 
