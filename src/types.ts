@@ -31,7 +31,21 @@ export interface RepoContext {
   config: RepoConfig;
 }
 
-export const VERSION = "0.1.0";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
+
+function getVersion(): string {
+  try {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(resolve(dir, "..", "package.json"), "utf-8"));
+    return pkg.version;
+  } catch {
+    return "0.0.0";
+  }
+}
+
+export const VERSION = getVersion();
 
 export const CONFIG_DIR = ".config/wtx";
 export const CONFIG_FILE = "config.json";
