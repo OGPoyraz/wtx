@@ -1,5 +1,5 @@
 {
-  "name": "wtx",
+  "name": "@ogpoyraz/wtx",
   "version": "0.1.0",
   "description": "Multi-repo git worktree manager",
   "type": "module",
