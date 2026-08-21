@@ -7,11 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-21
+
+### Added
+
+- Branch-driven release workflow — create `release/X.X.X` branch, merge to publish
+- CI validation for release branches (changelog-only changes, version checks)
+- Release process documentation (`RELEASE.md`)
+- Tab completions auto-complete existing worktree branch names for `rebase`, `open`, `status`, `remove`, `sync`, and `deps`
+
 ### Changed
 
 - Cleaner section headers in output (repo name only, no line drawing)
 - All commands output a trailing empty line for cleaner terminal flow
-- Tab completions now auto-complete existing worktree branch names for `rebase`, `open`, `status`, `remove`, `sync`, and `deps`
 - Simplified README — streamlined installation and examples
 
 ### Fixed
@@ -61,7 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/OGPoyraz/wtx/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/OGPoyraz/wtx/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/OGPoyraz/wtx/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/OGPoyraz/wtx/compare/v0.1.0...v0.1.1
