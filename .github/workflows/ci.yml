@@ -28,3 +28,53 @@ jobs:
 
       - name: Build
         run: bun run build
+
+  validate-release-branch:
+    name: Validate Release Branch
+    if: startsWith(github.head_ref, 'release/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from branch name
+        id: version
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          VERSION="${BRANCH#release/}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Check only CHANGELOG.md is changed
+        run: |
+          CHANGED=$(git diff --name-only origin/main...HEAD)
+          NON_CHANGELOG=$(echo "$CHANGED" | grep -v '^CHANGELOG.md$' || true)
+          if [ -n "$NON_CHANGELOG" ]; then
+            echo "::error::Release branch must only change CHANGELOG.md. Found other changes:"
+            echo "$NON_CHANGELOG"
+            exit 1
+          fi
+
+      - name: Check version tag does not already exist
+        run: |
+          if git ls-remote --tags origin "refs/tags/v${{ steps.version.outputs.version }}" | grep -q .; then
+            echo "::error::Tag v${{ steps.version.outputs.version }} already exists"
+            exit 1
+          fi
+
+      - name: Check CHANGELOG.md has version entry
+        run: |
+          if ! grep -q "^## \[${{ steps.version.outputs.version }}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md is missing entry for [${{ steps.version.outputs.version }}]"
+            exit 1
+          fi
+
+      - name: Check Unreleased section is empty
+        run: |
+          UNRELEASED_CONTENT=$(sed -n '/^## \[Unreleased\]/,/^## \[/{ /^## \[/d; /^$/d; p; }' CHANGELOG.md)
+          if [ -n "$UNRELEASED_CONTENT" ]; then
+            echo "::error::Unreleased section must be empty in a release branch. Found:"
+            echo "$UNRELEASED_CONTENT"
+            exit 1
+          fi
