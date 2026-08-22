@@ -18,6 +18,9 @@ import {
   parseRepoFlag,
 } from "../lib/resolver.js";
 import { detectDepsState } from "../lib/deps.js";
+import { resolveForge } from "../lib/forge/index.js";
+import { derivePrDisplay } from "../lib/forge/types.js";
+import { renderChecksSummary, renderDisplayState } from "../lib/forge/render.js";
 
 interface StatusOptions {
   repo?: string[];
@@ -107,6 +110,36 @@ export function registerStatusCommand(program: Command) {
           info(`  vs main:   ${ahead} ahead, ${behind} behind`);
         } catch {
           info(`  vs main:   unknown`);
+        }
+
+        try {
+          const forge = resolveForge(repo);
+          const prMap = await forge?.findForBranches({
+            cwd: repo.mainPath,
+            branches: [branch],
+            verbose: globalOpts.verbose,
+          });
+          const prInfo = prMap?.get(branch);
+
+          if (prInfo) {
+            const display = derivePrDisplay(prInfo);
+            info(`  PR:        #${prInfo.number} ${prInfo.state} — ${renderDisplayState(display)}`);
+
+            const threads =
+              prInfo.unresolvedThreads > 0
+                ? `${prInfo.unresolvedThreads} unresolved thread${prInfo.unresolvedThreads > 1 ? "s" : ""}`
+                : null;
+            const details = [renderChecksSummary(prInfo.checks), threads]
+              .filter(Boolean)
+              .join(" · ");
+            if (details) {
+              info(`             ${details}`);
+            }
+            info(`             ${prInfo.url}`);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          stepWarning(`PR lookup failed`, message);
         }
 
         const rebaseStatus = detectInProgressRebase(wtPath);
