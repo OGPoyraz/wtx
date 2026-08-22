@@ -103,7 +103,48 @@ export interface ForgeAdapterFetchContext {
   verbose?: boolean;
 }
 
+export interface ForgeFetchOpts {
+  cwd?: string;
+  verbose?: boolean;
+  dryRun?: boolean;
+}
+
+export interface ForgeSlug {
+  host: string;
+  path: string;
+}
+
+export interface ForgePrLinkRef {
+  forgeId: string;
+  host: string;
+  path: string;
+  number: number;
+  url: string;
+}
+
+export interface PrHead {
+  number: number;
+  title: string;
+  url: string;
+  state: "open" | "merged" | "closed";
+  isDraft: boolean;
+  headRefName: string;
+  isCrossRepository: boolean;
+  headOwnerLogin: string | null;
+  headRepoName: string | null;
+}
+
+export interface ForgeDescriptor {
+  id: string;
+  ownsHost(host: string): boolean;
+  parsePrLink(link: string): ForgePrLinkRef | null;
+  parseRemote(url: string): ForgeSlug | null;
+  createAdapter(slug: ForgeSlug): ForgeAdapter | null;
+}
+
 export interface ForgeAdapter {
   id: string;
   findForBranches(ctx: ForgeAdapterFetchContext): Promise<Map<string, PrInfo>>;
+  fetchPrHead(number: number, opts?: ForgeFetchOpts): Promise<PrHead>;
+  buildHeadFetch(pr: PrHead): { url: string | null; refspec: string };
 }

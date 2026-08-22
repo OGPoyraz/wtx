@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { VERSION } from "./types.js";
 import { registerConfigCommand } from "./commands/config.js";
 import { registerCreateCommand } from "./commands/create.js";
+import { registerPullCommand } from "./commands/pull.js";
 import { registerRemoveCommand } from "./commands/remove.js";
 import { registerLsCommand } from "./commands/ls.js";
 import { registerInitCommand } from "./commands/init.js";
@@ -30,6 +31,7 @@ program
 
 registerConfigCommand(program);
 registerCreateCommand(program);
+registerPullCommand(program);
 registerRemoveCommand(program);
 registerLsCommand(program);
 registerInitCommand(program);

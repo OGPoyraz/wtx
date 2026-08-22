@@ -22,6 +22,7 @@ src/
     ls.ts               wtx ls — porcelain parsing, table output
     init.ts             wtx init <bash|zsh> — shell wrapper output
     rebase.ts           wtx rebase <branch> — fetch + rebase
+    pull.ts             wtx pull <pr-link> — fetch PR, create worktree
     fetch.ts            wtx fetch — fetch origin main
     sync.ts             wtx sync <branch> — re-copy env files + post_sync
     deps.ts             wtx deps — node_modules symlink/install management
@@ -34,6 +35,7 @@ src/
     template.ts         {main}, {wt}, {repo}, {branch} expansion
     log.ts              Colored step output (✓ ⚠ ✗ ◌), repo headers
     deps.ts             Lockfile comparison, symlink detection, install/symlink switching
+    worktree-setup.ts   Extracted sync_files + post_create block shared by create/pull
 share/
   wtx.sh                Shell wrapper for `wtx cd` (sourced via eval)
 skills/                 AI agent skill files (opencode, cursor, claude)

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `wtx create --open` (`-o`) opens each created worktree in your IDE after creation — IDE resolved from `--ide`, config `ide`, or `$EDITOR`; respects `--dry-run`
 - Read-only PR status for worktree branches: new `wtx prs` command, `wtx ls --pr` flag, and a PR section in `wtx status <branch>`
+- `wtx pull <pr-link>` to fetch a GitHub PR by URL and create its worktree, with auto repo detection, merged or closed PR warnings, and fork support without persistent remotes
 - Derived display states (`CONFLICTED`, `CI_FAILING`, `CHANGES_REQUESTED`, `AWAITING_REVIEW`, …) ranked by attention priority, with a secondary `awaiting review` tag for open PRs that have no review verdict yet
 - Forge adapter layer (`src/lib/forge/`) with GitHub support via the `gh` CLI — auth is fully delegated to `gh`, wtx stores no tokens
 - Exact unresolved review-thread counts via one batched GraphQL lookup per repo

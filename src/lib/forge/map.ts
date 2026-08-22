@@ -1,4 +1,4 @@
-import type { Mergeable, PrChecks, PrInfo, PrState } from "./types.js";
+import type { Mergeable, PrChecks, PrHead, PrInfo, PrState } from "./types.js";
 
 interface RawCheckItem {
   __typename?: string;
@@ -137,4 +137,41 @@ export function mapGithubPr(raw: unknown): PrInfo | null {
 export function mapGithubPrList(raw: unknown): PrInfo[] {
   if (!Array.isArray(raw)) return [];
   return raw.map(mapGithubPr).filter((pr): pr is PrInfo => pr !== null);
+}
+
+export function mapPrHead(raw: unknown): PrHead | null {
+  if (!isRecord(raw)) return null;
+
+  const number = typeof raw.number === "number" ? raw.number : null;
+  const headRefName = typeof raw.headRefName === "string" ? raw.headRefName : null;
+  const state = mapState(raw.state);
+
+  if (number === null || headRefName === null || state === null) return null;
+
+  const title = typeof raw.title === "string" ? raw.title : "";
+  const url = typeof raw.url === "string" ? raw.url : "";
+  const isDraft = raw.isDraft === true;
+  const isCrossRepository = raw.isCrossRepository === true;
+
+  let headOwnerLogin: string | null = null;
+  if (isRecord(raw.headRepositoryOwner) && typeof raw.headRepositoryOwner.login === "string") {
+    headOwnerLogin = raw.headRepositoryOwner.login;
+  }
+
+  let headRepoName: string | null = null;
+  if (isRecord(raw.headRepository) && typeof raw.headRepository.name === "string") {
+    headRepoName = raw.headRepository.name;
+  }
+
+  return {
+    number,
+    title,
+    url,
+    state,
+    isDraft,
+    headRefName,
+    isCrossRepository,
+    headOwnerLogin,
+    headRepoName,
+  };
 }

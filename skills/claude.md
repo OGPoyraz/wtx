@@ -31,6 +31,12 @@ Shows pull request status for worktree branches across repositories. Requires th
 
 `wtx ls --pr` adds a PR column to the worktree listing, and `wtx status <branch>` shows a PR section (state, checks, unresolved threads, URL).
 
+### `wtx pull <pr-link>`
+Fetches a GitHub PR by URL and creates its worktree. Requires the GitHub CLI (`gh`) to be installed and authenticated.
+- **Flags**: `-r, --repo <repo>`
+- Auto-detects the owning repo from the PR link, warns on merged or closed PRs, and skips existing branches or worktrees with a warning.
+- Supports fork PRs without adding persistent remotes.
+
 ### `wtx status`
 Shows git statuses for all worktrees.
 

@@ -94,6 +94,7 @@ wtx remove ogp/my-feature
 | Command | Args | Flags | Description |
 |---|---|---|---|
 | `create` | `<branch>` | `--repo`, `--base`, `--open`, `--ide` | Create worktree(s), run post-create hooks, optionally open in IDE |
+| `pull` | `<pr-link>` | `--repo` | Fetch a GitHub PR and create its worktree |
 | `remove` | `<branch>` | `--repo`, `--force` | Remove worktree(s), clean empty dirs |
 | `open` | `<branch>` | `--repo`, `--ide` | Open worktree in IDE |
 | `rebase` | `<branch>` | `--repo` | Fetch origin main, rebase worktree onto it |
@@ -215,6 +216,25 @@ Every PR gets one display state, ranked by attention priority: `MERGED`, `CLOSED
 - `wtx status <branch>` — shows the PR section (state, checks, unresolved threads, URL)
 
 Lookups never break commands: if `gh` is missing, unauthenticated, or times out, you get a per-repo warning and everything else keeps working. Private repos work out of the box through your existing `gh auth login`; GitHub Enterprise and fork workflows are covered by the `forge` / `pr_repo` config keys above.
+
+## Pull a Pull Request
+
+Pull a GitHub PR into a worktree with one command instead of running `gh pr view`, `git fetch`, and `wtx create` separately. It auto-detects the owning repo from the PR link, uses `gh` for fetching, and requires the GitHub CLI (`gh`) to be installed and authenticated.
+
+```bash
+$ wtx pull https://github.com/OGPoyraz/wtx/pull/11
+
+  wtx
+  ◌ Looking up PR #11 in ogpoyraz/wtx...
+  ✓ PR #11: feat: add pull command          open
+  ◌ Fetching pull/11/head from origin...
+  ✓ Fetched
+  ✓ Worktree created                        → ~/Repos/wtx-wt/pr-add-pull-command
+  ...
+✓ Done — pulled #11 "feat: add pull command" into pr-add-pull-command
+```
+
+Merged or closed PRs warn and continue. If the branch or worktree already exists, wtx skips it with a warning. Fork PRs are supported without adding persistent remotes.
 
 ## AI Agent Skills
 
