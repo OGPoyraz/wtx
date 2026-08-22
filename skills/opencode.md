@@ -44,6 +44,13 @@ Fetches a GitHub PR by URL and creates its worktree. Requires the GitHub CLI (`g
 - Auto-detects the owning repo from the PR link, warns on merged or closed PRs, and skips existing branches or worktrees with a warning.
 - Supports fork PRs without adding persistent remotes.
 
+### `wtx terminal`
+Opens an interactive full-screen dashboard for browsing and acting on worktrees across all configured repos. Requires Bun runtime and a TTY; exits with guidance under Node.js or non-interactive shells.
+
+- Lists worktrees as two-line entries: branch with status badge (clean / dirty count / locked / missing / rebasing), then commit hash, divergence vs main (`↑n ↓n`), PR number/state/checks, and owner tags.
+- Keys: `r` refresh · `j/k` navigate · `n` create · `b` rebase · `d` remove · `s` sync · `o` open in IDE · `c` edit config · `?` help · `q` quit.
+- Actions run as child processes with output streamed inside the dashboard; destructive actions confirm first (`y/n`). The config editor (`c`) persists through atomic config writes and refreshes the view automatically.
+
 ### `wtx status`
 Shows git statuses for all worktrees.
 

@@ -108,6 +108,7 @@ wtx remove ogp/my-feature
 | `ls` | | `--repo`, `--pr` | List all worktrees with clean/dirty state |
 | `status` | `<branch>` | `--repo` | Ahead/behind count, dirty files, rebase state |
 | `prs` | | `--repo`, `--json`, `--all` | Show pull request status across worktrees |
+| `terminal` | | | Interactive worktree dashboard (requires Bun) |
 | `cd` | `<repo> <branch>` | | cd into worktree (requires shell integration) |
 | `config init` | | | Create default config interactively |
 | `config show` | | | Print current config |
@@ -254,6 +255,24 @@ $ wtx pull https://github.com/OGPoyraz/wtx/pull/11
 ```
 
 Merged or closed PRs warn and continue. If the branch or worktree already exists, wtx skips it with a warning. Fork PRs are supported without adding persistent remotes.
+
+## Terminal Dashboard
+
+`wtx terminal` opens a full-screen dashboard for browsing and acting on worktrees across all configured repos. Requires the [Bun](https://bun.sh) runtime and an interactive terminal — under Node or without a TTY it exits with guidance instead.
+
+Each worktree is listed as a two-line entry: branch with a status badge (clean, dirty count, locked, missing, rebasing) plus commit hash, divergence vs main (`↑n ↓n`), PR number/state/checks, and owner tags. A detail pane shows dirty file names, PR threads, rebase state, and deps strategy for the selection.
+
+| Key | Action |
+|---|---|
+| `r` | Refresh (manual-first; never polls) |
+| `j` / `k` | Move selection |
+| `n` | Create worktree |
+| `b` / `d` / `s` | Rebase / remove / sync selected (with confirmation) |
+| `o` | Open selected in IDE |
+| `c` | Edit configuration in place |
+| `?` / `q` | Help / quit |
+
+Actions run as child processes with their output streamed into the dashboard — no terminal switching. Destructive actions ask for confirmation first; failures keep the log open until dismissed.
 
 ## AI Agent Skills
 
