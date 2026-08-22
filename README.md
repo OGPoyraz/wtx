@@ -162,6 +162,7 @@ Config lives at `~/.config/wtx/config.json`.
 | `default_main_branch` | `"main"` | Fallback when auto-detection fails |
 | `user` | `null` | Your forge handle (e.g. GitHub username); enables ownership detection in create/ls/prs/status |
 | `repos.<name>.main_branch` | `"auto"` | Auto-detects via `git symbolic-ref`, or set explicitly |
+| `repos.<name>.fetch_main_on_create` | `true` | Fetches `origin <main_branch>` before creating a worktree, so new branches start from the latest main |
 | `repos.<name>.sync_files` | `[]` | Files copied from main checkout on create and sync |
 | `repos.<name>.post_create` | `[]` | Commands run after worktree creation |
 | `repos.<name>.post_sync` | `[]` | Commands run after sync (falls back to `post_create`) |

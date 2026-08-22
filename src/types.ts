@@ -2,6 +2,7 @@ import { z } from "zod/v4";
 
 export const RepoConfigSchema = z.object({
   main_branch: z.string().default("auto"),
+  fetch_main_on_create: z.boolean().default(true),
   sync_files: z.array(z.string()).optional(),
   post_create: z.array(z.string()).optional(),
   post_sync: z.array(z.string()).optional(),
