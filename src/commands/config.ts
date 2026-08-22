@@ -1,5 +1,6 @@
 import readline from "readline";
 import { Command } from "commander";
+import { execa } from "execa";
 import {
   getConfigPath,
   configExists,
@@ -40,12 +41,27 @@ export function registerConfigCommand(program: Command) {
       const ide = (await askQuestion("IDE [cursor]: ")) || "cursor";
       const postfix = (await askQuestion("Postfix [-wt]: ")) || "-wt";
 
+      let detectedUser: string | null = null;
+      try {
+        const { stdout } = await execa("gh", ["api", "user", "--jq", ".login"], { timeout: 3000 });
+        if (stdout) {
+          detectedUser = stdout.trim();
+        }
+      } catch {
+        // ignore
+      }
+
+      const userPrompt = detectedUser ? `GitHub username [${detectedUser}]: ` : "GitHub username (leave empty for null): ";
+      const userAns = await askQuestion(userPrompt);
+      const user = userAns || detectedUser || null;
+
       const defaultConfig: Config = {
         version: 1,
         root,
         postfix,
         ide,
         default_main_branch: "main",
+        user,
         repos: {},
       };
 
@@ -70,10 +86,10 @@ export function registerConfigCommand(program: Command) {
     .description("Set a top-level configuration key")
     .action((key, value) => {
       const config = loadConfig();
-      const validKeys = ["root", "postfix", "ide", "default_main_branch"] as const;
+      const validKeys = ["root", "postfix", "ide", "default_main_branch", "user"] as const;
       type ValidKey = (typeof validKeys)[number];
       if (!validKeys.includes(key as ValidKey)) {
-        error(`Invalid key: ${key}. Allowed keys: root, postfix, ide, default_main_branch`);
+        error(`Invalid key: ${key}. Allowed keys: root, postfix, ide, default_main_branch, user`);
         process.exit(1);
       }
 
