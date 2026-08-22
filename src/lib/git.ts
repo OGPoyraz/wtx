@@ -1,4 +1,6 @@
 import { execa } from "execa";
+import fs from "fs";
+import path from "path";
 import type { GlobalOptions } from "../types.js";
 import { verbose } from "./log.js";
 
@@ -103,6 +105,44 @@ export async function getLatestCommit(repoPath: string, ref: string): Promise<{ 
 export async function getDirtyFiles(worktreePath: string): Promise<string[]> {
   const stdout = await gitExec(["-C", worktreePath, "status", "--porcelain"]);
   return stdout.split("\n").filter(Boolean);
+}
+
+export function detectInProgressRebase(wtPath: string): string | null {
+  const dotGitPath = path.join(wtPath, ".git");
+
+  try {
+    const stat = fs.statSync(dotGitPath);
+    let gitDir: string;
+
+    if (stat.isFile()) {
+      const content = fs.readFileSync(dotGitPath, "utf-8").trim();
+      const prefix = "gitdir: ";
+      if (!content.startsWith(prefix)) return null;
+      gitDir = content.substring(prefix.length);
+      if (!path.isAbsolute(gitDir)) {
+        gitDir = path.resolve(wtPath, gitDir);
+      }
+    } else {
+      gitDir = dotGitPath;
+    }
+
+    if (fs.existsSync(path.join(gitDir, "rebase-merge"))) {
+      const stepFile = path.join(gitDir, "rebase-merge", "msgnum");
+      const totalFile = path.join(gitDir, "rebase-merge", "end");
+      if (fs.existsSync(stepFile) && fs.existsSync(totalFile)) {
+        const step = fs.readFileSync(stepFile, "utf-8").trim();
+        const total = fs.readFileSync(totalFile, "utf-8").trim();
+        return `in progress (${step}/${total} commits applied)`;
+      }
+      return "in progress";
+    }
+
+    if (fs.existsSync(path.join(gitDir, "rebase-apply"))) {
+      return "in progress (rebase-apply)";
+    }
+  } catch {}
+
+  return null;
 }
 
 export async function localBranchExists(

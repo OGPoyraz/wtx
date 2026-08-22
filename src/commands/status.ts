@@ -1,6 +1,5 @@
 import { Command } from "commander";
 import fs from "fs";
-import path from "path";
 import type { GlobalOptions } from "../types.js";
 import { loadConfig } from "../lib/config.js";
 import {
@@ -10,7 +9,7 @@ import {
   summary,
   indented,
 } from "../lib/log.js";
-import { gitExec, getDirtyFiles } from "../lib/git.js";
+import { gitExec, getDirtyFiles, detectInProgressRebase } from "../lib/git.js";
 import {
   resolveRepos,
   resolveMainBranch,
@@ -26,44 +25,6 @@ import chalk from "chalk";
 
 interface StatusOptions {
   repo?: string[];
-}
-
-function detectInProgressRebase(wtPath: string): string | null {
-  const dotGitPath = path.join(wtPath, ".git");
-
-  try {
-    const stat = fs.statSync(dotGitPath);
-    let gitDir: string;
-
-    if (stat.isFile()) {
-      const content = fs.readFileSync(dotGitPath, "utf-8").trim();
-      const prefix = "gitdir: ";
-      if (!content.startsWith(prefix)) return null;
-      gitDir = content.substring(prefix.length);
-      if (!path.isAbsolute(gitDir)) {
-        gitDir = path.resolve(wtPath, gitDir);
-      }
-    } else {
-      gitDir = dotGitPath;
-    }
-
-    if (fs.existsSync(path.join(gitDir, "rebase-merge"))) {
-      const stepFile = path.join(gitDir, "rebase-merge", "msgnum");
-      const totalFile = path.join(gitDir, "rebase-merge", "end");
-      if (fs.existsSync(stepFile) && fs.existsSync(totalFile)) {
-        const step = fs.readFileSync(stepFile, "utf-8").trim();
-        const total = fs.readFileSync(totalFile, "utf-8").trim();
-        return `in progress (${step}/${total} commits applied)`;
-      }
-      return "in progress";
-    }
-
-    if (fs.existsSync(path.join(gitDir, "rebase-apply"))) {
-      return "in progress (rebase-apply)";
-    }
-  } catch {}
-
-  return null;
 }
 
 export function registerStatusCommand(program: Command) {
