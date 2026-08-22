@@ -24,6 +24,15 @@ Removes a worktree and deletes the branch.
 ### `wtx ls`
 Lists all worktrees across repositories.
 
+### `wtx prs`
+Shows pull request status for worktree branches across repositories. Requires the GitHub CLI (`gh`) to be installed and authenticated. Read-only — never modifies PRs.
+- **Flags**:
+  - `-r, --repo <repos...>`: Target specific repo(s).
+  - `--json`: Machine-readable JSON output.
+  - `--all`: Include drafts and closed/merged PRs.
+
+`wtx ls --pr` adds a PR column to the worktree listing, and `wtx status <branch>` shows a PR section (state, checks, unresolved threads, URL).
+
 ### `wtx status`
 Shows git statuses for all worktrees.
 
