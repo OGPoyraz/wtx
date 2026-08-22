@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-23
+
 ### Added
 
 - Per-repo config key `fetch_main_on_create` (default `true`) — `wtx create` fetches `origin <main_branch>` first so new branches are based on the latest main; set it to `false` to skip
@@ -119,7 +121,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/OGPoyraz/wtx/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/OGPoyraz/wtx/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/OGPoyraz/wtx/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/OGPoyraz/wtx/compare/v0.2.1...v0.3.0
