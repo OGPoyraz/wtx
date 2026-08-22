@@ -80,6 +80,8 @@ _wtx() {
             ':branch:' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             '--base[Base ref]:ref:(main master develop dev)' \
+            {-o,--open}'[Open worktree(s) in IDE after creation]' \
+            '--ide[IDE to open with]:editor:(cursor code vscode idea webstorm zed vim nvim emacs)' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;

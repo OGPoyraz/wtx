@@ -88,7 +88,7 @@ _wtx_completions() {
   if [[ "$cur" == -* ]]; then
     local flags=""
     case "$subcommand" in
-      create)  flags="-r --repo --base --verbose --dry-run --help" ;;
+      create)  flags="-r --repo --base --open --ide --verbose --dry-run --help" ;;
       remove)  flags="-f --force -r --repo --verbose --dry-run --help" ;;
       open)    flags="-r --repo --ide --verbose --dry-run --help" ;;
       rebase)  flags="--repo --verbose --dry-run --help" ;;
