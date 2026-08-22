@@ -13,6 +13,7 @@ import { registerSyncCommand } from "./commands/sync.js";
 import { registerDepsCommand } from "./commands/deps.js";
 import { registerOpenCommand } from "./commands/open.js";
 import { registerStatusCommand } from "./commands/status.js";
+import { registerPrsCommand } from "./commands/prs.js";
 import { registerSkillCommand } from "./commands/skill.js";
 import { loadConfig } from "./lib/config.js";
 import { getWorktreePath, resolveRepos } from "./lib/resolver.js";
@@ -38,6 +39,7 @@ registerSyncCommand(program);
 registerDepsCommand(program);
 registerOpenCommand(program);
 registerStatusCommand(program);
+registerPrsCommand(program);
 registerSkillCommand(program);
 
 program
