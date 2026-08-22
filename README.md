@@ -100,8 +100,9 @@ wtx remove ogp/my-feature
 | `fetch` | | `--repo` | Fetch origin main for each repo |
 | `sync` | `<branch>` | `--repo` | Re-copy sync files, run post-sync hooks |
 | `deps` | `[branch]` | `--repo`, `--install`, `--symlink` | Inspect or switch node_modules strategy |
-| `ls` | | `--repo` | List all worktrees with clean/dirty state |
+| `ls` | | `--repo`, `--pr` | List all worktrees with clean/dirty state |
 | `status` | `<branch>` | `--repo` | Ahead/behind count, dirty files, rebase state |
+| `prs` | | `--repo`, `--json`, `--all` | Show pull request status across worktrees |
 | `cd` | `<repo> <branch>` | | cd into worktree (requires shell integration) |
 | `config init` | | | Create default config interactively |
 | `config show` | | | Print current config |
@@ -158,6 +159,9 @@ Config lives at `~/.config/wtx/config.json`.
 | `repos.<name>.sync_files` | `[]` | Files copied from main checkout on create and sync |
 | `repos.<name>.post_create` | `[]` | Commands run after worktree creation |
 | `repos.<name>.post_sync` | `[]` | Commands run after sync (falls back to `post_create`) |
+| `repos.<name>.pr` | `true` | Set `false` to skip pull request lookups for this repo |
+| `repos.<name>.forge` | `"auto"` | Forge adapter: `auto` (detects github.com) or `github` to force |
+| `repos.<name>.pr_repo` | `null` | Override base repo for PR lookups, e.g. `"org/upstream"` (fork workflows) |
 
 ### Template variables
 
@@ -185,6 +189,32 @@ wtx deps ogp/my-feature --repo my-frontend --symlink   # force symlink
 ```
 
 ---
+
+## Pull Request Status
+
+Read-only PR visibility for your worktrees. Requires the [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated — `wtx` stores no tokens and delegates all auth to `gh`.
+
+```bash
+$ wtx prs
+
+  my-frontend
+  #42  ogp/my-feature  CONFLICTED · awaiting review  checks 3/3 ✓  2d ago
+  #43  ogp/fix-token   IN_REVIEW                     checks 2/3 ✓ · 1 thread  5h ago
+
+  my-backend
+  #17  ogp/api-retry   APPROVED                      checks 5/5 ✓  1h ago
+
+  ⚠ 3 open PRs across 2 repos — 1 needs attention
+```
+
+Every PR gets one display state, ranked by attention priority: `MERGED`, `CLOSED`, `DRAFT`, `CONFLICTED`, `CI_FAILING`, `CHANGES_REQUESTED`, `CI_RUNNING`, `IN_REVIEW`, `APPROVED`, `AWAITING_REVIEW`. Open PRs without a review verdict yet also show a dim `awaiting review` tag.
+
+- `--json` — machine-readable output
+- `--all` — include drafts and closed/merged PRs
+- `wtx ls --pr` — adds a PR column to the worktree listing
+- `wtx status <branch>` — shows the PR section (state, checks, unresolved threads, URL)
+
+Lookups never break commands: if `gh` is missing, unauthenticated, or times out, you get a per-repo warning and everything else keeps working. Private repos work out of the box through your existing `gh auth login`; GitHub Enterprise and fork workflows are covered by the `forge` / `pr_repo` config keys above.
 
 ## AI Agent Skills
 
