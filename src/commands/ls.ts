@@ -100,6 +100,8 @@ export function registerLsCommand(program: Command) {
              indented(chalk.red(`Failed to list worktrees: ${err.message}`));
           }
         }
+
+        console.log("");
       } catch (err: any) {
         console.error(chalk.red(`Error: ${err.message}`));
         process.exit(1);
