@@ -112,4 +112,32 @@ describe("deriveOwnership", () => {
       expect(result2).toBeNull();
     });
   });
+
+  describe("when the worktree has local changes", () => {
+    it("counts as mine despite a foreign PR author", () => {
+      const result = deriveOwnership({
+        hasRemoteRef: true,
+        configUser: "bob",
+        localEmail: "bob@example.com",
+        remoteAuthorName: "Alice Doe",
+        remoteAuthorEmail: "alice@example.com",
+        prAuthorLogin: "alice",
+        hasLocalChanges: true,
+      });
+      expect(result).toEqual({ mine: true, author: null });
+    });
+
+    it("counts as mine despite a foreign remote tip author", () => {
+      const result = deriveOwnership({
+        hasRemoteRef: true,
+        configUser: null,
+        localEmail: "bob@example.com",
+        remoteAuthorName: "Alice Doe",
+        remoteAuthorEmail: "alice@example.com",
+        prAuthorLogin: null,
+        hasLocalChanges: true,
+      });
+      expect(result).toEqual({ mine: true, author: null });
+    });
+  });
 });

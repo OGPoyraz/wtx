@@ -34,7 +34,9 @@ Shows pull request status for worktree branches across repositories. Requires th
   - `--json`: Machine-readable JSON output with an `author` field.
   - `--all`: Include drafts and closed/merged PRs.
 
-`wtx ls --pr` adds a PR column to the worktree listing, `wtx prs` shows the same dim owner tag per row and a mixed-ownership summary, and `wtx status <branch>` shows a PR section (state, checks, unresolved threads, URL, owner line for foreign branches). Use `wtx config set user <handle>` to enable ownership tags.
+`wtx ls --pr` adds a PR column to the worktree listing, `wtx prs` shows the same dim owner tag per row and a mixed-ownership summary, and `wtx status <branch>` shows a PR section (state, checks, unresolved threads, URL, owner line for foreign branches). Worktrees with local modifications count as yours. Use `wtx config set user <handle>` to enable ownership tags.
+
+`wtx prune [--force]` removes worktrees whose branch has a merged PR. Dirty or locked worktrees are skipped without `--force`; repos with failed PR lookups are left untouched.
 
 ### `wtx pull <pr-link>`
 Fetches a GitHub PR by URL and creates its worktree. Requires the GitHub CLI (`gh`) to be installed and authenticated.

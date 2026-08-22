@@ -1,4 +1,5 @@
-import { gitExec } from "./git.js";
+import { gitExec, getDirtyFiles } from "./git.js";
+import fs from "fs";
 
 export interface Ownership {
   mine: boolean;
@@ -9,6 +10,7 @@ export interface ResolveOwnershipInput {
   configUser: string | null;
   mainPath: string;
   branch: string | null | undefined;
+  wtPath?: string;
   prAuthorLogin?: string | null;
   verbose?: boolean;
 }
@@ -20,7 +22,12 @@ export function deriveOwnership(input: {
   remoteAuthorName: string | null;
   remoteAuthorEmail: string | null;
   prAuthorLogin: string | null;
+  hasLocalChanges?: boolean;
 }): Ownership | null {
+  if (input.hasLocalChanges) {
+    return { mine: true, author: null };
+  }
+
   if (!input.hasRemoteRef) {
     return { mine: true, author: null };
   }
@@ -50,6 +57,20 @@ export async function resolveOwnership(input: ResolveOwnershipInput): Promise<Ow
   }
 
   const { mainPath, branch, verbose } = input;
+
+  let hasLocalChanges = false;
+  if (input.wtPath && fs.existsSync(input.wtPath)) {
+    try {
+      const dirtyFiles = await getDirtyFiles(input.wtPath);
+      hasLocalChanges = dirtyFiles.length > 0;
+    } catch {
+      hasLocalChanges = false;
+    }
+  }
+  if (hasLocalChanges) {
+    return { mine: true, author: null };
+  }
+
   let hasRemoteRef = false;
   let upstream: string | null = null;
   let localEmail: string | null = null;

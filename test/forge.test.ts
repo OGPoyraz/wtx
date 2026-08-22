@@ -13,7 +13,7 @@ import {
   mapPrHead,
 } from "../src/lib/forge/map.js";
 import { parseGithubRemote, descriptorFor } from "../src/lib/forge/index.js";
-import { createGithubAdapter } from "../src/lib/forge/github.js";
+import { createGithubAdapter, pickBranchPr } from "../src/lib/forge/github.js";
 import { validateSafeBranchName, localBranchExists } from "../src/lib/git.js";
 
 function makePr(overrides: Partial<PrInfo> = {}): PrInfo {
@@ -539,6 +539,30 @@ describe("buildHeadFetch", () => {
     };
     
     expect(() => adapter.buildHeadFetch(pr)).toThrow("Cannot locate fork repository for PR");
+  });
+});
+
+describe("pickBranchPr", () => {
+  const entry = (pr: Partial<PrInfo>) => ({ branch: "ogp/feat", pr: makePr(pr) });
+
+  it("prefers the open PR even when a merged one is more recent", () => {
+    const picked = pickBranchPr([
+      entry({ number: 12, state: "merged", updatedAt: "2026-08-22T10:00:00Z" }),
+      entry({ number: 15, state: "open", updatedAt: "2026-08-21T09:00:00Z" }),
+    ]);
+    expect(picked?.pr.number).toBe(15);
+  });
+
+  it("falls back to the most recently updated PR when none are open", () => {
+    const picked = pickBranchPr([
+      entry({ number: 9, state: "closed", updatedAt: "2026-08-01T10:00:00Z" }),
+      entry({ number: 12, state: "merged", updatedAt: "2026-08-20T10:00:00Z" }),
+    ]);
+    expect(picked?.pr.number).toBe(12);
+  });
+
+  it("returns null for an empty candidate list", () => {
+    expect(pickBranchPr([])).toBeNull();
   });
 });
 

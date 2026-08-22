@@ -43,7 +43,7 @@ _wtx_completions() {
     cword=$COMP_CWORD
   }
 
-  local subcommands="config create remove open rebase fetch sync deps ls cd status prs pull init skill"
+  local subcommands="config create remove prune open rebase fetch sync deps ls cd status prs pull init skill"
   local config_subcommands="init show set add-repo remove-repo"
   local skill_subcommands="show path list"
   local skill_names="opencode cursor claude"
@@ -90,6 +90,7 @@ _wtx_completions() {
     case "$subcommand" in
       create)  flags="-r --repo --base --open --ide --track --verbose --dry-run --help" ;;
       remove)  flags="-f --force -r --repo --verbose --dry-run --help" ;;
+      prune)   flags="-f --force -r --repo --verbose --dry-run --help" ;;
       open)    flags="-r --repo --ide --verbose --dry-run --help" ;;
       rebase)  flags="--repo --verbose --dry-run --help" ;;
       fetch)   flags="--repo --verbose --dry-run --help" ;;

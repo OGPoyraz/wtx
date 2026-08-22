@@ -131,6 +131,7 @@ export function registerStatusCommand(program: Command) {
           configUser: config.user,
           mainPath: repo.mainPath,
           branch,
+          wtPath,
           prAuthorLogin: prInfo?.authorLogin ?? null,
           verbose: globalOpts.verbose,
         });

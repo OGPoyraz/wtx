@@ -28,6 +28,7 @@ const PR_LIST_FIELDS = [
 
 const THREADS_PER_PR = 100;
 const GH_TIMEOUT_MS = 10000;
+const BRANCH_PR_LIMIT = "50";
 
 export interface GithubSlug {
   owner: string;
@@ -150,7 +151,14 @@ function parseJson(stdout: string): unknown {
   }
 }
 
-async function fetchOpenBranchPrs(ctx: ForgeAdapterFetchContext): Promise<BranchPr[]> {
+export function pickBranchPr(entries: BranchPr[]): BranchPr | null {
+  if (entries.length === 0) return null;
+  const sorted = [...entries].sort((a, b) => b.pr.updatedAt.localeCompare(a.pr.updatedAt));
+  const open = sorted.find((entry) => entry.pr.state === "open");
+  return open ?? sorted[0] ?? null;
+}
+
+async function fetchBranchPrs(ctx: ForgeAdapterFetchContext): Promise<BranchPr[]> {
   const results = await Promise.all(
     ctx.branches.map(async (branch) => {
       const args = [
@@ -159,9 +167,9 @@ async function fetchOpenBranchPrs(ctx: ForgeAdapterFetchContext): Promise<Branch
         "--head",
         branch,
         "--state",
-        "open",
+        "all",
         "--limit",
-        "1",
+        BRANCH_PR_LIMIT,
         "--json",
         PR_LIST_FIELDS,
       ];
@@ -172,7 +180,10 @@ async function fetchOpenBranchPrs(ctx: ForgeAdapterFetchContext): Promise<Branch
       const stdout = await ghExec(args, { cwd: ctx.cwd, verbose: ctx.verbose });
       const parsed = parseJson(stdout);
       if (!Array.isArray(parsed)) return null;
-      return mapWithBranch(parsed[0]);
+      const entries = parsed
+        .map(mapWithBranch)
+        .filter((entry): entry is BranchPr => entry !== null);
+      return pickBranchPr(entries);
     })
   );
 
@@ -234,12 +245,13 @@ export function createGithubAdapter(slug: GithubSlug | null): ForgeAdapter {
     id: "github",
 
     async findForBranches(ctx: ForgeAdapterFetchContext): Promise<Map<string, PrInfo>> {
-      const entries = await fetchOpenBranchPrs(ctx);
+      const entries = await fetchBranchPrs(ctx);
+      const openEntries = entries.filter((entry) => entry.pr.state === "open");
 
-      if (slug && entries.length > 0) {
+      if (slug && openEntries.length > 0) {
         await enrichUnresolvedThreads(
           slug,
-          entries.map((entry) => entry.pr),
+          openEntries.map((entry) => entry.pr),
           ctx.verbose
         ).catch(() => undefined);
       }
