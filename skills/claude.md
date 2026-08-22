@@ -13,6 +13,7 @@ Creates a new worktree for the specified branch.
   - `--base <ref>`: Base ref to create branch from (defaults to tracking remote branch, or creating from `origin/main`).
   - `-o, --open`: Open worktree(s) in IDE after creation.
   - `--ide <editor>`: IDE to open with (used with `--open`).
+  - `--track`: Track the remote branch even if ownership detection says it belongs to someone else.
 - **Hooks & Sync**: Automatically copies files specified in `sync_files` from the main checkout, and runs `post_create` hooks.
 
 ### `wtx remove <branch>`
@@ -20,16 +21,16 @@ Removes a worktree and deletes the branch.
 - **Flags**: `-r, --repo <repos...>`
 
 ### `wtx ls`
-Lists all worktrees across repositories.
+Lists all worktrees across repositories. Owned-by-someone-else branches show a dim `@handle` suffix.
 
 ### `wtx prs`
 Shows pull request status for worktree branches across repositories. Requires the GitHub CLI (`gh`) to be installed and authenticated. Read-only — never modifies PRs.
 - **Flags**:
   - `-r, --repo <repos...>`: Target specific repo(s).
-  - `--json`: Machine-readable JSON output.
+  - `--json`: Machine-readable JSON output with an `author` field.
   - `--all`: Include drafts and closed/merged PRs.
 
-`wtx ls --pr` adds a PR column to the worktree listing, and `wtx status <branch>` shows a PR section (state, checks, unresolved threads, URL).
+`wtx ls --pr` adds a PR column to the worktree listing, `wtx prs` shows the same dim owner tag per row and a mixed-ownership summary, and `wtx status <branch>` shows a PR section (state, checks, unresolved threads, URL, owner line for foreign branches). Use `wtx config set user <handle>` to enable ownership tags.
 
 ### `wtx pull <pr-link>`
 Fetches a GitHub PR by URL and creates its worktree. Requires the GitHub CLI (`gh`) to be installed and authenticated.
@@ -72,6 +73,7 @@ Located at `~/.config/wtx/config.json`:
   "postfix": "-wt",
   "ide": "cursor",
   "default_main_branch": "main",
+  "user": null,
   "repos": {
     "my-frontend": {
       "main_branch": "auto",

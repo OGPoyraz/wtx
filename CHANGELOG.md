@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-repo config keys: `pr` (default `true`, set `false` to skip lookups), `forge` (`auto` | `github`), `pr_repo` (fork upstream override)
 - `wtx prs --json` machine-readable output for scripting and future tooling
 - Graceful degradation when `gh` is missing, unauthenticated, slow, or failing — per-repo warnings, exit codes unchanged
+- Branch ownership detection: local-only branches count as yours; PR author handle (via new `user` config key) or last-commit author email identifies everyone else
+- Owner tags in `wtx ls`, `wtx prs`, and `wtx status` — foreign branches get a dim `@handle`, your branches stay clean; `prs` summary shows a yours/theirs breakdown and `--json` gains an `author` field
+- `wtx config set user <handle>` and a prefilled GitHub username prompt during `config init`
+
+### Fixed
+
+- `wtx create` no longer silently adopts a same-named remote branch owned by someone else — it warns and creates your own branch from base instead; pass `--track` to adopt theirs
 
 ### Changed
 

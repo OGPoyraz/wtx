@@ -48,6 +48,8 @@ Create a worktree:
 wtx create ogp/my-feature --repo my-frontend
 ```
 
+If origin already has a branch with that name owned by someone else, `wtx` warns and creates your own branch from base instead of tracking theirs. Use `--track` to adopt theirs.
+
 List worktrees:
 
 ```bash
@@ -56,6 +58,7 @@ $ wtx ls
   my-frontend
   main              a1b2c3d  [main checkout]
   ogp/my-feature    e4f5g6h  clean
+  alice/fix-token   f7g8h9i  clean  @alice
 ```
 
 Check status:
@@ -93,7 +96,7 @@ wtx remove ogp/my-feature
 
 | Command | Args | Flags | Description |
 |---|---|---|---|
-| `create` | `<branch>` | `--repo`, `--base`, `--open`, `--ide` | Create worktree(s), run post-create hooks, optionally open in IDE |
+| `create` | `<branch>` | `--repo`, `--base`, `--open`, `--ide`, `--track` | Create worktree(s), run post-create hooks; collision-guarded tracking, optionally open in IDE |
 | `pull` | `<pr-link>` | `--repo` | Fetch a GitHub PR and create its worktree |
 | `remove` | `<branch>` | `--repo`, `--force` | Remove worktree(s), clean empty dirs |
 | `open` | `<branch>` | `--repo`, `--ide` | Open worktree in IDE |
@@ -156,6 +159,7 @@ Config lives at `~/.config/wtx/config.json`.
 | `postfix` | `"-wt"` | Suffix for the worktree directory (`<repo><postfix>/`) |
 | `ide` | `"cursor"` | Default IDE for `wtx open` |
 | `default_main_branch` | `"main"` | Fallback when auto-detection fails |
+| `user` | `null` | Your forge handle (e.g. GitHub username); enables ownership detection in create/ls/prs/status |
 | `repos.<name>.main_branch` | `"auto"` | Auto-detects via `git symbolic-ref`, or set explicitly |
 | `repos.<name>.sync_files` | `[]` | Files copied from main checkout on create and sync |
 | `repos.<name>.post_create` | `[]` | Commands run after worktree creation |
@@ -200,7 +204,7 @@ $ wtx prs
 
   my-frontend
   #42  ogp/my-feature  CONFLICTED · awaiting review  checks 3/3 ✓  2d ago
-  #43  ogp/fix-token   IN_REVIEW                     checks 2/3 ✓ · 1 thread  5h ago
+  #43  ogp/fix-token   IN_REVIEW                     checks 2/3 ✓ · 1 thread  5h ago  @alice
 
   my-backend
   #17  ogp/api-retry   APPROVED                      checks 5/5 ✓  1h ago
@@ -210,10 +214,12 @@ $ wtx prs
 
 Every PR gets one display state, ranked by attention priority: `MERGED`, `CLOSED`, `DRAFT`, `CONFLICTED`, `CI_FAILING`, `CHANGES_REQUESTED`, `CI_RUNNING`, `IN_REVIEW`, `APPROVED`, `AWAITING_REVIEW`. Open PRs without a review verdict yet also show a dim `awaiting review` tag.
 
-- `--json` — machine-readable output
+Owners are shown as a dim `@handle` in `wtx ls` and `wtx prs`. The summary reflects mixed ownership with a breakdown like `1 yours, 1 from @alice`. Ownership detection checks local-only branches first, then PR author handle against `user`, then falls back to the remote tip commit author email vs `git config user.email`.
+
+- `--json` — machine-readable output with an `author` field
 - `--all` — include drafts and closed/merged PRs
 - `wtx ls --pr` — adds a PR column to the worktree listing
-- `wtx status <branch>` — shows the PR section (state, checks, unresolved threads, URL)
+- `wtx status <branch>` — shows the PR section (state, checks, unresolved threads, URL, owner line for foreign branches)
 
 Lookups never break commands: if `gh` is missing, unauthenticated, or times out, you get a per-repo warning and everything else keeps working. Private repos work out of the box through your existing `gh auth login`; GitHub Enterprise and fork workflows are covered by the `forge` / `pr_repo` config keys above.
 

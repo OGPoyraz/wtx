@@ -14,6 +14,7 @@ import type {
 
 const PR_LIST_FIELDS = [
   "number",
+  "author",
   "title",
   "url",
   "state",

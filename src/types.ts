@@ -16,6 +16,7 @@ export const ConfigSchema = z.object({
   postfix: z.string().default("-wt"),
   ide: z.string().default("cursor"),
   default_main_branch: z.string().default("main"),
+  user: z.string().nullable().default(null),
   repos: z.record(z.string(), RepoConfigSchema),
 });
 

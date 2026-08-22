@@ -1,11 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import type { GlobalOptions } from "../types.js";
+import type { Config, GlobalOptions } from "../types.js";
 import { loadConfig } from "../lib/config.js";
 import { repoHeader, stepWarning, summary, summaryWarning } from "../lib/log.js";
 import { getWorktreeList } from "../lib/git.js";
 import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
 import { resolveForge } from "../lib/forge/index.js";
+import { resolveOwnership, type Ownership } from "../lib/owner.js";
 import {
   derivePrDisplay,
   displayStateRank,
@@ -41,6 +42,8 @@ interface PrRow {
   checksSummary: string | null;
   unresolvedThreads: number;
   updatedAt: string;
+  authorLogin: string | null;
+  ownership: Ownership | null;
 }
 
 interface PrsOptions {
@@ -63,6 +66,7 @@ function sortRows(rows: PrRow[]): void {
 
 async function collectPrRows(
   repos: ReturnType<typeof resolveRepos>,
+  config: Config,
   verboseFlag: boolean
 ): Promise<{ rows: PrRow[]; failures: number }> {
   const rows: PrRow[] = [];
@@ -88,6 +92,14 @@ async function collectPrRows(
 
       for (const [branch, pr] of prMap) {
         const worktreePath = worktrees.find((wt) => wt.branch === branch)?.path ?? "";
+        const ownership = await resolveOwnership({
+          configUser: config.user,
+          mainPath: repo.mainPath,
+          branch,
+          prAuthorLogin: pr.authorLogin ?? null,
+          verbose: verboseFlag,
+        });
+
         rows.push({
           repo: repo.name,
           branch,
@@ -98,6 +110,8 @@ async function collectPrRows(
           checksSummary: renderChecksSummary(pr.checks),
           unresolvedThreads: pr.unresolvedThreads,
           updatedAt: pr.updatedAt,
+          authorLogin: pr.authorLogin ?? null,
+          ownership,
         });
       }
     } catch (err) {
@@ -131,8 +145,13 @@ function renderTable(rows: PrRow[]): void {
       const details = [row.checksSummary, threads].filter(Boolean).join(" · ");
       const detailSuffix = details ? `  ${details}` : "";
 
+      const authorTag =
+        row.ownership && !row.ownership.mine && row.ownership.author
+          ? `  ${chalk.dim(row.ownership.author)}`
+          : "";
+
       console.log(
-        `  #${row.prNumber}  ${paddedBranch} ${renderDisplayState(row.prDisplay)}${detailSuffix}  ${formatRelativeTime(row.updatedAt)}  ${chalk.dim(row.url)}`
+        `  #${row.prNumber}  ${paddedBranch} ${renderDisplayState(row.prDisplay)}${detailSuffix}${authorTag}  ${formatRelativeTime(row.updatedAt)}  ${chalk.dim(row.url)}`
       );
     }
   }
@@ -147,6 +166,7 @@ function toJsonOutput(rows: PrRow[]): unknown[] {
     awaitingReview: row.prDisplay.awaitingReview,
     approved: row.prDisplay.approved,
     prNumber: row.prNumber,
+    author: row.authorLogin,
   }));
 }
 
@@ -163,7 +183,7 @@ export function registerPrsCommand(program: Command) {
       const repoFilter = parseRepoFlag(options.repo);
       const repos = resolveRepos(config, repoFilter);
 
-      const { rows, failures } = await collectPrRows(repos, globalOpts.verbose);
+      const { rows, failures } = await collectPrRows(repos, config, globalOpts.verbose);
       sortRows(rows);
 
       if (options.json) {
@@ -191,7 +211,27 @@ export function registerPrsCommand(program: Command) {
       }
 
       const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
-      const line = `${plural(visible.length, "open PR")} across ${plural(repoCount, "repo")}`;
+      let line = `${plural(visible.length, "open PR")} across ${plural(repoCount, "repo")}`;
+
+      let mineCount = 0;
+      let theirsCount = 0;
+      const theirsAuthors = new Set<string>();
+      for (const row of visible) {
+        if (row.ownership) {
+          if (row.ownership.mine) {
+            mineCount++;
+          } else if (row.ownership.author) {
+            theirsCount++;
+            theirsAuthors.add(row.ownership.author);
+          }
+        }
+      }
+
+      if (theirsCount > 0) {
+        const handles = Array.from(theirsAuthors).join(", ");
+        line += ` (${mineCount} yours, ${theirsCount} from ${handles})`;
+      }
+
       if (attentionCount > 0) {
         summaryWarning(
           `${line} — ${attentionCount} need${attentionCount > 1 ? "" : "s"} attention`
