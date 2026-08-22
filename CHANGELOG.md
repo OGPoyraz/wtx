@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - IDE resolution and spawning extracted into shared helpers used by both `wtx open` and `wtx create --open`
 
+### Fixed
+
+- `wtx ls` now prints a trailing empty line like every other command, so the shell prompt no longer sticks to the last worktree row
+
 ## [0.3.0] - 2026-08-21
 
 ### Added
