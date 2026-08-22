@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `wtx create --open` (`-o`) opens each created worktree in your IDE after creation — IDE resolved from `--ide`, config `ide`, or `$EDITOR`; respects `--dry-run`
 - Read-only PR status for worktree branches: new `wtx prs` command, `wtx ls --pr` flag, and a PR section in `wtx status <branch>`
 - Derived display states (`CONFLICTED`, `CI_FAILING`, `CHANGES_REQUESTED`, `AWAITING_REVIEW`, …) ranked by attention priority, with a secondary `awaiting review` tag for open PRs that have no review verdict yet
 - Forge adapter layer (`src/lib/forge/`) with GitHub support via the `gh` CLI — auth is fully delegated to `gh`, wtx stores no tokens
@@ -16,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-repo config keys: `pr` (default `true`, set `false` to skip lookups), `forge` (`auto` | `github`), `pr_repo` (fork upstream override)
 - `wtx prs --json` machine-readable output for scripting and future tooling
 - Graceful degradation when `gh` is missing, unauthenticated, slow, or failing — per-repo warnings, exit codes unchanged
+
+### Changed
+
+- IDE resolution and spawning extracted into shared helpers used by both `wtx open` and `wtx create --open`
 
 ## [0.3.0] - 2026-08-21
 
