@@ -1,7 +1,16 @@
 import { execa } from "execa";
 import { verbose } from "../log.js";
-import { isRecord, mapGithubPr } from "./map.js";
-import type { ForgeAdapter, ForgeAdapterFetchContext, PrInfo } from "./types.js";
+import { isRecord, mapGithubPr, mapPrHead } from "./map.js";
+import type {
+  ForgeAdapter,
+  ForgeAdapterFetchContext,
+  ForgeDescriptor,
+  ForgeFetchOpts,
+  ForgePrLinkRef,
+  ForgeSlug,
+  PrHead,
+  PrInfo,
+} from "./types.js";
 
 const PR_LIST_FIELDS = [
   "number",
@@ -22,6 +31,74 @@ const GH_TIMEOUT_MS = 10000;
 export interface GithubSlug {
   owner: string;
   name: string;
+}
+
+interface ParsedRemote {
+  host: string;
+  owner: string;
+  name: string;
+}
+
+const REMOTE_URL_PATTERNS = [
+  /^https?:\/\/([^/]+)\/([^/]+)\/([^/.]+?)(?:\.git)?$/,
+  /^git@([^:]+):([^/]+)\/([^/.]+?)(?:\.git)?$/,
+  /^ssh:\/\/git@([^/]+)\/([^/]+)\/([^/.]+?)(?:\.git)?$/,
+];
+
+export function parseGithubRemote(url: string): ParsedRemote | null {
+  for (const pattern of REMOTE_URL_PATTERNS) {
+    const match = url.trim().match(pattern);
+    if (match) {
+      return { host: match[1]!, owner: match[2]!, name: match[3]! };
+    }
+  }
+  return null;
+}
+
+export function parseGithubPrLink(link: string): ForgePrLinkRef | null {
+  let urlStr = link.trim();
+  urlStr = urlStr.replace(/#.*$/, "");
+  urlStr = urlStr.replace(/\?.*$/, "");
+  urlStr = urlStr.replace(/\/$/, "");
+
+  const match = urlStr.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)$/);
+  if (!match) return null;
+
+  const [, host, owner, name, numberStr] = match;
+  if (!host || !owner || !name || !numberStr) return null;
+
+  return {
+    forgeId: "github",
+    host,
+    path: `${owner}/${name}`.toLowerCase(),
+    number: parseInt(numberStr, 10),
+    url: urlStr,
+  };
+}
+
+export function createGithubDescriptor(): ForgeDescriptor {
+  return {
+    id: "github",
+    ownsHost(host: string): boolean {
+      return host.toLowerCase() === "github.com";
+    },
+    parsePrLink(link: string): ForgePrLinkRef | null {
+      return parseGithubPrLink(link);
+    },
+    parseRemote(url: string): ForgeSlug | null {
+      const parsed = parseGithubRemote(url);
+      if (!parsed) return null;
+      return {
+        host: parsed.host,
+        path: `${parsed.owner}/${parsed.name}`.toLowerCase(),
+      };
+    },
+    createAdapter(slug: ForgeSlug): ForgeAdapter | null {
+      const parts = slug.path.split("/");
+      if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+      return createGithubAdapter({ owner: parts[0], name: parts[1] });
+    },
+  };
 }
 
 export async function ghExec(
@@ -167,6 +244,45 @@ export function createGithubAdapter(slug: GithubSlug | null): ForgeAdapter {
       }
 
       return new Map(entries.map((entry) => [entry.branch, entry.pr]));
+    },
+
+    async fetchPrHead(number: number, opts: ForgeFetchOpts = {}): Promise<PrHead> {
+      if (!slug) {
+        throw new Error("Cannot fetch PR head without a repository context");
+      }
+
+      const args = [
+        "pr",
+        "view",
+        String(number),
+        "-R",
+        `${slug.owner}/${slug.name}`,
+        "--json",
+        "number,title,url,state,isDraft,headRefName,isCrossRepository,headRepositoryOwner,headRepository",
+      ];
+
+      const stdout = await ghExec(args, opts);
+      const parsed = parseJson(stdout);
+      const prHead = mapPrHead(parsed);
+
+      if (!prHead) {
+        throw new Error(`PR #${number} not found in ${slug.owner}/${slug.name}`);
+      }
+
+      return prHead;
+    },
+
+    buildHeadFetch(pr: PrHead): { url: string | null; refspec: string } {
+      if (pr.isCrossRepository) {
+        if (!pr.headOwnerLogin || !pr.headRepoName) {
+          throw new Error("Cannot locate fork repository for PR");
+        }
+        return {
+          url: `https://github.com/${pr.headOwnerLogin}/${pr.headRepoName}.git`,
+          refspec: pr.headRefName,
+        };
+      }
+      return { url: null, refspec: `pull/${pr.number}/head` };
     },
   };
 }
