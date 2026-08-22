@@ -59,6 +59,7 @@ _wtx() {
         'remove[Remove worktrees]' \
         'open[Open worktree in IDE]' \
         'rebase[Fetch and rebase vs main]' \
+        'pull[Fetch a PR and create its worktree]' \
         'fetch[Fetch origin main]' \
         'sync[Re-copy sync files and run post_sync]' \
         'deps[Manage node_modules strategy]' \
@@ -105,6 +106,13 @@ _wtx() {
           _arguments \
             ':branch:_wtx_branches' \
             '--repo[Target specific repo(s)]:repo:_wtx_repos' \
+            '--verbose[Show git commands]' \
+            '--dry-run[Show what would happen]'
+          ;;
+        pull)
+          _arguments \
+            ':pr-link:' \
+            {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
