@@ -10,8 +10,11 @@ import {
   collectCheckItems,
   mapGithubPr,
   mapGithubPrList,
+  mapPrHead,
 } from "../src/lib/forge/map.js";
-import { parseGithubRemote } from "../src/lib/forge/index.js";
+import { parseGithubRemote, descriptorFor } from "../src/lib/forge/index.js";
+import { createGithubAdapter } from "../src/lib/forge/github.js";
+import { validateSafeBranchName, localBranchExists } from "../src/lib/git.js";
 
 function makePr(overrides: Partial<PrInfo> = {}): PrInfo {
   return {
@@ -370,5 +373,185 @@ describe("parseGithubRemote", () => {
   it("returns null for unparsable remotes", () => {
     expect(parseGithubRemote("/local/path/only")).toBeNull();
     expect(parseGithubRemote("")).toBeNull();
+  });
+});
+
+describe("mapPrHead", () => {
+  it("maps a complete gh pr head payload", () => {
+    const raw = {
+      number: 42,
+      title: "feat: something",
+      url: "https://github.com/ogp/r/pull/42",
+      state: "OPEN",
+      isDraft: false,
+      headRefName: "ogp/feat",
+      isCrossRepository: true,
+      headRepositoryOwner: { login: "fork-owner" },
+      headRepository: { name: "fork-repo" },
+    };
+
+    const result = mapPrHead(raw);
+    expect(result).toEqual({
+      number: 42,
+      title: "feat: something",
+      url: "https://github.com/ogp/r/pull/42",
+      state: "open",
+      isDraft: false,
+      headRefName: "ogp/feat",
+      isCrossRepository: true,
+      headOwnerLogin: "fork-owner",
+      headRepoName: "fork-repo",
+    });
+  });
+
+  it("normalizes state", () => {
+    expect(mapPrHead({ number: 1, headRefName: "x", state: "MERGED" })?.state).toBe("merged");
+    expect(mapPrHead({ number: 1, headRefName: "x", state: "CLOSED" })?.state).toBe("closed");
+  });
+
+  it("handles same-repo PRs with missing fork fields", () => {
+    const raw = {
+      number: 42,
+      title: "x",
+      url: "y",
+      state: "OPEN",
+      isDraft: false,
+      headRefName: "branch",
+      isCrossRepository: false,
+    };
+    
+    expect(mapPrHead(raw)).toEqual(expect.objectContaining({
+      isCrossRepository: false,
+      headOwnerLogin: null,
+      headRepoName: null,
+    }));
+  });
+
+  it("returns null for missing required fields", () => {
+    expect(mapPrHead(null)).toBeNull();
+    expect(mapPrHead({})).toBeNull();
+    expect(mapPrHead({ number: 1, headRefName: "x" })).toBeNull();
+    expect(mapPrHead({ number: 1, state: "OPEN" })).toBeNull();
+  });
+});
+
+describe("descriptor.parseRemote", () => {
+  const descriptor = descriptorFor("github")!;
+
+  it("parses https URLs with and without .git suffix", () => {
+    expect(descriptor.parseRemote("https://github.com/ogpoyraz/wtx.git")).toEqual({
+      host: "github.com",
+      path: "ogpoyraz/wtx",
+    });
+  });
+
+  it("parses scp-style ssh URLs", () => {
+    expect(descriptor.parseRemote("git@github.com:ogpoyraz/wtx.git")).toEqual({
+      host: "github.com",
+      path: "ogpoyraz/wtx",
+    });
+  });
+
+  it("preserves alias hosts", () => {
+    expect(descriptor.parseRemote("git@ghe.corp.dev:team/repo.git")).toEqual({
+      host: "ghe.corp.dev",
+      path: "team/repo",
+    });
+  });
+});
+
+describe("descriptor.ownsHost", () => {
+  const descriptor = descriptorFor("github")!;
+  
+  it("owns github.com", () => {
+    expect(descriptor.ownsHost("github.com")).toBe(true);
+    expect(descriptor.ownsHost("GitHub.com")).toBe(true);
+  });
+  
+  it("does not own other hosts", () => {
+    expect(descriptor.ownsHost("gitlab.com")).toBe(false);
+    expect(descriptor.ownsHost("bitbucket.org")).toBe(false);
+    expect(descriptor.ownsHost("github.company.com")).toBe(false);
+  });
+});
+
+describe("buildHeadFetch", () => {
+  const adapter = createGithubAdapter({ owner: "o", name: "r" });
+
+  it("builds same-repo fetch spec", () => {
+    const pr = {
+      number: 42,
+      title: "",
+      url: "",
+      state: "open" as const,
+      isDraft: false,
+      headRefName: "feat",
+      isCrossRepository: false,
+      headOwnerLogin: null,
+      headRepoName: null,
+    };
+    
+    expect(adapter.buildHeadFetch(pr)).toEqual({
+      url: null,
+      refspec: "pull/42/head",
+    });
+  });
+
+  it("builds cross-repo fetch spec", () => {
+    const pr = {
+      number: 42,
+      title: "",
+      url: "",
+      state: "open" as const,
+      isDraft: false,
+      headRefName: "feat",
+      isCrossRepository: true,
+      headOwnerLogin: "fork",
+      headRepoName: "repo",
+    };
+    
+    expect(adapter.buildHeadFetch(pr)).toEqual({
+      url: "https://github.com/fork/repo.git",
+      refspec: "feat",
+    });
+  });
+
+  it("throws when cross-repo is true but fields are missing", () => {
+    const pr = {
+      number: 42,
+      title: "",
+      url: "",
+      state: "open" as const,
+      isDraft: false,
+      headRefName: "feat",
+      isCrossRepository: true,
+      headOwnerLogin: null,
+      headRepoName: null,
+    };
+    
+    expect(() => adapter.buildHeadFetch(pr)).toThrow("Cannot locate fork repository for PR");
+  });
+});
+
+describe("validateSafeBranchName", () => {
+  it("accepts valid branch names", () => {
+    expect(validateSafeBranchName("ogp/fix-token")).toBe(true);
+    expect(validateSafeBranchName("patch-1")).toBe(true);
+    expect(validateSafeBranchName("feat/my.feature")).toBe(true);
+  });
+
+  it("rejects invalid branch names", () => {
+    expect(validateSafeBranchName("-dash")).toBe(false);
+    expect(validateSafeBranchName("a..b")).toBe(false);
+    expect(validateSafeBranchName("has space")).toBe(false);
+    expect(validateSafeBranchName("HEAD")).toBe(false);
+    expect(validateSafeBranchName("")).toBe(false);
+  });
+});
+
+describe("localBranchExists dryRun", () => {
+  it("returns false in dryRun without executing", async () => {
+    const result = await localBranchExists("some-path", "feat", { dryRun: true, verbose: false });
+    expect(result).toBe(false);
   });
 });

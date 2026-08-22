@@ -1,29 +1,28 @@
 import fs from "fs";
 import path from "path";
 import type { RepoContext } from "../../types.js";
-import { createGithubAdapter, type GithubSlug } from "./github.js";
-import type { ForgeAdapter } from "./types.js";
+import {
+  createGithubAdapter,
+  createGithubDescriptor,
+  parseGithubRemote,
+  type GithubSlug,
+} from "./github.js";
+import type { ForgeAdapter, ForgeDescriptor, ForgePrLinkRef, ForgeSlug } from "./types.js";
 
-interface ParsedRemote {
-  host: string;
-  owner: string;
-  name: string;
-}
+export { parseGithubRemote };
 
-const REMOTE_URL_PATTERNS = [
-  /^https?:\/\/([^/]+)\/([^/]+)\/([^/.]+?)(?:\.git)?$/,
-  /^git@([^:]+):([^/]+)\/([^/.]+?)(?:\.git)?$/,
-  /^ssh:\/\/git@([^/]+)\/([^/]+)\/([^/.]+?)(?:\.git)?$/,
-];
+const FORGES: ForgeDescriptor[] = [createGithubDescriptor()];
 
-export function parseGithubRemote(url: string): ParsedRemote | null {
-  for (const pattern of REMOTE_URL_PATTERNS) {
-    const match = url.trim().match(pattern);
-    if (match) {
-      return { host: match[1]!, owner: match[2]!, name: match[3]! };
-    }
+export function parsePrLink(link: string): ForgePrLinkRef | null {
+  for (const forge of FORGES) {
+    const ref = forge.parsePrLink(link);
+    if (ref) return ref;
   }
   return null;
+}
+
+export function descriptorFor(id: string): ForgeDescriptor | null {
+  return FORGES.find((f) => f.id === id) ?? null;
 }
 
 function readOriginUrl(mainPath: string): string | null {
@@ -42,6 +41,18 @@ function parseSlugOverride(override: string): GithubSlug | null {
   const parts = override.trim().split("/");
   if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
   return { owner: parts[0], name: parts[1] };
+}
+
+export function detectRepoForge(mainPath: string): { forgeId: string; slug: ForgeSlug } | null {
+  const url = readOriginUrl(mainPath);
+  if (!url) return null;
+  for (const forge of FORGES) {
+    const slug = forge.parseRemote(url);
+    if (slug) {
+      return { forgeId: forge.id, slug };
+    }
+  }
+  return null;
 }
 
 export function resolveForge(repoCtx: RepoContext): ForgeAdapter | null {
