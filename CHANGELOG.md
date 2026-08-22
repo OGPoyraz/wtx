@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Per-repo config key `fetch_main_on_create` (default `true`) — `wtx create` fetches `origin <main_branch>` first so new branches are based on the latest main; set it to `false` to skip
+- Interactive terminal dashboard: new `wtx terminal` command (requires Bun and a TTY) listing every configured repo's worktrees as multi-line entries — branch with status badge (clean / dirty count / locked / missing / rebasing), commit hash, ahead/behind divergence vs main, PR number and state, and ownership tags
+- Detail pane per selection: dirty file names, ahead/behind counts, PR display state with checks summary and URL, rebase-in-progress detection, and node_modules strategy
+- Keyboard-driven actions streamed inside the dashboard — `n` create, `b` rebase, `d` remove, `s` sync, `o` open in IDE — spawned as child processes with output piped into an action-log pane (stderr highlighted); exit 0 auto-closes and refreshes, failures stay on screen until dismissed; no alternate-screen teardown mid-session
+- In-app configuration editor (`c`): edit global keys (`root`, `postfix`, `ide`, `default_main_branch`, `user`) and per-repo settings (`main_branch`, `sync_files`, `post_create`, `post_sync` as comma lists, instant `pr` toggle, `forge` cycle, `pr_repo`), plus add/remove repos — each change validated and persisted through atomic config writes, with automatic worktree refresh afterwards
+- Manual-refresh-first data collection bounded at 4 concurrent repos with per-repo/per-worktree failure isolation (`Promise.allSettled`) and a PR cache that survives `gh` rate limits or outages
+- Runtime guards: `wtx terminal` fails fast with actionable messages when invoked under Node.js or without an interactive terminal
 
 ## [0.4.1] - 2026-08-22
 
