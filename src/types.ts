@@ -5,6 +5,9 @@ export const RepoConfigSchema = z.object({
   sync_files: z.array(z.string()).optional(),
   post_create: z.array(z.string()).optional(),
   post_sync: z.array(z.string()).optional(),
+  pr: z.boolean().default(true),
+  forge: z.enum(["auto", "github"]).default("auto"),
+  pr_repo: z.string().nullable().default(null),
 });
 
 export const ConfigSchema = z.object({

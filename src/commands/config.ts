@@ -7,7 +7,7 @@ import {
   saveConfig
 } from "../lib/config.js";
 import { info, error, summary } from "../lib/log.js";
-import type { Config, RepoConfig } from "../types.js";
+import { RepoConfigSchema, type Config, type RepoConfig } from "../types.js";
 
 function askQuestion(query: string): Promise<string> {
   const rl = readline.createInterface({
@@ -91,7 +91,7 @@ export function registerConfigCommand(program: Command) {
     .action((name, options) => {
       const config = loadConfig();
       
-      const repoConfig: RepoConfig = config.repos[name] || { main_branch: "auto" };
+      const repoConfig: RepoConfig = config.repos[name] || RepoConfigSchema.parse({});
 
       if (options.syncFiles) {
         repoConfig.sync_files = options.syncFiles.split(",").map((s: string) => s.trim()).filter(Boolean);
