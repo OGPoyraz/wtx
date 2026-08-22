@@ -104,3 +104,35 @@ export async function getDirtyFiles(worktreePath: string): Promise<string[]> {
   const stdout = await gitExec(["-C", worktreePath, "status", "--porcelain"]);
   return stdout.split("\n").filter(Boolean);
 }
+
+export async function localBranchExists(
+  repoPath: string,
+  branch: string,
+  opts: GlobalOptions
+): Promise<boolean> {
+  if (opts.verbose) {
+    verbose(`Checking local branch: git -C ${repoPath} rev-parse --verify --quiet refs/heads/${branch}`, true);
+  }
+
+  if (opts.dryRun) {
+    return false;
+  }
+
+  try {
+    await execa("git", ["-C", repoPath, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+    return true;
+  } catch (err: any) {
+    if (err.exitCode === 1) {
+      return false;
+    }
+    throw new Error(`git rev-parse failed:\n${err.stderr || err.message}`);
+  }
+}
+
+export function validateSafeBranchName(name: string): boolean {
+  if (!name || name.length === 0) return false;
+  if (name === "HEAD") return false;
+  if (name.startsWith("-")) return false;
+  if (name.includes("..")) return false;
+  return /^[A-Za-z0-9._/\-]+$/.test(name);
+}
