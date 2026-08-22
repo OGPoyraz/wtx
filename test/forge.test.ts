@@ -19,6 +19,7 @@ import { validateSafeBranchName, localBranchExists } from "../src/lib/git.js";
 function makePr(overrides: Partial<PrInfo> = {}): PrInfo {
   return {
     number: 42,
+    authorLogin: null,
     title: "feat: something",
     url: "https://github.com/ogp/r/pull/42",
     state: "open",
@@ -31,6 +32,7 @@ function makePr(overrides: Partial<PrInfo> = {}): PrInfo {
     ...overrides,
   };
 }
+
 
 describe("derivePrDisplay", () => {
   const cases: Array<{ name: string; pr: PrInfo; expected: string }> = [
@@ -290,6 +292,7 @@ describe("mapGithubPr", () => {
 
     expect(pr).toEqual({
       number: 7,
+      authorLogin: null,
       title: "fix: token refresh",
       url: "https://github.com/o/r/pull/7",
       state: "open",
@@ -300,6 +303,12 @@ describe("mapGithubPr", () => {
       unresolvedThreads: 0,
       updatedAt: "2026-08-21T10:00:00Z",
     });
+  });
+
+  it("maps author.login if present and valid", () => {
+    expect(mapGithubPr({ number: 1, headRefName: "b", state: "OPEN", author: { login: "alice" } })?.authorLogin).toBe("alice");
+    expect(mapGithubPr({ number: 1, headRefName: "b", state: "OPEN", author: { login: 123 } })?.authorLogin).toBeNull();
+    expect(mapGithubPr({ number: 1, headRefName: "b", state: "OPEN" })?.authorLogin).toBeNull();
   });
 
   it("maps review decisions", () => {

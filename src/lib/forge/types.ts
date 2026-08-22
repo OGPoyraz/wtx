@@ -10,6 +10,7 @@ export interface PrChecks {
 
 export interface PrInfo {
   number: number;
+  authorLogin: string | null;
   title: string;
   url: string;
   state: PrState;

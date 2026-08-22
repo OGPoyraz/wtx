@@ -120,8 +120,12 @@ export function mapGithubPr(raw: unknown): PrInfo | null {
 
   const checks = bucketChecks(collectCheckItems(raw.statusCheckRollup));
 
+  const author = raw.author;
+  const authorLogin = isRecord(author) && typeof author.login === "string" ? author.login : null;
+
   return {
     number,
+    authorLogin,
     title,
     url,
     state,
