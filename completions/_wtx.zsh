@@ -83,6 +83,7 @@ _wtx() {
             '--base[Base ref]:ref:(main master develop dev)' \
             {-o,--open}'[Open worktree(s) in IDE after creation]' \
             '--ide[IDE to open with]:editor:(cursor code vscode idea webstorm zed vim nvim emacs)' \
+            '--track[Track remote branch even if it belongs to someone else]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
