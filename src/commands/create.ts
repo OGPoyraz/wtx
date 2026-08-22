@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import fs from "fs";
 import path from "path";
-import type { GlobalOptions } from "../types.js";
+import type { GlobalOptions, RepoContext } from "../types.js";
 import { loadConfig } from "../lib/config.js";
 import {
   repoHeader,
@@ -22,12 +22,35 @@ import {
 } from "../lib/resolver.js";
 import { resolveIde, spawnIde } from "../lib/ide.js";
 import { runPostCreateSetup } from "../lib/worktree-setup.js";
+import { resolveForge } from "../lib/forge/index.js";
+import { resolveOwnership, type Ownership } from "../lib/owner.js";
 
 interface CreateOptions {
   repo?: string[];
   base?: string;
   open?: boolean;
   ide?: string;
+  track?: boolean;
+}
+
+async function fetchPrAuthorLogin(
+  repo: RepoContext,
+  branch: string,
+  verboseFlag: boolean
+): Promise<string | null> {
+  try {
+    const forge = resolveForge(repo);
+    if (!forge) return null;
+    const prMap = await forge.findForBranches({
+      cwd: repo.mainPath,
+      branches: [branch],
+      verbose: verboseFlag,
+    });
+    return prMap.get(branch)?.authorLogin ?? null;
+  } catch (err) {
+    verbose(`PR author lookup skipped: ${err instanceof Error ? err.message : String(err)}`, verboseFlag);
+    return null;
+  }
 }
 
 export function registerCreateCommand(program: Command) {
@@ -38,6 +61,7 @@ export function registerCreateCommand(program: Command) {
     .option("--base <ref>", "Base ref to create branch from")
     .option("-o, --open", "Open worktree(s) in IDE after creation")
     .option("--ide <editor>", "IDE to open with (used with --open)")
+    .option("--track", "Track existing remote branch even if owned by someone else")
     .action(async (branch: string, options: CreateOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
@@ -86,18 +110,42 @@ export function registerCreateCommand(program: Command) {
           const baseRef = options.base || `origin/${mainBranch}`;
           
           const remoteExists = await branchExistsOnRemote(repo.mainPath, branch, globalOpts);
-          
-          if (remoteExists) {
-            verbose(`Remote branch found on origin, tracking`, globalOpts.verbose);
+
+          let ownership: Ownership | null = null;
+          if (remoteExists && !options.track) {
+            const prAuthorLogin = await fetchPrAuthorLogin(repo, branch, globalOpts.verbose);
+            ownership = await resolveOwnership({
+              configUser: config.user,
+              mainPath: repo.mainPath,
+              branch,
+              prAuthorLogin,
+              verbose: globalOpts.verbose,
+            });
+
+            if (ownership && !ownership.mine) {
+              stepWarning(
+                `Remote branch ${branch} belongs to ${ownership.author}`,
+                `creating your own from ${baseRef} instead — use --track to track theirs`
+              );
+            }
+          } else if (remoteExists && options.track) {
+            verbose(`Tracking forced via --track`, globalOpts.verbose);
+          }
+
+          if (!remoteExists || (ownership && !ownership.mine)) {
+            verbose(`Creating ${branch} from ${baseRef}`, globalOpts.verbose);
+            await gitExec(["-C", repo.mainPath, "worktree", "add", "-b", branch, wtPath, baseRef], globalOpts);
+          } else {
+            stepSuccess(
+              ownership ? "Tracking your remote branch" : "Tracking existing remote branch",
+              branch
+            );
             try {
               await gitExec(["-C", repo.mainPath, "worktree", "add", "--track", "-b", branch, wtPath, `origin/${branch}`], globalOpts);
             } catch (err) {
               verbose(`Tracking failed, assuming local branch exists. Falling back to local branch...`, globalOpts.verbose);
               await gitExec(["-C", repo.mainPath, "worktree", "add", wtPath, branch], globalOpts);
             }
-          } else {
-            verbose(`Remote branch not found, creating from ${baseRef}`, globalOpts.verbose);
-            await gitExec(["-C", repo.mainPath, "worktree", "add", "-b", branch, wtPath, baseRef], globalOpts);
           }
           
           stepSuccess("Worktree created", wtPath);
