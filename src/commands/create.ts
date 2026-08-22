@@ -22,10 +22,13 @@ import {
   parseRepoFlag,
 } from "../lib/resolver.js";
 import { expandTemplate, type TemplateVars } from "../lib/template.js";
+import { resolveIde, spawnIde } from "../lib/ide.js";
 
 interface CreateOptions {
   repo?: string[];
   base?: string;
+  open?: boolean;
+  ide?: string;
 }
 
 export function registerCreateCommand(program: Command) {
@@ -34,11 +37,30 @@ export function registerCreateCommand(program: Command) {
     .description("Create worktree(s)")
     .option("-r, --repo <repos...>", "Target specific repo(s)")
     .option("--base <ref>", "Base ref to create branch from")
+    .option("-o, --open", "Open worktree(s) in IDE after creation")
+    .option("--ide <editor>", "IDE to open with (used with --open)")
     .action(async (branch: string, options: CreateOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
       const repoFilter = parseRepoFlag(options.repo);
-      
+
+      const ide = options.open ? resolveIde(options.ide, config) : undefined;
+      if (options.open && !ide) {
+        stepWarning("No IDE configured", "Set via --ide, config, or $EDITOR");
+      }
+
+      const openWorktree = (wtPath: string) => {
+        if (!ide) return;
+
+        if (globalOpts.dryRun) {
+          stepWarning(`Would open in ${ide}`, wtPath);
+          return;
+        }
+
+        spawnIde(ide, wtPath);
+        stepSuccess(`Opened in ${ide}`, wtPath);
+      };
+
       const repos = resolveRepos(config, repoFilter);
       let successCount = 0;
       let skipCount = 0;
@@ -52,6 +74,7 @@ export function registerCreateCommand(program: Command) {
           if (fs.existsSync(wtPath)) {
             stepWarning("Worktree already exists", `${wtPath} (skipped)`);
             skipCount++;
+            openWorktree(wtPath);
             continue;
           }
 
@@ -121,7 +144,9 @@ export function registerCreateCommand(program: Command) {
             }
             stepSuccess("Post-create complete");
           }
-          
+
+          openWorktree(wtPath);
+
           successCount++;
         } catch (err: any) {
           stepError("Failed to create worktree", err.message);

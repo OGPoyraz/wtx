@@ -93,7 +93,7 @@ wtx remove ogp/my-feature
 
 | Command | Args | Flags | Description |
 |---|---|---|---|
-| `create` | `<branch>` | `--repo`, `--base` | Create worktree(s), run post-create hooks |
+| `create` | `<branch>` | `--repo`, `--base`, `--open`, `--ide` | Create worktree(s), run post-create hooks, optionally open in IDE |
 | `remove` | `<branch>` | `--repo`, `--force` | Remove worktree(s), clean empty dirs |
 | `open` | `<branch>` | `--repo`, `--ide` | Open worktree in IDE |
 | `rebase` | `<branch>` | `--repo` | Fetch origin main, rebase worktree onto it |

@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import { execa } from "execa";
 import fs from "fs";
 import type { GlobalOptions } from "../types.js";
 import { loadConfig } from "../lib/config.js";
@@ -11,6 +10,7 @@ import {
   summary,
 } from "../lib/log.js";
 import { resolveRepos, getWorktreePath, parseRepoFlag } from "../lib/resolver.js";
+import { resolveIde, spawnIde } from "../lib/ide.js";
 
 interface OpenOptions {
   repo?: string[];
@@ -29,7 +29,7 @@ export function registerOpenCommand(program: Command) {
       const repoFilter = parseRepoFlag(options.repo);
       const repos = resolveRepos(config, repoFilter);
 
-      const ide = options.ide ?? config.ide ?? process.env["EDITOR"];
+      const ide = resolveIde(options.ide, config);
       if (!ide) {
         stepError("No IDE configured", "Set via --ide, config, or $EDITOR");
         process.exit(1);
@@ -51,15 +51,9 @@ export function registerOpenCommand(program: Command) {
           continue;
         }
 
-        try {
-          const subprocess = execa(ide, [wtPath], { detached: true, stdio: "ignore", cleanup: false });
-          subprocess.catch(() => {});
-          stepSuccess(`Opened in ${ide}`, wtPath);
-          openCount++;
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : String(err);
-          stepError(`Failed to open ${ide}`, message);
-        }
+        spawnIde(ide, wtPath);
+        stepSuccess(`Opened in ${ide}`, wtPath);
+        openCount++;
       }
 
       if (openCount === 0) {

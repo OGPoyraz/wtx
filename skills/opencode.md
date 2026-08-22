@@ -15,6 +15,8 @@ Creates a new worktree for the specified branch.
 - **Flags**:
   - `-r, --repo <repos...>`: Target specific repo(s) (comma-separated or multiple flags).
   - `--base <ref>`: Base ref to create branch from (defaults to tracking remote branch, or creating from `origin/main`).
+  - `-o, --open`: Open worktree(s) in IDE after creation.
+  - `--ide <editor>`: IDE to open with (used with `--open`).
 - **Hooks & Sync**: Automatically copies files specified in `sync_files` from the main checkout, and runs `post_create` hooks.
 
 ### `wtx remove <branch>`
