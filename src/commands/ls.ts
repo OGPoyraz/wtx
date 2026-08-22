@@ -7,6 +7,7 @@ import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
 import { resolveForge } from "../lib/forge/index.js";
 import { derivePrDisplay, type PrInfo } from "../lib/forge/types.js";
 import { renderDisplayState } from "../lib/forge/render.js";
+import { resolveOwnership } from "../lib/owner.js";
 import chalk from "chalk";
 import path from "path";
 import fs from "fs";
@@ -94,11 +95,26 @@ export function registerLsCommand(program: Command) {
                 prSegment = `  #${prInfo.number} ${renderDisplayState(display)}  ${chalk.dim(prInfo.url)}`;
               }
 
-              console.log(`  ${paddedBranch} ${hash}  ${status}${prSegment}`);
+              let ownerSuffix = "";
+              if (wt.path !== repo.mainPath) {
+                const ownership = await resolveOwnership({
+                  configUser: config.user,
+                  mainPath: repo.mainPath,
+                  branch,
+                  prAuthorLogin: prInfo?.authorLogin ?? null,
+                  verbose: globalOpts.verbose,
+                });
+                if (ownership && !ownership.mine && ownership.author) {
+                  ownerSuffix = `  ${chalk.dim(ownership.author)}`;
+                }
+              }
+
+              console.log(`  ${paddedBranch} ${hash}  ${status}${prSegment}${ownerSuffix}`);
             }
-          } catch (err: any) {
-             indented(chalk.red(`Failed to list worktrees: ${err.message}`));
-          }
+            } catch (err: any) {
+              indented(chalk.red(`Failed to list worktrees: ${err.message}`));
+            }
+
         }
 
         console.log("");

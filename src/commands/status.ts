@@ -19,8 +19,10 @@ import {
 } from "../lib/resolver.js";
 import { detectDepsState } from "../lib/deps.js";
 import { resolveForge } from "../lib/forge/index.js";
-import { derivePrDisplay } from "../lib/forge/types.js";
+import { derivePrDisplay, type PrInfo } from "../lib/forge/types.js";
 import { renderChecksSummary, renderDisplayState } from "../lib/forge/render.js";
+import { resolveOwnership } from "../lib/owner.js";
+import chalk from "chalk";
 
 interface StatusOptions {
   repo?: string[];
@@ -59,8 +61,7 @@ function detectInProgressRebase(wtPath: string): string | null {
     if (fs.existsSync(path.join(gitDir, "rebase-apply"))) {
       return "in progress (rebase-apply)";
     }
-  } catch {
-  }
+  } catch {}
 
   return null;
 }
@@ -112,6 +113,7 @@ export function registerStatusCommand(program: Command) {
           info(`  vs main:   unknown`);
         }
 
+        let prInfo: PrInfo | undefined;
         try {
           const forge = resolveForge(repo);
           const prMap = await forge?.findForBranches({
@@ -119,27 +121,41 @@ export function registerStatusCommand(program: Command) {
             branches: [branch],
             verbose: globalOpts.verbose,
           });
-          const prInfo = prMap?.get(branch);
-
-          if (prInfo) {
-            const display = derivePrDisplay(prInfo);
-            info(`  PR:        #${prInfo.number} ${prInfo.state} — ${renderDisplayState(display)}`);
-
-            const threads =
-              prInfo.unresolvedThreads > 0
-                ? `${prInfo.unresolvedThreads} unresolved thread${prInfo.unresolvedThreads > 1 ? "s" : ""}`
-                : null;
-            const details = [renderChecksSummary(prInfo.checks), threads]
-              .filter(Boolean)
-              .join(" · ");
-            if (details) {
-              info(`             ${details}`);
-            }
-            info(`             ${prInfo.url}`);
-          }
+          prInfo = prMap?.get(branch);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           stepWarning(`PR lookup failed`, message);
+        }
+
+        const ownership = await resolveOwnership({
+          configUser: config.user,
+          mainPath: repo.mainPath,
+          branch,
+          prAuthorLogin: prInfo?.authorLogin ?? null,
+          verbose: globalOpts.verbose,
+        });
+
+        if (prInfo) {
+          const display = derivePrDisplay(prInfo);
+          let authorTag = "";
+          if (ownership && !ownership.mine && ownership.author) {
+            authorTag = ` (by ${chalk.dim(ownership.author)})`;
+          }
+          info(`  PR:        #${prInfo.number} ${prInfo.state} — ${renderDisplayState(display)}${authorTag}`);
+
+          const threads =
+            prInfo.unresolvedThreads > 0
+              ? `${prInfo.unresolvedThreads} unresolved thread${prInfo.unresolvedThreads > 1 ? "s" : ""}`
+              : null;
+          const details = [renderChecksSummary(prInfo.checks), threads]
+            .filter(Boolean)
+            .join(" · ");
+          if (details) {
+            info(`             ${details}`);
+          }
+          info(`             ${prInfo.url}`);
+        } else if (ownership && !ownership.mine && ownership.author) {
+          info(`  Owner:     ${chalk.dim(ownership.author)}`);
         }
 
         const rebaseStatus = detectInProgressRebase(wtPath);
