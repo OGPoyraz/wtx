@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `wtx prune [--force]` removes worktrees whose branch has a merged PR — dirty and locked worktrees are skipped without `--force`, and repos with failed forge lookups are left untouched
+
+### Fixed
+
+- Branch ownership now treats a worktree with local modifications (uncommitted or staged files) as yours, instead of mislabeling freshly created worktrees with the remote tip commit author
+- PR lookups no longer drop merged and closed PRs: `wtx ls --pr` and `wtx status` show `MERGED`/`CLOSED` tags for stale worktree branches, and `wtx prs --all` actually includes them (default view still lists open PRs only)
+
 ## [0.4.0] - 2026-08-22
 
 ### Added

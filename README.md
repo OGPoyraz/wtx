@@ -99,6 +99,7 @@ wtx remove ogp/my-feature
 | `create` | `<branch>` | `--repo`, `--base`, `--open`, `--ide`, `--track` | Create worktree(s), run post-create hooks; collision-guarded tracking, optionally open in IDE |
 | `pull` | `<pr-link>` | `--repo` | Fetch a GitHub PR and create its worktree |
 | `remove` | `<branch>` | `--repo`, `--force` | Remove worktree(s), clean empty dirs |
+| `prune` | | `--repo`, `--force` | Remove worktrees whose PR has merged; skips dirty/locked without `--force` |
 | `open` | `<branch>` | `--repo`, `--ide` | Open worktree in IDE |
 | `rebase` | `<branch>` | `--repo` | Fetch origin main, rebase worktree onto it |
 | `fetch` | | `--repo` | Fetch origin main for each repo |
@@ -214,12 +215,23 @@ $ wtx prs
 
 Every PR gets one display state, ranked by attention priority: `MERGED`, `CLOSED`, `DRAFT`, `CONFLICTED`, `CI_FAILING`, `CHANGES_REQUESTED`, `CI_RUNNING`, `IN_REVIEW`, `APPROVED`, `AWAITING_REVIEW`. Open PRs without a review verdict yet also show a dim `awaiting review` tag.
 
-Owners are shown as a dim `@handle` in `wtx ls` and `wtx prs`. The summary reflects mixed ownership with a breakdown like `1 yours, 1 from @alice`. Ownership detection checks local-only branches first, then PR author handle against `user`, then falls back to the remote tip commit author email vs `git config user.email`.
+Owners are shown as a dim `@handle` in `wtx ls` and `wtx prs`. The summary reflects mixed ownership with a breakdown like `1 yours, 1 from @alice`. Ownership detection treats a worktree with local modifications (uncommitted or staged files) as yours first, then checks local-only branches, then PR author handle against `user`, then falls back to the remote tip commit author email vs `git config user.email`.
 
 - `--json` — machine-readable output with an `author` field
-- `--all` — include drafts and closed/merged PRs
+- `--all` — include drafts and closed/merged PRs; without it only open PRs are listed. Merged and closed PRs also surface as `MERGED`/`CLOSED` tags in `wtx ls --pr` and `wtx status` so stale worktrees are recognizable
 - `wtx ls --pr` — adds a PR column to the worktree listing
 - `wtx status <branch>` — shows the PR section (state, checks, unresolved threads, URL, owner line for foreign branches)
+- `wtx prune [--force]` — removes worktrees whose PR has merged. Dirty worktrees are skipped without `--force`, locked worktrees too. If a repo's forge lookup fails, nothing is removed there
+
+```bash
+$ wtx prune
+
+  wtx
+  ⚠ Skipped — 1 uncommitted file  → fix/add-pull-mechanism (#14); use --force
+  ✓ Worktree removed              → release/0.4.0 (#15)
+
+✓ Done — 1 removed, 1 skipped
+```
 
 Lookups never break commands: if `gh` is missing, unauthenticated, or times out, you get a per-repo warning and everything else keeps working. Private repos work out of the box through your existing `gh auth login`; GitHub Enterprise and fork workflows are covered by the `forge` / `pr_repo` config keys above.
 
