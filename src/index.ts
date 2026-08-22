@@ -17,6 +17,7 @@ import { registerOpenCommand } from "./commands/open.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerPrsCommand } from "./commands/prs.js";
 import { registerSkillCommand } from "./commands/skill.js";
+import { registerTerminalCommand } from "./commands/terminal.js";
 import { loadConfig } from "./lib/config.js";
 import { getWorktreePath, resolveRepos } from "./lib/resolver.js";
 import fs from "fs";
@@ -45,6 +46,7 @@ registerOpenCommand(program);
 registerStatusCommand(program);
 registerPrsCommand(program);
 registerSkillCommand(program);
+registerTerminalCommand(program);
 
 program
   .command("_resolve-path <repo> <branch>", { hidden: true })
