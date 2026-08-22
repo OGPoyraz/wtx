@@ -13,7 +13,7 @@ import {
   summaryWarning,
   verbose,
 } from "../lib/log.js";
-import { gitExec, branchExistsOnRemote } from "../lib/git.js";
+import { gitExec, branchExistsOnRemote, getLatestCommit } from "../lib/git.js";
 import {
   resolveRepos,
   resolveMainBranch,
@@ -105,8 +105,16 @@ export function registerCreateCommand(program: Command) {
             fs.mkdirSync(path.dirname(wtPath), { recursive: true });
           }
 
-          stepProgress("Checking remote branch...");
           const mainBranch = await resolveMainBranch(repo, config);
+
+          if (repo.config.fetch_main_on_create) {
+            stepProgress(`Fetching origin/${mainBranch}...`);
+            await gitExec(["-C", repo.mainPath, "fetch", "origin", mainBranch], globalOpts);
+            const commit = await getLatestCommit(repo.mainPath, `origin/${mainBranch}`);
+            stepSuccess(`Fetched origin/${mainBranch}`, `${commit.hash} "${commit.subject}"`);
+          }
+
+          stepProgress("Checking remote branch...");
           const baseRef = options.base || `origin/${mainBranch}`;
           
           const remoteExists = await branchExistsOnRemote(repo.mainPath, branch, globalOpts);
