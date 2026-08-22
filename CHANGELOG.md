@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Per-repo config key `fetch_main_on_create` (default `true`) — `wtx create` fetches `origin <main_branch>` first so new branches are based on the latest main; set it to `false` to skip
+
 ## [0.4.1] - 2026-08-22
 
 ### Added
