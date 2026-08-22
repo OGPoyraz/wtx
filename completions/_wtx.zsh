@@ -65,6 +65,7 @@ _wtx() {
         'ls[List worktrees with status]' \
         'cd[Change directory to worktree]' \
         'status[Show worktree status]' \
+        'prs[Show pull request status across worktrees]' \
         'init[Output shell integration code]' \
         'skill[Manage AI agent skills]'
       ;;
@@ -130,6 +131,7 @@ _wtx() {
         ls)
           _arguments \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
+            '--pr[Include pull request status column]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -142,6 +144,14 @@ _wtx() {
           _arguments \
             ':branch:_wtx_branches' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
+            '--verbose[Show git commands]' \
+            '--dry-run[Show what would happen]'
+          ;;
+        prs)
+          _arguments \
+            {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
+            '--json[Output machine-readable JSON]' \
+            '--all[Include drafts and closed/merged PRs]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
