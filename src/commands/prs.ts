@@ -96,6 +96,7 @@ async function collectPrRows(
           configUser: config.user,
           mainPath: repo.mainPath,
           branch,
+          wtPath: worktreePath || undefined,
           prAuthorLogin: pr.authorLogin ?? null,
           verbose: verboseFlag,
         });
@@ -211,7 +212,8 @@ export function registerPrsCommand(program: Command) {
       }
 
       const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
-      let line = `${plural(visible.length, "open PR")} across ${plural(repoCount, "repo")}`;
+      const noun = options.all ? "PR" : "open PR";
+      let line = `${plural(visible.length, noun)} across ${plural(repoCount, "repo")}`;
 
       let mineCount = 0;
       let theirsCount = 0;

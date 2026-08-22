@@ -101,6 +101,7 @@ export function registerLsCommand(program: Command) {
                   configUser: config.user,
                   mainPath: repo.mainPath,
                   branch,
+                  wtPath: wt.path,
                   prAuthorLogin: prInfo?.authorLogin ?? null,
                   verbose: globalOpts.verbose,
                 });
