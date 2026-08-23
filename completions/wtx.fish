@@ -41,7 +41,7 @@ complete -c wtx -l dry-run -d "Show what would happen"
 complete -c wtx -s h -l help -d "Display help for command"
 
 # Subcommands
-set -l commands config create remove prune open rebase fetch sync deps ls cd status prs pull init skill terminal
+set -l commands config create remove prune open rebase fetch sync deps ls cd status prs pull init skill terminal mcp exec
 
 # Setup completions for commands
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "config" -d "Manage configuration"
@@ -61,6 +61,8 @@ complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "prs" -d "Show
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "init" -d "Output shell integration code"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "skill" -d "Manage AI agent skills"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "terminal" -d "Interactive terminal dashboard"
+complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "mcp" -d "Run MCP server exposing worktree tools"
+complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "exec" -d "Execute commands across worktrees"
 
 # Dynamically complete branch arguments
 complete -c wtx -n "__fish_seen_subcommand_from create open rebase sync deps status remove" -a "(_wtx_get_branches)"
@@ -73,6 +75,8 @@ complete -c wtx -n "__fish_seen_subcommand_from create" -l base -xa "main master
 complete -c wtx -n "__fish_seen_subcommand_from create" -s o -l open -d "Open worktree in IDE after creation"
 complete -c wtx -n "__fish_seen_subcommand_from create open" -l ide -xa "cursor code vscode code-insiders vscodium idea webstorm zed vim nvim emacs" -d "IDE to open with"
 complete -c wtx -n "__fish_seen_subcommand_from create" -l track -d "Track remote branch even if it belongs to someone else"
+complete -c wtx -n "__fish_seen_subcommand_from create" -l agent -d "AI agent to delegate work to"
+complete -c wtx -n "__fish_seen_subcommand_from create" -l prompt -d "Prompt for AI agent"
 
 # remove/prune flags
 complete -c wtx -n "__fish_seen_subcommand_from remove prune" -s f -l force -d "Force removal"

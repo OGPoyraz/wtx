@@ -69,7 +69,9 @@ _wtx() {
         'status[Show worktree status]' \
         'prs[Show pull request status across worktrees]' \
         'init[Output shell integration code]' \
-        'skill[Manage AI agent skills]'
+        'skill[Manage AI agent skills]' \
+        'mcp[Run MCP server exposing worktree tools]' \
+        'exec[Execute commands across worktrees]'
       ;;
 
     args)
@@ -85,6 +87,8 @@ _wtx() {
             {-o,--open}'[Open worktree(s) in IDE after creation]' \
             '--ide[IDE to open with]:editor:(cursor code vscode idea webstorm zed vim nvim emacs)' \
             '--track[Track remote branch even if it belongs to someone else]' \
+            '--agent[AI agent to delegate work to]:agent:' \
+            '--prompt[Prompt for AI agent]:prompt:' \
             {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
