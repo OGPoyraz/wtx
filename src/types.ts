@@ -2,6 +2,18 @@ import { z } from "zod/v4";
 import os from "os";
 import path from "path";
 
+const DepsManagerEnum = z.enum(["auto", "npm", "bun", "pnpm", "yarn", "go", "python", "cargo"]);
+const DepsStrategyEnum = z.enum(["auto", "link", "symlink", "install", "off"]);
+
+export const DepsConfigSchema = z.object({
+  manager: DepsManagerEnum.default("auto"),
+  strategy: DepsStrategyEnum.default("auto"),
+});
+
+export type DepsManager = z.infer<typeof DepsManagerEnum>;
+export type DepsStrategy = z.infer<typeof DepsStrategyEnum>;
+export type DepsConfig = z.infer<typeof DepsConfigSchema>;
+
 export const RepoConfigSchema = z.object({
   main_branch: z.string().trim().superRefine((val, ctx) => {
     if (val !== "auto" && val.length === 0) {
@@ -15,6 +27,7 @@ export const RepoConfigSchema = z.object({
   pr: z.boolean().default(true),
   forge: z.enum(["auto", "github"]).default("auto"),
   pr_repo: z.string().trim().min(1, { message: "must not be empty if provided" }).nullable().default(null),
+  deps: DepsConfigSchema.default({ manager: "auto", strategy: "auto" }),
 });
 
 export const ConfigSchema = z.object({
@@ -48,6 +61,7 @@ export type Config = z.infer<typeof ConfigSchema>;
 export interface GlobalOptions {
   verbose: boolean;
   dryRun: boolean;
+  quiet?: boolean;
 }
 
 export interface RepoContext {
