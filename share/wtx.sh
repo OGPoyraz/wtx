@@ -2,6 +2,10 @@
 
 wtx() {
   if [ "$1" = "cd" ]; then
+    if [ $# -lt 2 ]; then
+      command wtx cd
+      return $?
+    fi
     shift
     local _wtx_path
     _wtx_path=$(command wtx _resolve-path "$@") || return $?

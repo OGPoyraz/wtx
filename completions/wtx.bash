@@ -88,25 +88,25 @@ _wtx_completions() {
   if [[ "$cur" == -* ]]; then
     local flags=""
     case "$subcommand" in
-      create)  flags="-r --repo --base --open --ide --track --verbose --dry-run --help" ;;
-      remove)  flags="-f --force -r --repo --verbose --dry-run --help" ;;
-      prune)   flags="-f --force -r --repo --verbose --dry-run --help" ;;
-      open)    flags="-r --repo --ide --verbose --dry-run --help" ;;
-      rebase)  flags="--repo --verbose --dry-run --help" ;;
-      fetch)   flags="--repo --verbose --dry-run --help" ;;
-      sync)    flags="--repo --verbose --dry-run --help" ;;
-      deps)    flags="-r --repo --install --symlink --verbose --dry-run --help" ;;
-      pull)    flags="-r --repo --verbose --dry-run --help" ;;
-      ls)      flags="-r --repo --pr --verbose --dry-run --help" ;;
-      status)  flags="-r --repo --verbose --dry-run --help" ;;
-      prs)     flags="-r --repo --json --all --verbose --dry-run --help" ;;
+      create)  flags="-r --repo --base --open --ide --track -q --quiet --verbose --dry-run --help" ;;
+      remove)  flags="-f --force -y --yes -r --repo -q --quiet --verbose --dry-run --help" ;;
+      prune)   flags="-f --force -y --yes -r --repo -q --quiet --verbose --dry-run --help" ;;
+      open)    flags="-r --repo --ide -q --quiet --verbose --dry-run --help" ;;
+      rebase)  flags="--repo -q --quiet --verbose --dry-run --help" ;;
+      fetch)   flags="--repo -q --quiet --verbose --dry-run --help" ;;
+      sync)    flags="--repo -q --quiet --verbose --dry-run --help" ;;
+      deps)    flags="-r --repo --install --symlink --json -q --quiet --verbose --dry-run --help" ;;
+      pull)    flags="-r --repo -q --quiet --verbose --dry-run --help" ;;
+      ls)      flags="-r --repo --pr --json -q --quiet --verbose --dry-run --help" ;;
+      status)  flags="-r --repo --json -q --quiet --verbose --dry-run --help" ;;
+      prs)     flags="-r --repo --json --all -q --quiet --verbose --dry-run --help" ;;
       config)
         case "$subsubcommand" in
           add-repo) flags="--sync-files --post-create --post-sync --help" ;;
           *)        flags="--help" ;;
         esac
         ;;
-      *) flags="--verbose --dry-run --help" ;;
+      *) flags="-q --quiet --verbose --dry-run --help" ;;
     esac
     COMPREPLY=($(compgen -W "$flags" -- "$cur"))
     return 0

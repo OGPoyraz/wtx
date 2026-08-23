@@ -85,6 +85,7 @@ _wtx() {
             {-o,--open}'[Open worktree(s) in IDE after creation]' \
             '--ide[IDE to open with]:editor:(cursor code vscode idea webstorm zed vim nvim emacs)' \
             '--track[Track remote branch even if it belongs to someone else]' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -93,6 +94,8 @@ _wtx() {
             ':branch:_wtx_branches' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             {-f,--force}'[Force removal]' \
+            {-y,--yes}'[Skip confirmation prompt]' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -100,6 +103,8 @@ _wtx() {
           _arguments \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             {-f,--force}'[Force removal]' \
+            {-y,--yes}'[Skip confirmation prompt]' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -108,6 +113,7 @@ _wtx() {
             ':branch:_wtx_branches' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             '--ide[IDE to open with]:editor:(cursor code vscode idea webstorm zed vim nvim emacs)' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -115,6 +121,7 @@ _wtx() {
           _arguments \
             ':branch:_wtx_branches' \
             '--repo[Target specific repo(s)]:repo:_wtx_repos' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -122,12 +129,14 @@ _wtx() {
           _arguments \
             ':pr-link:' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
         fetch)
           _arguments \
             '--repo[Target specific repo(s)]:repo:_wtx_repos' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -135,6 +144,7 @@ _wtx() {
           _arguments \
             ':branch:_wtx_branches' \
             '--repo[Target specific repo(s)]:repo:_wtx_repos' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -144,6 +154,8 @@ _wtx() {
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             '--install[Switch to independent node_modules]' \
             '--symlink[Switch to symlinked node_modules]' \
+            '--json[Output machine-readable JSON]' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -151,6 +163,8 @@ _wtx() {
           _arguments \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             '--pr[Include pull request status column]' \
+            '--json[Output machine-readable JSON]' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -163,6 +177,8 @@ _wtx() {
           _arguments \
             ':branch:_wtx_branches' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
+            '--json[Output machine-readable JSON]' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
@@ -171,6 +187,7 @@ _wtx() {
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             '--json[Output machine-readable JSON]' \
             '--all[Include drafts and closed/merged PRs]' \
+            {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
           ;;
