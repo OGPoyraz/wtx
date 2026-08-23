@@ -1,9 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
 import { execa } from "execa";
 import { resolveBaseRemote } from "../src/lib/remotes.js";
+
+beforeAll(() => {
+  process.env.GIT_AUTHOR_NAME = "wtx-test";
+  process.env.GIT_AUTHOR_EMAIL = "wtx-test@example.com";
+  process.env.GIT_COMMITTER_NAME = "wtx-test";
+  process.env.GIT_COMMITTER_EMAIL = "wtx-test@example.com";
+});
 
 async function git(cwd: string, ...args: string[]) {
   await execa("git", args, { cwd });
