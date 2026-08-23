@@ -38,11 +38,13 @@ describe("config", () => {
     expect(content.ide).toBe("vscode");
   });
 
-  it("throws with helpful message when config is missing", () => {
+  it("throws with helpful message and remediation when config is missing", () => {
     const dir = createTempDir("wtx-missing-config-");
     process.env.XDG_CONFIG_HOME = dir;
     
     expect(() => loadConfig()).toThrow("Config file not found at");
+    expect(() => loadConfig()).toThrow("Run 'wtx config init' to create one interactively");
+    expect(() => loadConfig()).toThrow('"version": 1');
   });
 
   it("throws when config is invalid JSON", () => {

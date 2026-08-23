@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { spawnSync } from "child_process";
 import { ConfigSchema } from "../types.js";
 import type { Config } from "../types.js";
 import { stepWarning } from "./log.js";
@@ -31,7 +32,38 @@ export function configExists(): boolean {
 export function loadConfig(): Config {
   const configPath = getConfigPath();
   if (!fs.existsSync(configPath)) {
-    throw new Error(`Config file not found at ${configPath}. Run 'wtx config init' to create one.`);
+    if (
+      process.stdout.isTTY &&
+      process.env.WTX_NO_WIZARD !== "1" &&
+      !process.argv.includes("_resolve-path")
+    ) {
+      const argv1 = process.argv[1] ?? "";
+      const runningCompiledBinary =
+        argv1 !== "" && path.resolve(argv1) === path.resolve(process.execPath);
+      const args = runningCompiledBinary
+        ? ["config", "init"]
+        : [argv1, "config", "init"];
+
+      const res = spawnSync(process.execPath, args, { stdio: "inherit" });
+      if (res.status !== 0) {
+        process.exit(res.status ?? 1);
+      }
+      if (!fs.existsSync(configPath)) {
+        stepWarning("Config still missing after setup — continuing without it");
+        throw new Error(`Config file not found at ${configPath}. Run 'wtx config init'.`);
+      }
+    } else {
+      throw new Error(`Config file not found at ${configPath}.
+Run 'wtx config init' to create one interactively, or create it manually with:
+{
+  "version": 1,
+  "root": "~/Repos",
+  "postfix": "-wt",
+  "ide": "cursor",
+  "default_main_branch": "main",
+  "repos": {}
+}`);
+    }
   }
 
   const fileContent = fs.readFileSync(configPath, "utf-8");

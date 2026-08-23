@@ -1,6 +1,4 @@
-import readline from "readline";
 import { Command } from "commander";
-import { execa } from "execa";
 import {
   getConfigPath,
   configExists,
@@ -8,20 +6,7 @@ import {
   saveConfig
 } from "../lib/config.js";
 import { info, error, summary } from "../lib/log.js";
-import { RepoConfigSchema, type Config, type RepoConfig } from "../types.js";
-
-function askQuestion(query: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  return new Promise((resolve) =>
-    rl.question(query, (ans) => {
-      rl.close();
-      resolve(ans);
-    })
-  );
-}
+import { RepoConfigSchema, type RepoConfig } from "../types.js";
 
 export function registerConfigCommand(program: Command) {
   const configCmd = program
@@ -33,39 +18,14 @@ export function registerConfigCommand(program: Command) {
     .description("Initialize wtx configuration")
     .action(async () => {
       if (configExists()) {
-        error(`Config already exists at ${getConfigPath()}`);
+        error(`Initialization failed: Config already exists at ${getConfigPath()}\nRun 'wtx config show' to view it, or edit the file manually.`);
         process.exit(1);
       }
 
-      const root = (await askQuestion("Root path [~/Repos]: ")) || "~/Repos";
-      const ide = (await askQuestion("IDE [cursor]: ")) || "cursor";
-      const postfix = (await askQuestion("Postfix [-wt]: ")) || "-wt";
+      const { runFirstRunWizard } = await import("../lib/first-run.js");
+      const config = await runFirstRunWizard({ input: process.stdin, output: process.stdout });
 
-      let detectedUser: string | null = null;
-      try {
-        const { stdout } = await execa("gh", ["api", "user", "--jq", ".login"], { timeout: 3000 });
-        if (stdout) {
-          detectedUser = stdout.trim();
-        }
-      } catch {
-        // ignore
-      }
-
-      const userPrompt = detectedUser ? `GitHub username [${detectedUser}]: ` : "GitHub username (leave empty for null): ";
-      const userAns = await askQuestion(userPrompt);
-      const user = userAns || detectedUser || null;
-
-      const defaultConfig: Config = {
-        version: 1,
-        root,
-        postfix,
-        ide,
-        default_main_branch: "main",
-        user,
-        repos: {},
-      };
-
-      saveConfig(defaultConfig);
+      saveConfig(config);
       summary(`Config created at ${getConfigPath()}`);
     });
 
@@ -74,7 +34,7 @@ export function registerConfigCommand(program: Command) {
     .description("Show current configuration")
     .action(() => {
       if (!configExists()) {
-        error("Config does not exist. Run 'wtx config init' first.");
+        error("Read failed: Config does not exist.\nRun 'wtx config init' to create one.");
         process.exit(1);
       }
       const config = loadConfig();
@@ -89,7 +49,7 @@ export function registerConfigCommand(program: Command) {
       const validKeys = ["root", "postfix", "ide", "default_main_branch", "user"] as const;
       type ValidKey = (typeof validKeys)[number];
       if (!validKeys.includes(key as ValidKey)) {
-        error(`Invalid key: ${key}. Allowed keys: root, postfix, ide, default_main_branch, user`);
+        error(`Set failed: Invalid key '${key}'.\nRun 'wtx config set' with one of the allowed keys: root, postfix, ide, default_main_branch, user`);
         process.exit(1);
       }
 
@@ -130,7 +90,7 @@ export function registerConfigCommand(program: Command) {
     .action((name) => {
       const config = loadConfig();
       if (!config.repos[name]) {
-        error(`Repo not found in config: ${name}`);
+        error(`Removal failed: Repo '${name}' not found in config.\nRun 'wtx config show' to see available repos.`);
         process.exit(1);
       }
       delete config.repos[name];
