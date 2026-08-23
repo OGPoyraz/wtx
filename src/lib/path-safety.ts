@@ -37,56 +37,78 @@ export function isWithin(root: string, candidate: string): boolean {
 }
 
 /**
- * Walks upward from `startPath` (exclusive) and deletes empty directories.
+ * Walks upward from `startPath` (exclusive) and returns the directories that
+ * would be removed if `startPath` were deleted first — the single source of
+ * truth shared by dry-run previews and actual cleanup, so they can't diverge.
  * STOPS at:
  * - The resolved `wtRoot`
- * - The resolved `mainPath` 
+ * - The resolved `mainPath`
  * - Any directory containing a `.git` file/folder
- * 
- * Returns an array of paths that were successfully removed.
  */
-export function cleanupEmptyParents(wtRoot: string, mainPath: string, startPath: string): string[] {
+export function planEmptyParentRemoval(wtRoot: string, mainPath: string, startPath: string): string[] {
   const resolvedWtRoot = safeResolve(wtRoot);
   const resolvedMainPath = safeResolve(mainPath);
   const resolvedStartPath = safeResolve(startPath);
-  
-  const removed: string[] = [];
+
+  const planned: string[] = [];
   let currentDir = path.dirname(resolvedStartPath);
-  
+
   while (isWithin(resolvedWtRoot, currentDir) || currentDir === resolvedWtRoot) {
-    // STOP if we hit wtRoot or mainPath (we never delete them, even if empty)
     if (currentDir === resolvedWtRoot || currentDir === resolvedMainPath) {
       break;
     }
-    
-    // STOP if we see a .git file/folder (should never delete repos)
+
     try {
       if (fs.existsSync(path.join(currentDir, ".git"))) {
         break;
       }
     } catch {
-      // ignore
-    }
-
-    try {
-      const contents = fs.readdirSync(currentDir);
-      if (contents.length === 0) {
-        fs.rmdirSync(currentDir);
-        removed.push(currentDir);
-      } else {
-        // Not empty, stop walking
-        break;
-      }
-    } catch {
-      // Permission error or directory doesn't exist, stop
       break;
     }
-    
-    const nextDir = path.dirname(currentDir);
-    if (nextDir === currentDir) break; // Reached fs root somehow
-    currentDir = nextDir;
+
+    let contents: string[];
+    try {
+      contents = fs.readdirSync(currentDir);
+    } catch {
+      break;
+    }
+
+    const remaining = contents.filter(
+      (c) => !planned.includes(path.join(currentDir, c)) && path.join(currentDir, c) !== resolvedStartPath
+    );
+    if (remaining.length !== 0) {
+      break;
+    }
+
+    planned.push(currentDir);
+    currentDir = path.dirname(currentDir);
   }
-  
+
+  return planned;
+}
+
+/**
+ * Walks upward from `startPath` (exclusive) and deletes empty directories.
+ * STOPS at:
+ * - The resolved `wtRoot`
+ * - The resolved `mainPath`
+ * - Any directory containing a `.git` file/folder
+ *
+ * Returns an array of paths that were successfully removed.
+ */
+export function cleanupEmptyParents(wtRoot: string, mainPath: string, startPath: string): string[] {
+  const planned = planEmptyParentRemoval(wtRoot, mainPath, startPath);
+  const removed: string[] = [];
+
+  for (const dir of planned) {
+    try {
+      fs.rmdirSync(dir);
+      removed.push(dir);
+    } catch {
+      break;
+    }
+  }
+
   return removed;
 }
 

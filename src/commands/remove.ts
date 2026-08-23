@@ -17,11 +17,13 @@ import {
   getWorktreePath,
   parseRepoFlag,
 } from "../lib/resolver.js";
-import { isSafeWorktreeConfig, cleanupEmptyParents, safeResolve } from "../lib/path-safety.js";
+import { isSafeWorktreeConfig, cleanupEmptyParents, safeResolve, planEmptyParentRemoval } from "../lib/path-safety.js";
+import { isInteractive, confirm, canProceedDeletion } from "../lib/prompts.js";
 
 interface RemoveOptions {
   repo?: string[];
   force?: boolean;
+  yes?: boolean;
 }
 
 export function registerRemoveCommand(program: Command) {
@@ -30,6 +32,7 @@ export function registerRemoveCommand(program: Command) {
     .description("Remove worktree(s)")
     .option("-r, --repo <repos...>", "Target specific repo(s)")
     .option("-f, --force", "Force removal even if there are uncommitted changes")
+    .option("-y, --yes", "Skip confirmation prompt")
     .action(async (branch: string, options: RemoveOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
@@ -76,6 +79,32 @@ export function registerRemoveCommand(program: Command) {
               stepError("Failed to check for uncommitted changes", err.message);
               skipCount++;
               continue;
+            }
+          }
+
+          if (!globalOpts.dryRun) {
+            const interactive = isInteractive();
+            const yesFlag = !!options.yes;
+            const envYes = process.env.WTX_YES === "1";
+
+            if (!canProceedDeletion({ interactive, yesFlag, envYes })) {
+              stepError("Non-interactive terminal requires --yes flag or WTX_YES=1 for scripts");
+              process.exit(1);
+            }
+
+            if (interactive && !yesFlag && !envYes) {
+              const toClean = planEmptyParentRemoval(repo.wtRoot, repo.mainPath, wtPath);
+
+              indented(`Will remove worktree: ${wtPath}`);
+              for (const dir of toClean) {
+                indented(`Will clean up empty dir: ${path.relative(repo.wtRoot, dir)}/`);
+              }
+              const proceed = await confirm("Are you sure you want to delete these?");
+              if (!proceed) {
+                stepWarning("Skipped by user", wtPath);
+                skipCount++;
+                continue;
+              }
             }
           }
 

@@ -17,10 +17,12 @@ import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
 import { resolveForge } from "../lib/forge/index.js";
 import { selectMergedCandidates } from "../lib/prune.js";
 import { isSafeWorktreeConfig, cleanupEmptyParents, safeResolve } from "../lib/path-safety.js";
+import { isInteractive, confirm, canProceedDeletion } from "../lib/prompts.js";
 
 interface PruneOptions {
   repo?: string[];
   force?: boolean;
+  yes?: boolean;
 }
 
 export function registerPruneCommand(program: Command) {
@@ -29,6 +31,7 @@ export function registerPruneCommand(program: Command) {
     .description("Remove worktrees whose branch has a merged PR")
     .option("-r, --repo <repos...>", "Target specific repo(s)")
     .option("-f, --force", "Remove even if there are uncommitted changes")
+    .option("-y, --yes", "Skip confirmation prompt")
     .action(async (options: PruneOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
@@ -37,6 +40,8 @@ export function registerPruneCommand(program: Command) {
 
       let removedCount = 0;
       let skippedCount = 0;
+
+      const actionsToRun: { repo: any; candidate: any; label: string }[] = [];
 
       for (const repo of repos) {
         repoHeader(repo.name);
@@ -111,39 +116,79 @@ export function registerPruneCommand(program: Command) {
               }
             }
 
-            const args = ["-C", repo.mainPath, "worktree", "remove", candidate.path];
-            if (options.force) {
-              args.push("--force");
-            }
-
-            try {
-              await gitExec(args, globalOpts);
-              stepSuccess("Worktree removed", label);
-            } catch (err: any) {
-              const msg = err.message || "";
-              if (msg.includes("not a working tree") || msg.includes("already removed")) {
-                stepWarning("Worktree already removed or invalid", msg);
-                skippedCount++;
-                continue;
-              }
-              stepError("Failed to remove worktree", `${label}: ${msg}`);
-              skippedCount++;
-              continue;
-            }
-
-            if (!globalOpts.dryRun) {
-              const removedDirs = cleanupEmptyParents(repo.wtRoot, repo.mainPath, candidate.path);
-              for (const dir of removedDirs) {
-                stepSuccess("Cleaned up empty directory", path.relative(repo.wtRoot, dir) + "/");
-              }
-            }
-            removedCount++;
+            actionsToRun.push({ repo, candidate, label });
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           stepWarning("PR lookup failed", message);
           skippedCount++;
         }
+      }
+
+      if (actionsToRun.length > 0 && !globalOpts.dryRun) {
+        const interactive = isInteractive();
+        const yesFlag = !!options.yes;
+        const envYes = process.env.WTX_YES === "1";
+
+        if (!canProceedDeletion({ interactive, yesFlag, envYes })) {
+          stepError("Non-interactive terminal requires --yes flag or WTX_YES=1 for scripts");
+          process.exit(1);
+        }
+
+        if (interactive && !yesFlag && !envYes) {
+          console.log();
+          indented(`Will remove ${actionsToRun.length} worktree${actionsToRun.length > 1 ? "s" : ""}:`);
+          for (const action of actionsToRun) {
+            indented(`- ${action.candidate.path} (${action.label})`);
+          }
+          const proceed = await confirm("Are you sure you want to delete these?");
+          if (!proceed) {
+            summaryWarning("Prune cancelled by user");
+            return;
+          }
+          console.log();
+        }
+      }
+
+      let currentRepo = null;
+      for (const action of actionsToRun) {
+        const { repo, candidate, label } = action;
+        
+        if (currentRepo !== repo.name) {
+          if (currentRepo !== null) {
+            console.log();
+          }
+          repoHeader(repo.name);
+          currentRepo = repo.name;
+        }
+
+        const args = ["-C", repo.mainPath, "worktree", "remove", candidate.path];
+        if (options.force) {
+          args.push("--force");
+        }
+
+        try {
+          await gitExec(args, globalOpts);
+          stepSuccess("Worktree removed", label);
+        } catch (err: any) {
+          const msg = err.message || "";
+          if (msg.includes("not a working tree") || msg.includes("already removed")) {
+            stepWarning("Worktree already removed or invalid", msg);
+            skippedCount++;
+            continue;
+          }
+          stepError("Failed to remove worktree", `${label}: ${msg}`);
+          skippedCount++;
+          continue;
+        }
+
+        if (!globalOpts.dryRun) {
+          const removedDirs = cleanupEmptyParents(repo.wtRoot, repo.mainPath, candidate.path);
+          for (const dir of removedDirs) {
+            stepSuccess("Cleaned up empty directory", path.relative(repo.wtRoot, dir) + "/");
+          }
+        }
+        removedCount++;
       }
 
       if (removedCount === 0 && skippedCount === 0) {
