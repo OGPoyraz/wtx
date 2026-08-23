@@ -52,11 +52,76 @@ describe("config", () => {
     expect(() => loadConfig()).toThrow("Failed to parse config file at");
   });
 
-  it("throws when config schema is invalid", () => {
+  it("throws when config schema is invalid (empty root)", () => {
     const { path: configPath } = createTempConfig();
-    fs.writeFileSync(configPath, JSON.stringify({ root: "/tmp" }), "utf-8");
+    fs.writeFileSync(configPath, JSON.stringify({ version: 1, root: "   ", postfix: "-wt", ide: "cursor", default_main_branch: "main", repos: {} }), "utf-8");
+    expect(() => loadConfig()).toThrow("root invalid because must not be empty");
+  });
+
+  it("throws when postfix contains path separators", () => {
+    const { path: configPath } = createTempConfig();
+    fs.writeFileSync(configPath, JSON.stringify({ version: 1, root: "/tmp", postfix: "/-wt", ide: "cursor", default_main_branch: "main", repos: {} }), "utf-8");
+    expect(() => loadConfig()).toThrow("postfix invalid because must not contain path separators");
+  });
+
+  it("throws when ide is empty", () => {
+    const { path: configPath } = createTempConfig();
+    fs.writeFileSync(configPath, JSON.stringify({ version: 1, root: "/tmp", postfix: "-wt", ide: "", default_main_branch: "main", repos: {} }), "utf-8");
+    expect(() => loadConfig()).toThrow("ide invalid because must not be empty");
+  });
+
+  it("throws when repo key format is invalid", () => {
+    const { path: configPath } = createTempConfig();
+    fs.writeFileSync(configPath, JSON.stringify({ 
+      version: 1, root: "/tmp", postfix: "-wt", ide: "cursor", default_main_branch: "main", 
+      repos: { "-invalid": { main_branch: "auto" } } 
+    }), "utf-8");
+    expect(() => loadConfig()).toThrow("repos.-invalid invalid because Invalid repo key format");
+  });
+
+  it("throws when root is unexpandable to absolute path", () => {
+    const { path: configPath } = createTempConfig();
+    fs.writeFileSync(configPath, JSON.stringify({ version: 1, root: "relative/path", postfix: "-wt", ide: "cursor", default_main_branch: "main", repos: {} }), "utf-8");
+    expect(() => loadConfig()).toThrow("root invalid because must be an absolute path after tilde expansion");
+  });
+
+  it("warns when main checkout directory does not exist", () => {
+    const root = createTempDir("wtx-fake-root-");
+    createTempConfig({
+      root,
+      repos: {
+        "missing-repo": { main_branch: "auto" }
+      }
+    });
     
-    expect(() => loadConfig()).toThrow("Invalid config format");
+    loadConfig();
+    expect(log.stepWarning).toHaveBeenCalledWith(
+      expect.stringContaining("missing-repo main checkout directory does not exist at")
+    );
+  });
+
+  it("warns when wtRoot resolves inside main checkout", () => {
+    const root = createTempDir("wtx-fake-root-");
+    const repoPath = path.join(root, "nested-repo");
+    fs.mkdirSync(repoPath);
+    
+    const wtRoot = path.join(root, "nested-repo-wt");
+    const nestedWtRootTarget = path.join(repoPath, "wt");
+    fs.mkdirSync(nestedWtRootTarget);
+    fs.symlinkSync(nestedWtRootTarget, wtRoot, "dir");
+    
+    createTempConfig({
+      root,
+      postfix: "-wt",
+      repos: {
+        "nested-repo": { main_branch: "auto" }
+      }
+    });
+    
+    loadConfig();
+    expect(log.stepWarning).toHaveBeenCalledWith(
+      expect.stringContaining("Config for repo nested-repo creates a nesting issue")
+    );
   });
 
   it("warns but doesn't error when config has unknown repo", () => {
@@ -71,7 +136,7 @@ describe("config", () => {
     const loaded = loadConfig();
     expect(loaded.repos["unknown-repo"]).toBeDefined();
     expect(log.stepWarning).toHaveBeenCalledWith(
-      expect.stringContaining("is missing .git directory at")
+      expect.stringContaining("unknown-repo main checkout directory does not exist at")
     );
   });
 });

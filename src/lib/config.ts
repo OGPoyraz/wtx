@@ -4,6 +4,7 @@ import os from "os";
 import { ConfigSchema } from "../types.js";
 import type { Config } from "../types.js";
 import { stepWarning } from "./log.js";
+import { isWithin, safeResolve } from "./path-safety.js";
 
 export function expandTilde(value: string): string {
   if (value.startsWith("~/") || value === "~") {
@@ -43,7 +44,16 @@ export function loadConfig(): Config {
 
   const result = ConfigSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`Invalid config format: ${result.error.message}`);
+    const messages = result.error.issues.map((issue) => {
+      const pathStr = issue.path.join(".");
+      let msg = issue.message;
+      const nested = (issue as { issues?: Array<{ message: string }> }).issues;
+      if (issue.code === "invalid_key" && nested?.length) {
+        msg = nested[0]?.message ?? msg;
+      }
+      return pathStr ? `${pathStr} invalid because ${msg}` : `Invalid config: ${msg}`;
+    });
+    throw new Error(`Invalid config format:\n${messages.join("\n")}`);
   }
 
   const config = result.data;
@@ -53,9 +63,23 @@ export function loadConfig(): Config {
     stepWarning(`Root directory does not exist: ${config.root}`);
   } else {
     for (const [repoName] of Object.entries(config.repos)) {
-      const repoGitPath = path.join(config.root, repoName, ".git");
-      if (!fs.existsSync(repoGitPath)) {
+      const repoMainPath = path.join(config.root, repoName);
+      const repoGitPath = path.join(repoMainPath, ".git");
+      const wtRoot = `${repoMainPath}${config.postfix}`;
+
+      if (!fs.existsSync(repoMainPath)) {
+        stepWarning(`Repo ${repoName} main checkout directory does not exist at ${repoMainPath}`);
+      } else if (!fs.existsSync(repoGitPath)) {
         stepWarning(`Repo ${repoName} is missing .git directory at ${repoGitPath}`);
+      }
+
+      if (fs.existsSync(repoMainPath)) {
+        const resolvedMain = safeResolve(repoMainPath);
+        const resolvedWtRoot = safeResolve(wtRoot);
+        
+        if (isWithin(resolvedMain, resolvedWtRoot) || isWithin(resolvedWtRoot, resolvedMain)) {
+          stepWarning(`Config for repo ${repoName} creates a nesting issue: wtRoot and main checkout resolve inside each other. Fix your config postfix or root.`);
+        }
       }
     }
   }
