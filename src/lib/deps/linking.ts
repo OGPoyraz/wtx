@@ -79,6 +79,7 @@ export function performSafeLink(wtPath: string, mainPath: string, dryRun: boolea
       }
 
       let shouldLink = true;
+      let backupPath: string | null = null;
       try {
         const stat = fs.lstatSync(linkPath);
         if (stat.isSymbolicLink()) {
@@ -90,14 +91,26 @@ export function performSafeLink(wtPath: string, mainPath: string, dryRun: boolea
             fs.unlinkSync(linkPath);
           }
         } else {
-          fs.rmSync(linkPath, { recursive: true, force: true });
+          backupPath = `${linkPath}.wtx-old`;
+          fs.renameSync(linkPath, backupPath);
         }
       } catch {}
 
       if (shouldLink) {
-        const relTarget = path.relative(path.dirname(linkPath), target);
-        fs.symlinkSync(relTarget, linkPath, isBin ? "dir" : (fs.statSync(target).isDirectory() ? "dir" : "file"));
-        createdCount++;
+        try {
+          const relTarget = path.relative(path.dirname(linkPath), target);
+          fs.symlinkSync(relTarget, linkPath, isBin ? "dir" : (fs.statSync(target).isDirectory() ? "dir" : "file"));
+          createdCount++;
+        } catch (err) {
+          if (backupPath) {
+            fs.renameSync(backupPath, linkPath);
+          }
+          throw err;
+        }
+      }
+
+      if (backupPath && fs.existsSync(backupPath)) {
+        fs.rmSync(backupPath, { recursive: true, force: true });
       }
     } catch {
       failedCount++;

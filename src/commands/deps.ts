@@ -94,6 +94,8 @@ export function registerDepsCommand(program: Command) {
             strategyLabel = `broken symlink → ${state.symlinkTarget} (run 'wtx deps ${branch} --symlink' to repair)`;
           } else if (state.strategy === "external") {
             strategyLabel = `external symlink → ${state.symlinkTarget} resolves outside main checkout (run 'wtx deps ${branch} --symlink' to repair)`;
+          } else if (state.strategy === "shared-target") {
+            strategyLabel = "shared cargo target → build artifacts shared with main checkout";
           } else if (state.strategy === "linked-packages") {
             strategyLabel = `safely linked packages (auto/link)`;
           }

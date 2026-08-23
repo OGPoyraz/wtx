@@ -6,7 +6,16 @@ import { loadConfig } from "./config.js";
 import { resolveRepos } from "./resolver.js";
 
 export interface DepsState {
-  strategy: "symlinked" | "independent" | "none" | "broken" | "external" | "installed" | "missing" | "linked-packages";
+  strategy:
+    | "symlinked"
+    | "independent"
+    | "none"
+    | "broken"
+    | "external"
+    | "installed"
+    | "missing"
+    | "linked-packages"
+    | "shared-target";
   lockfileMatch: boolean;
   packageManager: "yarn" | "npm" | "pnpm" | "bun" | null;
   symlinkTarget?: string;
@@ -22,7 +31,7 @@ function mapLinkageState(state: LinkageState): DepsState["strategy"] {
     case "installed": return "installed";
     case "missing": return "missing";
     case "linked-packages": return "linked-packages";
-    case "shared-target": return "installed";
+    case "shared-target": return "shared-target";
     default: return "none";
   }
 }

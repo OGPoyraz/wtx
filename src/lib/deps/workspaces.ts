@@ -56,26 +56,60 @@ export function getWorkspaceDirs(rootDir: string): string[] {
 }
 
 function resolvePattern(rootDir: string, pattern: string, out: Set<string>) {
-  if (pattern.endsWith("/*")) {
-    const parentDir = pattern.slice(0, -2);
-    const fullParent = path.join(rootDir, parentDir);
-    if (fs.existsSync(fullParent)) {
-      try {
-        const entries = fs.readdirSync(fullParent, { withFileTypes: true });
-        for (const entry of entries) {
-          if (entry.isDirectory()) {
-            out.add(path.posix.join(parentDir, entry.name));
-          }
-        }
-      } catch {}
+  const normalized = pattern.replace(/\/+$/, "");
+  const hasGlob = normalized.includes("*");
+
+  if (!hasGlob) {
+    const fullDir = path.join(rootDir, normalized);
+    if (fs.existsSync(fullDir) && fs.statSync(fullDir).isDirectory()) {
+      out.add(normalized);
     }
-  } else {
-    const fullPath = path.join(rootDir, pattern);
-    if (fs.existsSync(fullPath)) {
-      const stat = fs.statSync(fullPath);
-      if (stat.isDirectory()) {
-        out.add(pattern);
-      }
-    }
+    return;
   }
+
+  const regex = globToRegex(normalized);
+  collectMatchingDirs(rootDir, "", regex, out, 0);
+}
+
+function globToRegex(pattern: string): RegExp {
+  let src = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*\//g, "(?:.*/)?")
+    .replace(/\*\*/g, ".*")
+    .replace(/\*/g, "[^/]*");
+  return new RegExp(`^${src}$`);
+}
+
+function collectMatchingDirs(
+  base: string,
+  rel: string,
+  regex: RegExp,
+  out: Set<string>,
+  depth: number
+) {
+  if (depth > 8) return;
+
+  if (rel && regex.test(rel) && fs.existsSync(path.join(base, rel, "package.json"))) {
+    out.add(rel);
+  }
+
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(rel ? path.join(base, rel) : base, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === "node_modules" || entry.name.startsWith(".")) {
+      continue;
+    }
+    const nextRel = rel ? path.posix.join(rel, entry.name) : entry.name;
+    if (!regex.test(nextRel) && !couldMatchDeeper(regex.source, nextRel)) continue;
+    collectMatchingDirs(base, nextRel, regex, out, depth + 1);
+  }
+}
+
+function couldMatchDeeper(regexSource: string, rel: string): boolean {
+  return new RegExp(`^${regexSource.slice(1, -1)}(?:/|$)`).test(`${rel}/x`) || regexSource.includes("(?:.*/)?");
 }

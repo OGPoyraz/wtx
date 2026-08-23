@@ -8,10 +8,10 @@ import { pythonAdapter } from "./adapters/python.js";
 import { goAdapter } from "./adapters/go.js";
 
 export const REGISTRY: DepsAdapter[] = [
-  bunAdapter,
-  pnpmAdapter,
   yarnAdapter,
   npmAdapter,
+  pnpmAdapter,
+  bunAdapter,
   cargoAdapter,
   pythonAdapter,
   goAdapter,

@@ -12,21 +12,20 @@ function compareFiles(f1: string, f2: string): boolean {
   return Buffer.compare(readFileSync(f1), readFileSync(f2)) === 0;
 }
 
-let uvAvailable: boolean | undefined = undefined;
+let uvOverride: boolean | undefined = undefined;
 function isUvAvailable(): boolean {
-  if (uvAvailable !== undefined) return uvAvailable;
+  if (uvOverride !== undefined) return uvOverride;
   try {
     const res = execaSync("uv", ["--version"], { reject: false });
-    uvAvailable = res.exitCode === 0;
+    return res.exitCode === 0;
   } catch {
-    uvAvailable = false;
+    return false;
   }
-  return uvAvailable;
 }
 
 // Exported for testing so we can mock/override it
 export function resetUvAvailable(val?: boolean) {
-  uvAvailable = val;
+  uvOverride = val;
 }
 
 export const pythonAdapter: DepsAdapter = {
