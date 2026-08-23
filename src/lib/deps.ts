@@ -3,9 +3,10 @@ import path from "path";
 import { execa } from "execa";
 import type { GlobalOptions } from "../types.js";
 import { stepProgress, stepSuccess, stepWarning, verbose } from "./log.js";
+import { isWithin, safeResolve } from "./path-safety.js";
 
 export interface DepsState {
-  strategy: "symlinked" | "independent" | "none";
+  strategy: "symlinked" | "independent" | "none" | "broken" | "external" | "installed" | "missing";
   lockfileMatch: boolean;
   packageManager: "yarn" | "npm" | "pnpm" | "bun" | null;
   symlinkTarget?: string;
@@ -64,20 +65,38 @@ export function detectDepsState(wtPath: string, mainPath: string): DepsState {
   const pm = detectPackageManager(wtPath) ?? detectPackageManager(mainPath);
   const match = lockfilesMatch(wtPath, mainPath, pm);
 
-  if (!fs.existsSync(nodeModulesPath)) {
-    return { strategy: "none", lockfileMatch: match, packageManager: pm };
-  }
-
   try {
     const stat = fs.lstatSync(nodeModulesPath);
     if (stat.isSymbolicLink()) {
       const target = fs.readlinkSync(nodeModulesPath);
+      const resolvedTarget = path.resolve(wtPath, target);
+      const resolvedMain = safeResolve(mainPath);
+      
+      let targetExists = false;
+      try {
+        fs.statSync(resolvedTarget);
+        targetExists = true;
+      } catch {
+        targetExists = false;
+      }
+
+      if (!targetExists) {
+        return { strategy: "broken", lockfileMatch: match, packageManager: pm, symlinkTarget: target };
+      }
+
+      if (!isWithin(resolvedMain, resolvedTarget) && resolvedTarget !== path.join(resolvedMain, "node_modules")) {
+        return { strategy: "external", lockfileMatch: match, packageManager: pm, symlinkTarget: target };
+      }
+
       return { strategy: "symlinked", lockfileMatch: match, packageManager: pm, symlinkTarget: target };
     }
   } catch {
+    if (!fs.existsSync(nodeModulesPath)) {
+      return { strategy: "missing", lockfileMatch: match, packageManager: pm };
+    }
   }
 
-  return { strategy: "independent", lockfileMatch: match, packageManager: pm };
+  return { strategy: "installed", lockfileMatch: match, packageManager: pm };
 }
 
 function getInstallCommand(pm: DepsState["packageManager"]): string {
@@ -154,17 +173,35 @@ export async function switchToSymlink(wtPath: string, mainPath: string, opts: Gl
     return;
   }
 
-  if (fs.existsSync(nmPath)) {
+  let existingLink = false;
+  let shouldRemove = false;
+  try {
     const stat = fs.lstatSync(nmPath);
-    if (stat.isSymbolicLink()) {
-      stepSuccess("Already symlinked", fs.readlinkSync(nmPath));
-      return;
+    existingLink = stat.isSymbolicLink();
+    shouldRemove = true;
+  } catch {
+  }
+
+  if (shouldRemove) {
+    if (existingLink) {
+      const state = detectDepsState(wtPath, mainPath);
+      if (state.strategy === "symlinked") {
+        stepSuccess("Already symlinked", fs.readlinkSync(nmPath));
+        return;
+      }
+      stepProgress("Removing bad symlink...");
+    } else {
+      stepProgress("Removing node_modules...");
     }
-    stepProgress("Removing node_modules...");
+    
     if (!opts.dryRun) {
-      fs.rmSync(nmPath, { recursive: true, force: true });
+      if (existingLink) {
+        fs.unlinkSync(nmPath);
+      } else {
+        fs.rmSync(nmPath, { recursive: true, force: true });
+      }
     }
-    stepSuccess("Removed node_modules");
+    stepSuccess(existingLink ? "Removed bad symlink" : "Removed node_modules");
   }
 
   if (!opts.dryRun) {

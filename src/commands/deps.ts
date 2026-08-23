@@ -55,9 +55,15 @@ export function registerDepsCommand(program: Command) {
           await switchToSymlink(wtPath, repo.mainPath, globalOpts);
         } else {
           const state = detectDepsState(wtPath, repo.mainPath);
-          const strategyLabel = state.strategy === "symlinked"
-            ? `symlinked → ${state.symlinkTarget}`
-            : state.strategy;
+          let strategyLabel: string = state.strategy;
+          if (state.strategy === "symlinked") {
+            strategyLabel = `symlinked → ${state.symlinkTarget}`;
+          } else if (state.strategy === "broken") {
+            strategyLabel = `broken symlink → ${state.symlinkTarget} (run 'wtx deps ${branch} --symlink' to repair)`;
+          } else if (state.strategy === "external") {
+            strategyLabel = `external symlink → ${state.symlinkTarget} resolves outside main checkout (run 'wtx deps ${branch} --symlink' to repair)`;
+          }
+          
           const lockLabel = state.lockfileMatch ? "matches main" : "differs from main";
           info(`  node_modules: ${strategyLabel}`);
           info(`  ${state.packageManager ?? "no"} lockfile: ${lockLabel}`);
