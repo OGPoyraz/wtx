@@ -13,13 +13,15 @@ import {
   summaryWarning,
   error,
   verbose,
+  indented,
 } from "../lib/log.js";
-import { gitExec, localBranchExists, validateSafeBranchName } from "../lib/git.js";
+import { gitExec, localBranchExists, validateSafeBranchName, getWorktreeList } from "../lib/git.js";
 import {
   resolveRepos,
   getWorktreePath,
   parseRepoFlag,
 } from "../lib/resolver.js";
+import { resolveBaseRemote } from "../lib/remotes.js";
 import { runPostCreateSetup } from "../lib/worktree-setup.js";
 import { parsePrLink, descriptorFor, detectRepoForge } from "../lib/forge/index.js";
 
@@ -141,7 +143,13 @@ export function registerPullCommand(program: Command) {
             verbose: globalOpts.verbose,
           });
         } catch (err: any) {
-          stepError(`Failed to fetch PR #${ref.number}`, err.message);
+          let msg = err.message || "";
+          if (msg.includes("gh: command not found") || msg.includes("ENOENT")) {
+            msg = "gh cli not found. install gh via brew";
+          } else if (msg.includes("gh auth login") || msg.includes("authentication") || msg.includes("not logged in") || msg.includes("Bad credentials")) {
+            msg = "Not authenticated. run `gh auth login`";
+          }
+          stepError(`Failed to fetch PR #${ref.number}`, msg);
           process.exit(1);
         }
 
@@ -163,10 +171,11 @@ export function registerPullCommand(program: Command) {
         }
 
         const wtPath = getWorktreePath(target, branch);
-        const remoteBranchFound = await localBranchExists(target.mainPath, branch, globalOpts);
-        const dirExists = fs.existsSync(wtPath);
+        const worktrees = await getWorktreeList(target.mainPath);
+        const localBranchFound = await localBranchExists(target.mainPath, branch, globalOpts);
+        const dirExists = worktrees.some((w) => w.path === wtPath || w.branch === branch);
 
-        if (remoteBranchFound || dirExists) {
+        if (localBranchFound || dirExists) {
           stepWarning(
             `Branch '${branch}' already exists`,
             dirExists ? wtPath : "local branch exists"
@@ -175,11 +184,13 @@ export function registerPullCommand(program: Command) {
           return;
         }
 
+        const baseRemote = await resolveBaseRemote(target.mainPath, target.config.main_branch === "auto" ? config.default_main_branch : target.config.main_branch);
+
         const fetch = adapter.buildHeadFetch(head);
         stepProgress(
           fetch.url
             ? `Fetching ${fetch.refspec} from fork...`
-            : `Fetching pull/${head.number}/head from origin...`
+            : `Fetching pull/${head.number}/head from ${baseRemote}...`
         );
 
         try {
@@ -188,7 +199,7 @@ export function registerPullCommand(program: Command) {
               "-C",
               target.mainPath,
               "fetch",
-              ...(fetch.url ? [fetch.url] : ["origin"]),
+              ...(fetch.url ? [fetch.url] : [baseRemote]),
               fetch.refspec,
             ],
             { verbose: globalOpts.verbose, dryRun: globalOpts.dryRun }
@@ -204,14 +215,33 @@ export function registerPullCommand(program: Command) {
           fs.mkdirSync(path.dirname(wtPath), { recursive: true });
         }
 
-        await gitExec(
-          ["-C", target.mainPath, "worktree", "add", "-b", branch, wtPath, "FETCH_HEAD"],
-          { verbose: globalOpts.verbose, dryRun: globalOpts.dryRun }
-        );
+        try {
+          await gitExec(
+            ["-C", target.mainPath, "worktree", "add", "-b", branch, wtPath, "FETCH_HEAD"],
+            { verbose: globalOpts.verbose, dryRun: globalOpts.dryRun }
+          );
+        } catch (err: any) {
+          const msg = err.message || "";
+          if (msg.includes("already exists") || msg.includes("not a working tree")) {
+            stepWarning(`Worktree or branch already exists`, wtPath);
+            summaryWarning(`Nothing pulled — branch '${branch}' already exists`);
+            return;
+          }
+          throw err;
+        }
 
         stepSuccess("Worktree created", wtPath);
 
-        await runPostCreateSetup({ config, repo: target, wtPath, branch, globalOpts });
+        const setupResult = await runPostCreateSetup({ config, repo: target, wtPath, branch, globalOpts });
+        const failedHooks = setupResult.hooks.filter((h) => !h.ok);
+        if (failedHooks.length > 0) {
+          stepError("Pull failed", "One or more post-create hooks failed");
+          for (const failed of failedHooks) {
+            indented(`- ${failed.command}`);
+          }
+          indented(`Re-run via: wtx sync ${branch}`);
+          process.exit(1);
+        }
 
         summary(`Done — pulled #${head.number} "${head.title}" into ${branch}`);
       } catch (err: any) {

@@ -54,6 +54,7 @@ export function registerSyncCommand(program: Command) {
               const dest = path.join(wtPath, file);
               if (fs.existsSync(src)) {
                 if (!opts.dryRun) {
+                  fs.mkdirSync(path.dirname(dest), { recursive: true });
                   fs.copyFileSync(src, dest);
                 }
                 stepSuccess(`Synced ${file}`);
@@ -74,17 +75,37 @@ export function registerSyncCommand(program: Command) {
               postfix: config.postfix,
             };
 
+            const hookResults: { command: string; ok: boolean; exitCode: number | null }[] = [];
+
             for (const hook of hooks) {
               const expandedCmd = expandTemplate(hook, tplVars);
               stepProgress(`Running post-sync: ${expandedCmd.split(" ")[0]}...`);
               
               if (!opts.dryRun) {
                 try {
-                  await execa(expandedCmd, { shell: true, cwd: wtPath });
+                  const result = await execa(expandedCmd, { shell: true, cwd: wtPath, reject: false });
+                  if (result.exitCode === 0) {
+                    stepSuccess(`Command succeeded`, expandedCmd);
+                    hookResults.push({ command: expandedCmd, ok: true, exitCode: 0 });
+                  } else {
+                    stepWarning(`Command failed`, result.stderr || result.message || `exit code ${result.exitCode}`);
+                    hookResults.push({ command: expandedCmd, ok: false, exitCode: result.exitCode ?? null });
+                  }
                 } catch (err: any) {
                   stepWarning(`Command failed`, err.message);
+                  hookResults.push({ command: expandedCmd, ok: false, exitCode: err.exitCode ?? null });
                 }
               }
+            }
+
+            const failedHooks = hookResults.filter(h => !h.ok);
+            if (failedHooks.length > 0) {
+              stepError("Sync failed", "One or more post-sync hooks failed");
+              for (const failed of failedHooks) {
+                indented(`- ${failed.command}`);
+              }
+              indented(`Re-run via: wtx sync ${branch}`);
+              process.exit(1);
             }
           }
 
