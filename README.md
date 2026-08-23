@@ -1,10 +1,35 @@
 # wtx
 
-Multi-repo git worktree manager. Create, remove, and operate on worktrees across multiple repositories with a single command.
+Multi-repo git worktree manager built for parallel development — human or AI.
 
-Configurable per-repo hooks handle sync files and dependency installation automatically. Smart `node_modules` handling symlinks when lockfiles match main and falls back to a full install when they don't.
+Create isolated worktrees across every repo you maintain, with working dependencies, synced env files, deterministic ports, and one-command hand-off to coding agents like Claude Code, Codex, OpenCode, or Cursor.
+
+```
+$ wtx create feat/auth --agent claude
+
+  my-api
+  ◌ Fetching origin/main...
+  ✓ Worktree created           → ~/Repos/my-api-wt/feat/auth
+  ✓ Synced .env
+  ✓ Safely linked 214 packages
+✓ Done — agent spawned in tmux session wtx-my-api-feat-auth
+```
 
 ---
+
+## Why not plain `git worktree`?
+
+`git worktree add` gives you a directory — no dependencies, no `.env`, no port-conflict solution, no cleanup discipline. Every wrapper solves one slice.
+
+| | git worktree | single-repo managers | wtx |
+|---|---|---|---|
+| Multi-repo in one command | – | – | ✓ |
+| Working deps after create | manual | hooks only | adapters + safe links |
+| `.env` sync from main | manual | some | ✓ |
+| Parallel dev-server ports | collide | – | deterministic `{port}` |
+| Safe removal (dirty guards) | none | varies | boundary-checked |
+| Spawn coding agents | – | some | ✓ tmux-aware |
+| MCP server for agents | – | – | ✓ |
 
 ## Installation
 
@@ -14,81 +39,40 @@ npm install -g @ogpoyraz/wtx
 
 ### Shell integration
 
-Add to `~/.zshrc` (or `~/.bashrc`):
+Add to `~/.zshrc`, `~/.bashrc`, or your fish config:
 
 ```bash
-eval "$(wtx init zsh)"
+eval "$(wtx init zsh)"    # or bash, or fish
 ```
 
-This enables `wtx cd` to change directories in your current shell session.
+This enables `wtx cd <repo> <branch>` to change directories in your current shell.
 
-### First-time config
+### First run
 
-```bash
-wtx config init
-```
-
-Creates `~/.config/wtx/config.json` interactively.
+Run any command without a config and `wtx` walks you through setup: it scans common dev directories for git repos, lets you pick which ones to manage, and writes `~/.config/wtx/config.json`. Prefer manual? `wtx config init` starts the same wizard; non-interactive shells print exact steps instead.
 
 ---
 
 ## Quick Start
 
-Configure a repo:
-
 ```bash
-wtx config add-repo my-frontend \
-  --sync-files ".env,.env.local" \
-  --post-create "yarn install"
-```
-
-Create a worktree:
-
-```bash
+# create a worktree (deps + sync_files handled automatically)
 wtx create ogp/my-feature --repo my-frontend
-```
 
-If origin already has a branch with that name owned by someone else, `wtx` warns and creates your own branch from base instead of tracking theirs. Use `--track` to adopt theirs.
+# hand it to a coding agent
+wtx create ogp/my-feature --repo my-frontend --agent claude --prompt "add OAuth login"
 
-List worktrees:
+# list everything across all repos
+wtx ls
 
-```bash
-$ wtx ls
+# rebase onto main when origin moves
+wtx rebase ogp/my-feature
 
-  my-frontend
-  main              a1b2c3d  [main checkout]
-  ogp/my-feature    e4f5g6h  clean
-  alice/fix-token   f7g8h9i  clean  @alice
-```
-
-Check status:
-
-```bash
-$ wtx status ogp/my-feature
-
-  my-frontend
-  Branch:    ogp/my-feature
-  Status:    clean
-  vs main:   3 ahead, 0 behind
-  Deps:      symlinked
-```
-
-Rebase against main:
-
-```bash
-$ wtx rebase ogp/my-feature
-
-  my-frontend
-  ◌ Fetching origin/main...           → a1b2c3d "fix: resolve token issue"
-  ◌ Rebasing ogp/my-feature onto main...
-  ✓ Rebased                           → 3 commits replayed
-```
-
-Remove when done:
-
-```bash
+# remove when merged — refuses dirty worktrees unless forced
 wtx remove ogp/my-feature
 ```
+
+If origin already has a branch with that name owned by someone else, `wtx` warns and creates your own branch from base instead of tracking theirs. Use `--track` to adopt theirs, or `--local` when local and remote diverged.
 
 ---
 
@@ -96,32 +80,29 @@ wtx remove ogp/my-feature
 
 | Command | Args | Flags | Description |
 |---|---|---|---|
-| `create` | `<branch>` | `--repo`, `--base`, `--open`, `--ide`, `--track` | Create worktree(s), run post-create hooks; collision-guarded tracking, optionally open in IDE |
+| `create` | `<branch>` | `--repo`, `--base`, `--open`, `--ide`, `--track`, `--local`, `--agent <name>`, `--prompt <text>` | Create worktree(s), sync files, prepare deps, optionally spawn an agent |
 | `pull` | `<pr-link>` | `--repo` | Fetch a GitHub PR and create its worktree |
-| `remove` | `<branch>` | `--repo`, `--force` | Remove worktree(s), clean empty dirs |
-| `prune` | | `--repo`, `--force` | Remove worktrees whose PR has merged; skips dirty/locked without `--force` |
+| `remove` | `<branch>` | `--repo`, `--force`, `--yes` | Remove worktree(s), clean empty dirs |
+| `prune` | | `--repo`, `--force`, `--yes` | Remove worktrees whose PR has merged |
 | `open` | `<branch>` | `--repo`, `--ide` | Open worktree in IDE |
-| `rebase` | `<branch>` | `--repo` | Fetch origin main, rebase worktree onto it |
-| `fetch` | | `--repo` | Fetch origin main for each repo |
+| `rebase` | `<branch>` | `--repo` | Fetch base remote main, rebase worktree onto it |
+| `fetch` | | `--repo` | Fetch main for each repo |
 | `sync` | `<branch>` | `--repo` | Re-copy sync files, run post-sync hooks |
-| `deps` | `[branch]` | `--repo`, `--install`, `--symlink` | Inspect or switch node_modules strategy |
-| `ls` | | `--repo`, `--pr` | List all worktrees with clean/dirty state |
-| `status` | `<branch>` | `--repo` | Ahead/behind count, dirty files, rebase state |
-| `prs` | | `--repo`, `--json`, `--all` | Show pull request status across worktrees |
+| `deps` | `[branch]` | `--repo`, `--install`, `--symlink`, `--json` | Inspect or switch dependency strategy |
+| `ls` | | `--repo`, `--pr`, `--json` | List all worktrees with clean/dirty state |
+| `status` | `<branch>` | `--repo`, `--json` | Ahead/behind, dirty files, rebase state, deps strategy |
+| `prs` | | `--repo`, `--json`, `--all` | Pull request status across worktrees |
+| `exec` | `<branch> <command...>` | `--repo` | Run a command inside a worktree (`WTX_PORT` injected) |
 | `terminal` | | | Interactive worktree dashboard (requires Bun) |
+| `mcp` | | | Run MCP server exposing worktree tools over stdio |
 | `cd` | `<repo> <branch>` | | cd into worktree (requires shell integration) |
-| `config init` | | | Create default config interactively |
-| `config show` | | | Print current config |
-| `config set` | `<key> <value>` | | Set a top-level config value |
-| `config add-repo` | `<name>` | `--sync-files`, `--post-create`, `--post-sync` | Add or update a repo |
-| `config remove-repo` | `<name>` | | Remove a repo from config |
-| `skill show` | `<platform>` | | Print skill file to stdout |
-| `skill list` | | | List available platforms |
-| `init` | `<bash\|zsh>` | | Output shell wrapper for eval |
+| `config init/show/set/add-repo/remove-repo` | | | Manage `~/.config/wtx/config.json` |
+| `skill list/show/path` | | | Agent skill files for opencode/cursor/claude |
+| `init` | `<bash\|zsh\|fish>` | | Output shell wrapper for eval |
 
-**Global flags:** `--verbose`, `--dry-run`, `-v` / `--version`, `-h` / `--help`
+**Global flags:** `--verbose`, `--dry-run`, `-q/--quiet`, `-v/--version`, `-h/--help`.
 
-`--repo` accepts comma-separated values (`--repo a,b`) or can be repeated (`--repo a --repo b`). Omit it to target all configured repos, or run from inside a repo directory to auto-scope.
+`--repo` accepts comma-separated values or repeats. Omit it to target all configured repos, or run inside a managed repo to auto-scope. Destructive commands (`remove`, `prune`) ask for confirmation on interactive terminals; scripts pass `--yes` or set `WTX_YES=1`.
 
 ---
 
@@ -136,18 +117,27 @@ Config lives at `~/.config/wtx/config.json`.
   "postfix": "-wt",
   "ide": "cursor",
   "default_main_branch": "main",
+  "user": "ogp",
+  "ports": { "min": 4100, "max": 4999 },
+  "agents": {
+    "claude": { "command": "claude" },
+    "reviewer": { "command": "opencode --model ollama/qwen3" }
+  },
   "repos": {
     "my-frontend": {
       "main_branch": "auto",
       "sync_files": [".env", ".env.local"],
       "post_create": ["wtx deps"],
-      "post_sync": ["wtx deps"]
+      "post_sync": ["wtx deps"],
+      "deps": { "manager": "auto", "strategy": "auto" }
     },
-    "my-backend": {
+    "my-api": {
       "main_branch": "auto",
       "sync_files": [".env"],
-      "post_create": ["wtx deps"],
-      "post_sync": ["wtx deps"]
+      "post_create": ["wtx deps", "docker compose up -d db"]
+    },
+    "my-go-service": {
+      "main_branch": "main"
     }
   }
 }
@@ -157,131 +147,144 @@ Config lives at `~/.config/wtx/config.json`.
 
 | Field | Default | Description |
 |---|---|---|
-| `root` | required | Base directory where repos live. `~` expanded at read time. |
-| `postfix` | `"-wt"` | Suffix for the worktree directory (`<repo><postfix>/`) |
+| `root` | required | Base directory where repos live. `~` expanded. |
+| `postfix` | `"-wt"` | Worktree directory suffix (`<repo><postfix>/<branch>`) |
 | `ide` | `"cursor"` | Default IDE for `wtx open` |
 | `default_main_branch` | `"main"` | Fallback when auto-detection fails |
-| `user` | `null` | Your forge handle (e.g. GitHub username); enables ownership detection in create/ls/prs/status |
-| `repos.<name>.main_branch` | `"auto"` | Auto-detects via `git symbolic-ref`, or set explicitly |
-| `repos.<name>.fetch_main_on_create` | `true` | Fetches `origin <main_branch>` before creating a worktree, so new branches start from the latest main |
+| `user` | `null` | Your forge handle; enables ownership detection |
+| `ports.min` / `ports.max` | `4100` / `4999` | Range used by `{port}` isolation |
+| `agents.<name>.command` | – | Shell command template for `--agent`; `{wt}`, `{branch}`, `{repo}` expanded |
+| `repos.<name>.main_branch` | `"auto"` | Auto-detects via `git symbolic-ref` |
+| `repos.<name>.fetch_main_on_create` | `true` | Fetch before creating so branches start fresh |
 | `repos.<name>.sync_files` | `[]` | Files copied from main checkout on create and sync |
-| `repos.<name>.post_create` | `[]` | Commands run after worktree creation |
-| `repos.<name>.post_sync` | `[]` | Commands run after sync (falls back to `post_create`) |
-| `repos.<name>.pr` | `true` | Set `false` to skip pull request lookups for this repo |
-| `repos.<name>.forge` | `"auto"` | Forge adapter: `auto` (detects github.com) or `github` to force |
-| `repos.<name>.pr_repo` | `null` | Override base repo for PR lookups, e.g. `"org/upstream"` (fork workflows) |
+| `repos.<name>.post_create` / `post_sync` | `[]` | Hook commands; failures fail the command with a rerun hint |
+| `repos.<name>.deps.manager` | `"auto"` | Force a manager: `npm` `bun` `pnpm` `yarn` `go` `python` `cargo` |
+| `repos.<name>.deps.strategy` | `"auto"` | `auto` `link` `symlink` `install` `off` — see below |
+| `repos.<name>.pr` | `true` | Skip PR lookups for this repo |
+| `repos.<name>.forge` / `pr_repo` | `"auto"` / `null` | GitHub Enterprise and fork workflows |
 
 ### Template variables
 
-Available in `post_create` and `post_sync` commands:
+In `post_create`, `post_sync`, and agent commands:
 
 | Variable | Expands to |
 |---|---|
-| `{root}` | Config `root` value |
-| `{repo}` | Repo name |
-| `{branch}` | Worktree branch name |
-| `{main}` | Absolute path to main checkout |
-| `{wt}` | Absolute path to the worktree |
-| `{postfix}` | Config `postfix` value |
+| `{root}` `{repo}` `{branch}` `{postfix}` | identity fields |
+| `{main}` / `{wt}` | absolute main checkout / worktree paths |
+| `{port}` | deterministic collision-free port for this worktree |
+
+Hooks also receive `WTX_PORT` as an environment variable, as does `wtx exec`. Ports hash `repo+branch` into the configured range and probe collisions against every active worktree — two branches can run dev servers simultaneously without conflict, and the same branch always gets the same port.
 
 ---
 
-## Smart Dependencies
+## Dependency syncing
 
-`wtx deps` manages `node_modules` per worktree. Auto-detect mode (used in `post_create`) compares lockfiles — symlinks when they match main, runs install when they differ.
+`wtx deps` keeps worktree dependencies working without duplicating installs. Each ecosystem gets its own adapter; detection is lockfile-based and overridable per repo via `deps.manager`.
+
+**Supported today:** npm, bun, pnpm, yarn (Node) · Go (`go mod download`) · Python (`uv sync`; venvs are never symlinked — shebang paths make that unsafe) · Cargo (build cache shared through worktree-local `.cargo/config.toml` pointing at main's `target/`).
+
+### Strategies
+
+| `deps.strategy` | Behavior |
+|---|---|
+| `auto` | Definitions match main → safe link; differ → install; only some workspaces changed → targeted install |
+| `link` | Force safe linking |
+| `symlink` | Legacy whole-directory symlink (⚠ installs inside the worktree mutate main's `node_modules`) |
+| `install` | Always a real install in the worktree |
+| `off` | Leave dependencies alone |
+
+### Safe linking (the `auto` default)
+
+When manifests match main, wtx creates a **real** `node_modules` directory in the worktree containing per-package symlinks into main's tree (scoped packages traversed, `.bin` linked). Package-manager operations inside the worktree replace links, never main's files — an `npm install` in one branch cannot damage another checkout. If replacing an existing directory fails mid-way, the original is restored rather than left missing.
+
+Monorepos: `workspaces` globs (including `**`) and `pnpm-workspace.yaml` are parsed; when only some workspaces changed, installs target just those (`-w` / `--filter`). Yarn falls back to a full install.
+
+Inspect any worktree with `wtx deps <branch>`, or add `--json` for machine output. States include `symlinked`, `linked-packages`, `installed`, `broken`, `external`, and `shared-target` — broken and external states come with repair instructions.
+
+---
+
+## AI agents
+
+### Spawn an agent into a fresh worktree
 
 ```bash
-wtx deps ogp/my-feature                              # inspect
-wtx deps ogp/my-feature --repo my-frontend --install  # force install
-wtx deps ogp/my-feature --repo my-frontend --symlink   # force symlink
+wtx create feat/auth --repo my-api --agent claude --prompt "implement OAuth login"
+```
+
+The full pipeline runs first — create, sync files, prepare dependencies — then the agent launches inside the worktree. With tmux installed it runs in a detached named session (attach hint printed); otherwise directly. If post-create hooks fail, the agent is not spawned: fix with `wtx sync` instead of burning agent tokens on a broken tree. Define custom agents under `agents.<name>` in config.
+
+### MCP server
+
+Expose worktrees to MCP-capable clients (Claude Code, OpenCode, Cursor):
+
+```json
+{
+  "mcpServers": {
+    "wtx": { "command": "wtx", "args": ["mcp"] }
+  }
+}
+```
+
+Tools: `list_worktrees`, `worktree_status`, `create_worktree`, `remove_worktree`, `rebase_worktree`. All operations are scoped to configured repos; `remove_worktree` requires `confirm: true`, plus `force: true` for dirty worktrees.
+
+### Skill files
+
+```bash
+wtx skill show opencode > ~/.config/opencode/commands/wtx.md
+wtx skill show cursor   > .cursor/rules/wtx.mdc
+wtx skill show claude  >> CLAUDE.md
 ```
 
 ---
 
-## Pull Request Status
+## Pull request workflow
 
-Read-only PR visibility for your worktrees. Requires the [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated — `wtx` stores no tokens and delegates all auth to `gh`.
+Read-only PR visibility and lifecycle automation via the [GitHub CLI](https://cli.github.com/) — `wtx` stores no tokens.
 
 ```bash
 $ wtx prs
 
   my-frontend
   #42  ogp/my-feature  CONFLICTED · awaiting review  checks 3/3 ✓  2d ago
-  #43  ogp/fix-token   IN_REVIEW                     checks 2/3 ✓ · 1 thread  5h ago  @alice
+  #43  ogp/fix-token   IN_REVIEW                     checks 2/3 ✓  5h ago  @alice
 
-  my-backend
-  #17  ogp/api-retry   APPROVED                      checks 5/5 ✓  1h ago
-
-  ⚠ 3 open PRs across 2 repos — 1 needs attention
+  ⚠ 2 open PRs across 1 repo — 1 needs attention
 ```
 
-Every PR gets one display state, ranked by attention priority: `MERGED`, `CLOSED`, `DRAFT`, `CONFLICTED`, `CI_FAILING`, `CHANGES_REQUESTED`, `CI_RUNNING`, `IN_REVIEW`, `APPROVED`, `AWAITING_REVIEW`. Open PRs without a review verdict yet also show a dim `awaiting review` tag.
-
-Owners are shown as a dim `@handle` in `wtx ls` and `wtx prs`. The summary reflects mixed ownership with a breakdown like `1 yours, 1 from @alice`. Ownership detection treats a worktree with local modifications (uncommitted or staged files) as yours first, then checks local-only branches, then PR author handle against `user`, then falls back to the remote tip commit author email vs `git config user.email`.
-
-- `--json` — machine-readable output with an `author` field
-- `--all` — include drafts and closed/merged PRs; without it only open PRs are listed. Merged and closed PRs also surface as `MERGED`/`CLOSED` tags in `wtx ls --pr` and `wtx status` so stale worktrees are recognizable
-- `wtx ls --pr` — adds a PR column to the worktree listing
-- `wtx status <branch>` — shows the PR section (state, checks, unresolved threads, URL, owner line for foreign branches)
-- `wtx prune [--force]` — removes worktrees whose PR has merged. Dirty worktrees are skipped without `--force`, locked worktrees too. If a repo's forge lookup fails, nothing is removed there
+Every PR gets one ranked display state (`CONFLICTED`, `CI_FAILING`, `CHANGES_REQUESTED`, ...). Merged and closed PRs surface in `wtx ls --pr` and `wtx status`, so stale worktrees are recognizable at a glance.
 
 ```bash
-$ wtx prune
-
-  wtx
-  ⚠ Skipped — 1 uncommitted file  → fix/add-pull-mechanism (#14); use --force
-  ✓ Worktree removed              → release/0.4.0 (#15)
-
-✓ Done — 1 removed, 1 skipped
+wtx pull https://github.com/OGPoyraz/wtx/pull/11   # PR → worktree in one command
+wtx prune                                          # remove worktrees whose PR merged
 ```
 
-Lookups never break commands: if `gh` is missing, unauthenticated, or times out, you get a per-repo warning and everything else keeps working. Private repos work out of the box through your existing `gh auth login`; GitHub Enterprise and fork workflows are covered by the `forge` / `pr_repo` config keys above.
+Lookups degrade gracefully: if `gh` is missing or unauthenticated you get a warning and everything else keeps working. Fork workflows are covered by `forge` / `pr_repo`.
 
-## Pull a Pull Request
+---
 
-Pull a GitHub PR into a worktree with one command instead of running `gh pr view`, `git fetch`, and `wtx create` separately. It auto-detects the owning repo from the PR link, uses `gh` for fetching, and requires the GitHub CLI (`gh`) to be installed and authenticated.
+## Terminal dashboard
 
-```bash
-$ wtx pull https://github.com/OGPoyraz/wtx/pull/11
-
-  wtx
-  ◌ Looking up PR #11 in ogpoyraz/wtx...
-  ✓ PR #11: feat: add pull command          open
-  ◌ Fetching pull/11/head from origin...
-  ✓ Fetched
-  ✓ Worktree created                        → ~/Repos/wtx-wt/pr-add-pull-command
-  ...
-✓ Done — pulled #11 "feat: add pull command" into pr-add-pull-command
-```
-
-Merged or closed PRs warn and continue. If the branch or worktree already exists, wtx skips it with a warning. Fork PRs are supported without adding persistent remotes.
-
-## Terminal Dashboard
-
-`wtx terminal` opens a full-screen dashboard for browsing and acting on worktrees across all configured repos. Requires the [Bun](https://bun.sh) runtime and an interactive terminal — under Node or without a TTY it exits with guidance instead.
-
-Each worktree is listed as a two-line entry: branch with a status badge (clean, dirty count, locked, missing, rebasing) plus commit hash, divergence vs main (`↑n ↓n`), PR number/state/checks, and owner tags. A detail pane shows dirty file names, PR threads, rebase state, and deps strategy for the selection.
+`wtx terminal` opens a full-screen dashboard across all configured repos (requires the [Bun](https://bun.sh) runtime).
 
 | Key | Action |
 |---|---|
-| `r` | Refresh (manual-first; never polls) |
-| `j` / `k` | Move selection |
+| `/` | Fuzzy-filter entries by branch, repo, PR, owner |
+| `Space` | Multi-select for batch operations |
+| `R` / `D` / `s` | Batch rebase / remove / sync selection |
 | `n` | Create worktree |
-| `b` / `d` / `s` | Rebase / remove / sync selected (with confirmation) |
-| `o` | Open selected in IDE |
-| `c` | Edit configuration in place |
+| `b` | Rebase selected |
+| `a` | Spawn coding agent in selected worktree |
+| `o` | Open in IDE |
+| `c` | Edit configuration |
 | `?` / `q` | Help / quit |
 
-Actions run as child processes with their output streamed into the dashboard — no terminal switching. Destructive actions ask for confirmation first; failures keep the log open until dismissed.
+Actions stream their output into the dashboard; destructive ones confirm first.
 
-## AI Agent Skills
+---
 
-```bash
-wtx skill list                                         # list platforms
-wtx skill show opencode > ~/.config/opencode/commands/wtx.md
-wtx skill show cursor > .cursor/rules/wtx.mdc
-wtx skill show claude >> CLAUDE.md
-```
+## Scripting
+
+Machine-readable output where it matters: `wtx ls --json`, `wtx status <branch> --json`, `wtx deps <branch> --json`, `wtx prs --json`. Combine with `-q` to suppress progress lines, and preview anything destructive with `--dry-run` — including planned deletions and hook commands.
 
 ---
 
