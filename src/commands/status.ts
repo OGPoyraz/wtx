@@ -20,12 +20,59 @@ import { detectDepsState } from "../lib/deps.js";
 import { resolveForge } from "../lib/forge/index.js";
 import { derivePrDisplay, type PrInfo } from "../lib/forge/types.js";
 import { renderChecksSummary, renderDisplayState } from "../lib/forge/render.js";
-import { resolveOwnership } from "../lib/owner.js";
+import { resolveOwnership, type Ownership } from "../lib/owner.js";
 import { resolveBaseRemote } from "../lib/remotes.js";
 import chalk from "chalk";
 
 interface StatusOptions {
   repo?: string[];
+  json?: boolean;
+}
+
+export interface StatusJsonInput {
+  repo: string;
+  branch: string;
+  dirtyFiles: string[];
+  ahead: number | null;
+  behind: number | null;
+  prInfo?: PrInfo;
+  ownership?: Ownership | null;
+  deps: ReturnType<typeof detectDepsState>;
+  rebase: string | null;
+}
+
+export function buildStatusJson(item: StatusJsonInput) {
+  const entry: Record<string, unknown> = {
+    repo: item.repo,
+    branch: item.branch,
+    clean: item.dirtyFiles.length === 0,
+  };
+  if (item.dirtyFiles.length > 0) {
+    entry.dirtyFiles = item.dirtyFiles;
+  }
+
+  if (item.ahead !== null) entry.ahead = item.ahead;
+  if (item.behind !== null) entry.behind = item.behind;
+
+  entry.deps = item.deps;
+
+  if (item.prInfo) {
+    entry.pr = {
+      number: item.prInfo.number,
+      state: item.prInfo.state,
+      url: item.prInfo.url,
+    };
+  }
+
+  if (item.ownership && !item.ownership.mine && item.ownership.author) {
+    entry.owner = item.ownership.author;
+  }
+
+  if (item.rebase) {
+    entry.rebase = item.rebase;
+  }
+
+  return entry;
 }
 
 export function registerStatusCommand(program: Command) {
@@ -33,12 +80,15 @@ export function registerStatusCommand(program: Command) {
     .command("status <branch>")
     .description("Show worktree status across repos")
     .option("-r, --repo <repos...>", "Target specific repo(s)")
+    .option("--json", "Output machine-readable JSON")
     .action(async (branch: string, options: StatusOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
       const repoFilter = parseRepoFlag(options.repo);
       const repos = resolveRepos(config, repoFilter);
       let found = 0;
+      
+      const jsonOutputs: Record<string, unknown>[] = [];
 
       for (const repo of repos) {
         const wtPath = getWorktreePath(repo, branch);
@@ -47,20 +97,11 @@ export function registerStatusCommand(program: Command) {
         }
 
         found++;
-        repoHeader(repo.name);
-
-        info(`  Branch:    ${branch}`);
-
         const dirtyFiles = await getDirtyFiles(wtPath);
-        if (dirtyFiles.length === 0) {
-          info(`  Status:    clean`);
-        } else {
-          info(`  Status:    dirty (${dirtyFiles.length} file${dirtyFiles.length > 1 ? "s" : ""})`);
-          for (const f of dirtyFiles) {
-            indented(`         ${f}`);
-          }
-        }
-
+        
+        let ahead: number | null = null;
+        let behind: number | null = null;
+        
         try {
           const mainBranch = await resolveMainBranch(repo, config);
           const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
@@ -69,11 +110,10 @@ export function registerStatusCommand(program: Command) {
             { verbose: globalOpts.verbose }
           );
           const parts = countOutput.trim().split(/\s+/);
-          const behind = parts[0] ?? "0";
-          const ahead = parts[1] ?? "0";
-          info(`  vs main:   ${ahead} ahead, ${behind} behind`);
+          behind = parts[0] ? parseInt(parts[0], 10) : null;
+          ahead = parts[1] ? parseInt(parts[1], 10) : null;
         } catch {
-          info(`  vs main:   unknown`);
+          // Keep as null
         }
 
         let prInfo: PrInfo | undefined;
@@ -87,7 +127,7 @@ export function registerStatusCommand(program: Command) {
           prInfo = prMap?.get(branch);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          stepWarning(`PR lookup failed`, message);
+          if (!options.json) stepWarning(`PR lookup failed`, message);
         }
 
         const ownership = await resolveOwnership({
@@ -98,6 +138,42 @@ export function registerStatusCommand(program: Command) {
           prAuthorLogin: prInfo?.authorLogin ?? null,
           verbose: globalOpts.verbose,
         });
+
+        const rebaseStatus = detectInProgressRebase(wtPath);
+        const depsState = detectDepsState(wtPath, repo.mainPath);
+        
+        if (options.json) {
+          jsonOutputs.push(buildStatusJson({
+            repo: repo.name,
+            branch,
+            dirtyFiles,
+            ahead,
+            behind,
+            prInfo,
+            ownership,
+            deps: depsState,
+            rebase: rebaseStatus,
+          }));
+          continue;
+        }
+
+        repoHeader(repo.name);
+        info(`  Branch:    ${branch}`);
+
+        if (dirtyFiles.length === 0) {
+          info(`  Status:    clean`);
+        } else {
+          info(`  Status:    dirty (${dirtyFiles.length} file${dirtyFiles.length > 1 ? "s" : ""})`);
+          for (const f of dirtyFiles) {
+            indented(`         ${f}`);
+          }
+        }
+
+        if (ahead !== null && behind !== null) {
+          info(`  vs main:   ${ahead} ahead, ${behind} behind`);
+        } else {
+          info(`  vs main:   unknown`);
+        }
 
         if (prInfo) {
           const display = derivePrDisplay(prInfo);
@@ -122,13 +198,20 @@ export function registerStatusCommand(program: Command) {
           info(`  Owner:     ${chalk.dim(ownership.author)}`);
         }
 
-        const rebaseStatus = detectInProgressRebase(wtPath);
         if (rebaseStatus) {
           info(`  Rebase:    ${rebaseStatus}`);
         }
 
-        const depsState = detectDepsState(wtPath, repo.mainPath);
         info(`  Deps:      ${depsState.strategy}`);
+      }
+
+      if (options.json) {
+        if (jsonOutputs.length === 1) {
+          console.log(JSON.stringify(jsonOutputs[0], null, 2));
+        } else {
+          console.log(JSON.stringify(jsonOutputs, null, 2));
+        }
+        return;
       }
 
       if (found === 0) {

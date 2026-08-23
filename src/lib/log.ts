@@ -2,11 +2,18 @@ import chalk from "chalk";
 
 const c = chalk;
 
+let quietMode = false;
+
+export function setQuiet(q: boolean): void {
+  quietMode = q;
+}
+
 export function repoHeader(name: string): void {
   console.log(`\n  ${c.bold(c.dim(name))}`);
 }
 
 export function stepProgress(message: string, detail?: string): void {
+  if (quietMode) return;
   const right = detail ? `  → ${detail}` : "";
   console.log(`  ${c.cyan("◌")} ${message}${c.dim(right)}`);
 }
