@@ -19,6 +19,7 @@ import {
   parseRepoFlag,
 } from "../lib/resolver.js";
 import { expandTemplate, type TemplateVars } from "../lib/template.js";
+import { getWorktreePort } from "../lib/ports.js";
 
 interface SyncOptions {
   repo?: string[];
@@ -66,6 +67,9 @@ export function registerSyncCommand(program: Command) {
           let hasWarn = false;
 
           if (hooks.length > 0) {
+            const port = await getWorktreePort(repo.name, branch, config);
+            const env = { ...process.env, WTX_PORT: String(port) };
+
             const tplVars: TemplateVars = {
               root: config.root,
               repo: repo.name,
@@ -73,6 +77,7 @@ export function registerSyncCommand(program: Command) {
               main: repo.mainPath,
               wt: wtPath,
               postfix: config.postfix,
+              port,
             };
 
             const hookResults: { command: string; ok: boolean; exitCode: number | null }[] = [];
@@ -83,7 +88,7 @@ export function registerSyncCommand(program: Command) {
               
               if (!opts.dryRun) {
                 try {
-                  const result = await execa(expandedCmd, { shell: true, cwd: wtPath, reject: false });
+                  const result = await execa(expandedCmd, { shell: true, cwd: wtPath, env, reject: false });
                   if (result.exitCode === 0) {
                     stepSuccess(`Command succeeded`, expandedCmd);
                     hookResults.push({ command: expandedCmd, ok: true, exitCode: 0 });

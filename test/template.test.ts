@@ -34,4 +34,17 @@ describe("template", () => {
     const expanded = expandTemplate(template, vars);
     expect(expanded).toBe("path is /home/user/repos/my-repo only");
   });
+
+  it("expands {port} when defined", () => {
+    const varsWithPort = { ...vars, port: 4200 };
+    const template = "start server on {port}";
+    const expanded = expandTemplate(template, varsWithPort);
+    expect(expanded).toBe("start server on 4200");
+  });
+
+  it("leaves {port} untouched when undefined", () => {
+    const template = "start server on {port}";
+    const expanded = expandTemplate(template, vars);
+    expect(expanded).toBe("start server on {port}");
+  });
 });

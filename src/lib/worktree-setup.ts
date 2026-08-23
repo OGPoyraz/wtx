@@ -4,6 +4,7 @@ import { execa } from "execa";
 import type { Config, GlobalOptions, RepoContext } from "../types.js";
 import { stepProgress, stepSuccess, stepWarning } from "./log.js";
 import { expandTemplate, type TemplateVars } from "./template.js";
+import { getWorktreePort } from "./ports.js";
 
 export interface HookResult { command: string; ok: boolean; exitCode: number | null }
 
@@ -39,6 +40,9 @@ export async function runPostCreateSetup(params: {
   }
 
   if (repo.config.post_create && repo.config.post_create.length > 0) {
+    const port = await getWorktreePort(repo.name, branch, config);
+    const env = { ...process.env, WTX_PORT: String(port) };
+
     const tplVars: TemplateVars = {
       root: config.root,
       repo: repo.name,
@@ -46,6 +50,7 @@ export async function runPostCreateSetup(params: {
       main: repo.mainPath,
       wt: wtPath,
       postfix: config.postfix,
+      port,
     };
 
     for (const cmd of repo.config.post_create) {
@@ -54,7 +59,7 @@ export async function runPostCreateSetup(params: {
 
       if (!globalOpts.dryRun) {
         try {
-          const result = await execa(expandedCmd, { shell: true, cwd: wtPath, reject: false });
+          const result = await execa(expandedCmd, { shell: true, cwd: wtPath, env, reject: false });
           if (result.exitCode === 0) {
             stepSuccess(`Command succeeded`, expandedCmd);
             hooks.push({ command: expandedCmd, ok: true, exitCode: 0 });
