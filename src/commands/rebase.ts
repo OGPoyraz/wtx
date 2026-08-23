@@ -11,6 +11,7 @@ import {
   indented,
 } from "../lib/log.js";
 import { gitExec, getLatestCommit } from "../lib/git.js";
+import { resolveBaseRemote } from "../lib/remotes.js";
 import {
   resolveRepos,
   resolveMainBranch,
@@ -48,17 +49,18 @@ export function registerRebaseCommand(program: Command) {
         }
 
         try {
-          await gitExec(["-C", repo.mainPath, "fetch", "origin", mainBranch], opts);
-          const commit = await getLatestCommit(repo.mainPath, `origin/${mainBranch}`);
-          stepProgress(`Fetching origin/${mainBranch}...`, `${commit.hash} "${commit.subject}"`);
+          const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
+          await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, mainBranch], opts);
+          const commit = await getLatestCommit(repo.mainPath, `${resolvedRemote}/${mainBranch}`);
+          stepProgress(`Fetching ${resolvedRemote}/${mainBranch}...`, `${commit.hash} "${commit.subject}"`);
           
           stepProgress(`Rebasing ${branch} onto main...`);
-          const rebaseOut = await gitExec(["-C", wtPath, "rebase", `origin/${mainBranch}`], opts);
+          const rebaseOut = await gitExec(["-C", wtPath, "rebase", `${resolvedRemote}/${mainBranch}`], opts);
           
-          if (rebaseOut.includes("is up to date")) {
+          if (rebaseOut.includes("is up to date") || rebaseOut.includes("up-to-date")) {
             stepSuccess("Up to date", "0 commits replayed");
           } else {
-            const count = await gitExec(["-C", wtPath, "rev-list", "--count", `origin/${mainBranch}..HEAD`], opts).then(s => s.trim());
+            const count = await gitExec(["-C", wtPath, "rev-list", "--count", `${resolvedRemote}/${mainBranch}..HEAD`], opts).then(s => s.trim());
             stepSuccess("Rebased", `${count} commits replayed`);
           }
           successCount++;

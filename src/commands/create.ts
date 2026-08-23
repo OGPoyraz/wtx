@@ -13,7 +13,9 @@ import {
   summaryWarning,
   verbose,
 } from "../lib/log.js";
-import { gitExec, branchExistsOnRemote, getLatestCommit } from "../lib/git.js";
+import { gitExec, getLatestCommit, getLocalBranchSha, getRemoteBranchSha, getWorktreeList } from "../lib/git.js";
+import { resolveBaseRemote } from "../lib/remotes.js";
+import { resolveBranchTarget } from "../lib/branch-resolution.js";
 import {
   resolveRepos,
   resolveMainBranch,
@@ -31,6 +33,7 @@ interface CreateOptions {
   open?: boolean;
   ide?: string;
   track?: boolean;
+  local?: boolean;
 }
 
 async function fetchPrAuthorLogin(
@@ -62,6 +65,7 @@ export function registerCreateCommand(program: Command) {
     .option("-o, --open", "Open worktree(s) in IDE after creation")
     .option("--ide <editor>", "IDE to open with (used with --open)")
     .option("--track", "Track existing remote branch even if owned by someone else")
+    .option("--local", "Use local branch even if diverged from remote")
     .action(async (branch: string, options: CreateOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
@@ -87,6 +91,7 @@ export function registerCreateCommand(program: Command) {
       const repos = resolveRepos(config, repoFilter);
       let successCount = 0;
       let skipCount = 0;
+      let hookFailures = false;
 
       for (const repo of repos) {
         repoHeader(repo.name);
@@ -94,7 +99,8 @@ export function registerCreateCommand(program: Command) {
         try {
           const wtPath = getWorktreePath(repo, branch);
           
-          if (fs.existsSync(wtPath)) {
+          const wts = await getWorktreeList(repo.mainPath);
+          if (wts.some(wt => wt.path === wtPath)) {
             stepWarning("Worktree already exists", `${wtPath} (skipped)`);
             skipCount++;
             openWorktree(wtPath);
@@ -106,21 +112,28 @@ export function registerCreateCommand(program: Command) {
           }
 
           const mainBranch = await resolveMainBranch(repo, config);
+          const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
 
           if (repo.config.fetch_main_on_create) {
-            stepProgress(`Fetching origin/${mainBranch}...`);
-            await gitExec(["-C", repo.mainPath, "fetch", "origin", mainBranch], globalOpts);
-            const commit = await getLatestCommit(repo.mainPath, `origin/${mainBranch}`);
-            stepSuccess(`Fetched origin/${mainBranch}`, `${commit.hash} "${commit.subject}"`);
+            stepProgress(`Fetching ${resolvedRemote}/${mainBranch}...`);
+            await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, mainBranch], globalOpts);
+            const commit = await getLatestCommit(repo.mainPath, `${resolvedRemote}/${mainBranch}`);
+            stepSuccess(`Fetched ${resolvedRemote}/${mainBranch}`, `${commit.hash} "${commit.subject}"`);
           }
 
-          stepProgress("Checking remote branch...");
-          const baseRef = options.base || `origin/${mainBranch}`;
+          stepProgress("Checking branch status...");
+          const baseRef = options.base || `${resolvedRemote}/${mainBranch}`;
           
-          const remoteExists = await branchExistsOnRemote(repo.mainPath, branch, globalOpts);
+          const localSha = await getLocalBranchSha(repo.mainPath, branch, globalOpts);
+          const remoteSha = await getRemoteBranchSha(repo.mainPath, resolvedRemote, branch, globalOpts);
+
+          const localExists = localSha !== null;
+          const remoteExists = remoteSha !== null;
+
+          const target = resolveBranchTarget({ localExists, localSha, remoteExists, remoteSha });
 
           let ownership: Ownership | null = null;
-          if (remoteExists && !options.track) {
+          if (remoteExists && !options.track && target.kind !== "diverged") {
             const prAuthorLogin = await fetchPrAuthorLogin(repo, branch, globalOpts.verbose);
             ownership = await resolveOwnership({
               configUser: config.user,
@@ -140,25 +153,60 @@ export function registerCreateCommand(program: Command) {
             verbose(`Tracking forced via --track`, globalOpts.verbose);
           }
 
-          if (!remoteExists || (ownership && !ownership.mine)) {
-            verbose(`Creating ${branch} from ${baseRef}`, globalOpts.verbose);
-            await gitExec(["-C", repo.mainPath, "worktree", "add", "-b", branch, wtPath, baseRef], globalOpts);
-          } else {
-            stepSuccess(
-              ownership ? "Tracking your remote branch" : "Tracking existing remote branch",
-              branch
-            );
-            try {
-              await gitExec(["-C", repo.mainPath, "worktree", "add", "--track", "-b", branch, wtPath, `origin/${branch}`], globalOpts);
-            } catch (err) {
-              verbose(`Tracking failed, assuming local branch exists. Falling back to local branch...`, globalOpts.verbose);
+          const resolvedAction = (ownership && !ownership.mine) ? { kind: "create-new" } : target;
+
+          try {
+            if (resolvedAction.kind === "create-new") {
+              verbose(`Creating ${branch} from ${baseRef}`, globalOpts.verbose);
+              await gitExec(["-C", repo.mainPath, "worktree", "add", "-b", branch, wtPath, baseRef], globalOpts);
+            } else if (resolvedAction.kind === "use-local") {
+              verbose(`Using existing local branch ${branch}`, globalOpts.verbose);
               await gitExec(["-C", repo.mainPath, "worktree", "add", wtPath, branch], globalOpts);
+            } else if (resolvedAction.kind === "track-remote") {
+              if (localExists) {
+                stepSuccess("Using existing tracking branch", branch);
+                await gitExec(["-C", repo.mainPath, "worktree", "add", wtPath, branch], globalOpts);
+              } else {
+                stepSuccess(
+                  ownership ? "Tracking your remote branch" : "Tracking existing remote branch",
+                  branch
+                );
+                await gitExec(["-C", repo.mainPath, "worktree", "add", "--track", "-b", branch, wtPath, `${resolvedRemote}/${branch}`], globalOpts);
+              }
+            } else if (resolvedAction.kind === "diverged") {
+              if (options.track) {
+                stepSuccess("Tracking forced over diverged local branch", branch);
+                await gitExec(["-C", repo.mainPath, "worktree", "add", "-B", branch, wtPath, `${resolvedRemote}/${branch}`], globalOpts);
+              } else if (options.local) {
+                stepSuccess("Local forced over diverged remote branch", branch);
+                await gitExec(["-C", repo.mainPath, "worktree", "add", wtPath, branch], globalOpts);
+              } else {
+                const shortLocal = localSha!.substring(0, 7);
+                const shortRemote = remoteSha!.substring(0, 7);
+                throw new Error(`Branch diverged: local (${shortLocal}) differs from remote (${shortRemote}). Use --track to overwrite local or --local to ignore remote.`);
+              }
             }
+          } catch (err: any) {
+            const stderr = err.stderr || err.message || "";
+            if (stderr.includes("already exists") || stderr.includes("not a working tree")) {
+              stepWarning("Worktree collision", `${wtPath} (skipped due to git error)`);
+              skipCount++;
+              continue; // warn and skip, preserving exit-code semantics
+            }
+            throw err;
           }
-          
+
           stepSuccess("Worktree created", wtPath);
 
-          await runPostCreateSetup({ config, repo, wtPath, branch, globalOpts });
+          const setupResult = await runPostCreateSetup({ config, repo, wtPath, branch, globalOpts });
+          if (setupResult && setupResult.hooks) {
+            const failedHooks = setupResult.hooks.filter(h => !h.ok);
+            if (failedHooks.length > 0) {
+              const hookMsgs = failedHooks.map(h => `  - ${h.command} (exit code: ${h.exitCode})`).join("\n");
+              stepError("Hook failures", `Some hooks failed:\n${hookMsgs}\nRe-run via: wtx sync ${branch}`);
+              hookFailures = true;
+            }
+          }
 
           openWorktree(wtPath);
 
@@ -174,6 +222,10 @@ export function registerCreateCommand(program: Command) {
         summaryWarning(`Done — ${successCount} created, ${skipCount} skipped`);
       } else {
         summary(`Done — ${successCount} worktrees created`);
+      }
+
+      if (hookFailures) {
+        process.exit(1);
       }
     });
 }

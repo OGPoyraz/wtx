@@ -21,6 +21,7 @@ import { resolveForge } from "../lib/forge/index.js";
 import { derivePrDisplay, type PrInfo } from "../lib/forge/types.js";
 import { renderChecksSummary, renderDisplayState } from "../lib/forge/render.js";
 import { resolveOwnership } from "../lib/owner.js";
+import { resolveBaseRemote } from "../lib/remotes.js";
 import chalk from "chalk";
 
 interface StatusOptions {
@@ -62,8 +63,9 @@ export function registerStatusCommand(program: Command) {
 
         try {
           const mainBranch = await resolveMainBranch(repo, config);
+          const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
           const countOutput = await gitExec(
-            ["-C", wtPath, "rev-list", "--left-right", "--count", `origin/${mainBranch}...HEAD`],
+            ["-C", wtPath, "rev-list", "--left-right", "--count", `${resolvedRemote}/${mainBranch}...HEAD`],
             { verbose: globalOpts.verbose }
           );
           const parts = countOutput.trim().split(/\s+/);
