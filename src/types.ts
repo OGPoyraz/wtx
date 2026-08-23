@@ -14,6 +14,19 @@ export type DepsManager = z.infer<typeof DepsManagerEnum>;
 export type DepsStrategy = z.infer<typeof DepsStrategyEnum>;
 export type DepsConfig = z.infer<typeof DepsConfigSchema>;
 
+export const AgentConfigSchema = z.object({
+  command: z.string().trim().min(1, { message: "must not be empty" }),
+});
+
+export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+
+export const PortsConfigSchema = z.object({
+  min: z.number().int().min(1024).max(65535).default(4100),
+  max: z.number().int().min(1024).max(65535).default(4999),
+}).refine((v) => v.min <= v.max, { message: "ports.min must be less than or equal to ports.max" });
+
+export type PortsConfig = z.infer<typeof PortsConfigSchema>;
+
 export const RepoConfigSchema = z.object({
   main_branch: z.string().trim().superRefine((val, ctx) => {
     if (val !== "auto" && val.length === 0) {
@@ -53,6 +66,11 @@ export const ConfigSchema = z.object({
     z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/, "Invalid repo key format"),
     RepoConfigSchema
   ),
+  agents: z.record(
+    z.string().regex(/^[a-z][a-z0-9_-]*$/, "Agent names must be lowercase alphanumeric with dashes/underscores"),
+    AgentConfigSchema
+  ).optional(),
+  ports: PortsConfigSchema.default({ min: 4100, max: 4999 }),
 });
 
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
