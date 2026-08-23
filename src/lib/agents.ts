@@ -81,21 +81,25 @@ export async function spawnAgentInWorktree(
   return { mode: "direct" };
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\''`)}'`;
+}
+
 export function buildAgentCommand(
   commandTemplate: string,
   wtPath: string,
   prompt?: string,
   vars?: { branch?: string; repo?: string }
 ): string {
-  let cmd = commandTemplate.replaceAll("{wt}", wtPath);
+  let cmd = commandTemplate.replaceAll("{wt}", shellQuote(wtPath));
   if (vars?.branch) {
-    cmd = cmd.replaceAll("{branch}", vars.branch);
+    cmd = cmd.replaceAll("{branch}", shellQuote(vars.branch));
   }
   if (vars?.repo) {
-    cmd = cmd.replaceAll("{repo}", vars.repo);
+    cmd = cmd.replaceAll("{repo}", shellQuote(vars.repo));
   }
   if (prompt) {
-    cmd += ` "${prompt.replaceAll('"', '\\"')}"`;
+    cmd += ` ${shellQuote(prompt)}`;
   }
   return cmd;
 }

@@ -7,6 +7,7 @@ import {
   resolveMainBranch,
 } from "../resolver.js";
 import {
+  validateSafeBranchName,
   getWorktreeList,
   getDirtyFiles,
   gitExec,
@@ -248,6 +249,9 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
       if (typeof args.repo !== "string" || typeof args.branch !== "string") {
         throw { isSchemaError: true, message: "repo and branch are required strings" };
       }
+      if (!validateSafeBranchName(args.branch)) {
+        throw { isToolError: true, message: "unsafe branch name" };
+      }
       const repo = resolveRepos(config, [args.repo])[0]!;
       const wtPath = getWorktreePath(repo, args.branch);
       if (!fs.existsSync(wtPath)) {
@@ -292,6 +296,12 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
       if (args.base !== undefined && typeof args.base !== "string") {
         throw { isSchemaError: true, message: "base must be a string" };
       }
+      if (!validateSafeBranchName(args.branch)) {
+        throw { isToolError: true, message: "unsafe branch name" };
+      }
+      if (args.base !== undefined && !validateSafeBranchName(args.base)) {
+        throw { isToolError: true, message: "unsafe base ref" };
+      }
       const repo = resolveRepos(config, [args.repo])[0]!;
       const wtPath = getWorktreePath(repo, args.branch);
       const safeWtPath = safeResolve(wtPath);
@@ -305,7 +315,7 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
       const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
 
       if (repo.config.fetch_main_on_create !== false) {
-        await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, mainBranch]);
+        await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, "--", mainBranch]);
       }
 
       const localExists = await localBranchExists(repo.mainPath, args.branch, { verbose: false, dryRun: false });
@@ -337,6 +347,9 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
     case "remove_worktree": {
       if (typeof args.repo !== "string" || typeof args.branch !== "string" || typeof args.confirm !== "boolean") {
         throw { isSchemaError: true, message: "repo, branch, and confirm are required and typed correctly" };
+      }
+      if (!validateSafeBranchName(args.branch)) {
+        throw { isToolError: true, message: "unsafe branch name" };
       }
       if (args.force !== undefined && typeof args.force !== "boolean") {
         throw { isSchemaError: true, message: "force must be a boolean" };
@@ -386,10 +399,10 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
       const mainBranch = await resolveMainBranch(repo, config);
       const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
       
-      await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, mainBranch]);
+      await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, "--", mainBranch]);
       
       try {
-        const rebaseOut = await gitExec(["-C", wtPath, "rebase", `${resolvedRemote}/${mainBranch}`]);
+        const rebaseOut = await gitExec(["-C", wtPath, "rebase", "--", `${resolvedRemote}/${mainBranch}`]);
         if (rebaseOut.includes("is up to date") || rebaseOut.includes("up-to-date")) {
           return { content: [{ type: "text", text: JSON.stringify({ status: "up-to-date" }) }] };
         } else {

@@ -46,19 +46,19 @@ describe("agents", () => {
     expect(buildAgentCommand("agent {wt} {branch} {repo}", "/tmp/wt", undefined, {
       branch: "feat/foo",
       repo: "my-repo"
-    })).toBe("agent /tmp/wt feat/foo my-repo");
+    })).toBe("agent '/tmp/wt' 'feat/foo' 'my-repo'");
     
     // Prompt with double quotes
     expect(buildAgentCommand("agent {wt}", "/tmp/wt", 'Hello "world"!')).toBe(
-      'agent /tmp/wt "Hello \\"world\\"!"'
+      "agent '/tmp/wt' 'Hello \"world\"!'"
     );
   });
   
   it("buildAgentCommand works with original 3-arg signature", () => {
     expect(buildAgentCommand("agent {wt}", "/tmp/wt", "my prompt")).toBe(
-      'agent /tmp/wt "my prompt"'
+      "agent '/tmp/wt' 'my prompt'"
     );
-    expect(buildAgentCommand("agent {wt}", "/tmp/wt")).toBe("agent /tmp/wt");
+    expect(buildAgentCommand("agent {wt}", "/tmp/wt")).toBe("agent '/tmp/wt'");
   });
 
   it("tmuxSessionName sanitizes appropriately", () => {

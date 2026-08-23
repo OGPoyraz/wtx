@@ -115,7 +115,7 @@ export async function runInstallCommand(cmd: string, args: string[], wtPath: str
   if (dryRun) {
     if (!quiet) info(`  [dry-run] Would execute: ${fullCmd} in ${wtPath}`);
   } else {
-    await execa(cmd, args, { shell: true, cwd: wtPath, stdio: "inherit" });
+    await execa(cmd, args, { cwd: wtPath, stdio: "inherit" });
   }
   if (!quiet) stepSuccess("Dependencies installed");
 }

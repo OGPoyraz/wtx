@@ -50,12 +50,12 @@ export function registerRebaseCommand(program: Command) {
 
         try {
           const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
-          await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, mainBranch], opts);
+          await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, "--", mainBranch], opts);
           const commit = await getLatestCommit(repo.mainPath, `${resolvedRemote}/${mainBranch}`);
           stepProgress(`Fetching ${resolvedRemote}/${mainBranch}...`, `${commit.hash} "${commit.subject}"`);
           
           stepProgress(`Rebasing ${branch} onto main...`);
-          const rebaseOut = await gitExec(["-C", wtPath, "rebase", `${resolvedRemote}/${mainBranch}`], opts);
+          const rebaseOut = await gitExec(["-C", wtPath, "rebase", "--", `${resolvedRemote}/${mainBranch}`], opts);
           
           if (rebaseOut.includes("is up to date") || rebaseOut.includes("up-to-date")) {
             stepSuccess("Up to date", "0 commits replayed");
