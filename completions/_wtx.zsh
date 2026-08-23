@@ -78,7 +78,7 @@ _wtx() {
       case ${line[1]} in
         config)   _wtx_config ;;
         skill)    _wtx_skill ;;
-        init)     _values 'shell' 'bash' 'zsh' ;;
+        init)     _values 'shell' 'bash' 'zsh' 'fish' ;;
         create)
           _arguments \
             ':branch:' \

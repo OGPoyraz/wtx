@@ -40,7 +40,7 @@ export async function runPostCreateSetup(params: {
   }
 
   if (repo.config.post_create && repo.config.post_create.length > 0) {
-    const port = await getWorktreePort(repo.name, branch, config);
+    const port = await getWorktreePort(repo.name, branch, config, wtPath);
     const env = { ...process.env, WTX_PORT: String(port) };
 
     const tplVars: TemplateVars = {

@@ -67,7 +67,7 @@ export function registerSyncCommand(program: Command) {
           let hasWarn = false;
 
           if (hooks.length > 0) {
-            const port = await getWorktreePort(repo.name, branch, config);
+            const port = await getWorktreePort(repo.name, branch, config, wtPath);
             const env = { ...process.env, WTX_PORT: String(port) };
 
             const tplVars: TemplateVars = {

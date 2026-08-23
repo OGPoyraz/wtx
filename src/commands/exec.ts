@@ -32,7 +32,7 @@ export function registerExecCommand(program: Command) {
         process.exit(1);
       }
 
-      const port = await getWorktreePort(repo.name, branch, config);
+      const port = await getWorktreePort(repo.name, branch, config, wtPath);
       const env = { ...process.env, WTX_PORT: String(port) };
 
       await execa(commandArgs.join(" "), {

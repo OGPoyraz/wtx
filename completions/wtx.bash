@@ -134,7 +134,7 @@ _wtx_completions() {
       esac
       ;;
     init)
-      COMPREPLY=($(compgen -W "bash zsh" -- "$cur"))
+      COMPREPLY=($(compgen -W "bash zsh fish" -- "$cur"))
       return 0
       ;;
     skill)

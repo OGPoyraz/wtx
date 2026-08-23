@@ -1,6 +1,7 @@
 import fs from "fs";
-import { getWorktreeList } from "./git.js";
+import { getWorktreeList, type Worktree } from "./git.js";
 import type { Config } from "../types.js";
+import { safeResolve } from "./path-safety.js";
 import { expandTilde } from "./config.js";
 
 export function hashPort(key: string, min: number, max: number): number {
@@ -31,7 +32,12 @@ export function probe(hashBase: number, taken: Iterable<number>, min: number, ma
   return current;
 }
 
-export async function getWorktreePort(repoName: string, branch: string, config: Config): Promise<number> {
+export async function getWorktreePort(
+  repoName: string,
+  branch: string,
+  config: Config,
+  currentWtPath?: string
+): Promise<number> {
   const { min = 4100, max = 4999 } = config.ports ?? {};
   const myKey = `${repoName}/${branch}`;
   const myHash = hashPort(myKey, min, max);
@@ -46,7 +52,7 @@ export async function getWorktreePort(repoName: string, branch: string, config: 
       continue;
     }
     
-    let wts: { branch: string }[] = [];
+    let wts: Worktree[] = [];
     try {
       wts = await getWorktreeList(mainPath);
     } catch (err) {
@@ -54,7 +60,14 @@ export async function getWorktreePort(repoName: string, branch: string, config: 
     }
 
     for (const wt of wts) {
-      if (name === repoName && wt.branch === branch) {
+      if (
+        currentWtPath &&
+        name === repoName &&
+        safeResolve(wt.path) === safeResolve(currentWtPath)
+      ) {
+        continue;
+      }
+      if (!currentWtPath && name === repoName && wt.branch === branch) {
         continue;
       }
       const otherKey = `${name}/${wt.branch}`;

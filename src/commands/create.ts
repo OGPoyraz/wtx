@@ -135,7 +135,7 @@ export function registerCreateCommand(program: Command) {
 
           if (repo.config.fetch_main_on_create) {
             stepProgress(`Fetching ${resolvedRemote}/${mainBranch}...`);
-            await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, mainBranch], globalOpts);
+            await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, "--", mainBranch], globalOpts);
             const commit = await getLatestCommit(repo.mainPath, `${resolvedRemote}/${mainBranch}`);
             stepSuccess(`Fetched ${resolvedRemote}/${mainBranch}`, `${commit.hash} "${commit.subject}"`);
           }
@@ -227,9 +227,13 @@ export function registerCreateCommand(program: Command) {
             }
           }
 
-          openWorktree(wtPath);
+          if (hookFailures) {
+            stepWarning("Skipping IDE open and agent spawn", `worktree has failed hooks — fix with 'wtx sync ${branch}' first`);
+          } else {
+            openWorktree(wtPath);
+          }
 
-          if (agentCmd) {
+          if (agentCmd && !hookFailures) {
             try {
               if (globalOpts.dryRun) {
                 stepProgress("Would spawn agent", options.agent);
