@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import fs from "fs";
 import path from "path";
 import type { GlobalOptions } from "../types.js";
 import { loadConfig } from "../lib/config.js";
@@ -12,12 +11,13 @@ import {
   summaryWarning,
   indented,
 } from "../lib/log.js";
-import { gitExec, getDirtyFiles } from "../lib/git.js";
+import { gitExec, getDirtyFiles, getWorktreeList } from "../lib/git.js";
 import {
   resolveRepos,
   getWorktreePath,
   parseRepoFlag,
 } from "../lib/resolver.js";
+import { isSafeWorktreeConfig, cleanupEmptyParents, safeResolve } from "../lib/path-safety.js";
 
 interface RemoveOptions {
   repo?: string[];
@@ -42,23 +42,38 @@ export function registerRemoveCommand(program: Command) {
       for (const repo of repos) {
         repoHeader(repo.name);
         
+        if (!isSafeWorktreeConfig(repo.wtRoot, repo.mainPath)) {
+          stepError("Path safety boundary violation", "wtRoot and mainPath cannot be the same or contain each other.");
+          process.exit(1);
+        }
+
         try {
           const wtPath = getWorktreePath(repo, branch);
+          const resolvedWtPath = safeResolve(wtPath);
           
-          if (!fs.existsSync(wtPath) && !globalOpts.dryRun) {
+          const worktrees = await getWorktreeList(repo.mainPath);
+          const isRegistered = worktrees.some(wt => safeResolve(wt.path) === resolvedWtPath);
+
+          if (!isRegistered) {
             stepWarning("No worktree found", `${branch} (skipped)`);
             skipCount++;
             continue;
           }
 
           if (!options.force && !globalOpts.dryRun) {
-            const dirtyFiles = await getDirtyFiles(wtPath);
-            if (dirtyFiles.length > 0) {
-              stepError("Worktree has uncommitted changes:");
-              for (const file of dirtyFiles) {
-                indented(file);
+            try {
+              const dirtyFiles = await getDirtyFiles(wtPath);
+              if (dirtyFiles.length > 0) {
+                stepError("Worktree has uncommitted changes:");
+                for (const file of dirtyFiles) {
+                  indented(file);
+                }
+                indented("Use --force to remove anyway");
+                skipCount++;
+                continue;
               }
-              indented("Use --force to remove anyway");
+            } catch (err: any) {
+              stepError("Failed to check for uncommitted changes", err.message);
               skipCount++;
               continue;
             }
@@ -69,29 +84,31 @@ export function registerRemoveCommand(program: Command) {
             args.push("--force");
           }
           
-          await gitExec(args, globalOpts);
-          stepSuccess("Worktree removed", wtPath);
+          try {
+            await gitExec(args, globalOpts);
+            stepSuccess("Worktree removed", wtPath);
+          } catch (err: any) {
+            const msg = err.message || "";
+            if (msg.includes("not a working tree") || msg.includes("already removed")) {
+              stepWarning("Worktree already removed or invalid", msg);
+              skipCount++;
+              continue;
+            } else {
+              throw err;
+            }
+          }
 
           if (!globalOpts.dryRun) {
-            let currentDir = path.dirname(wtPath);
-            while (currentDir.startsWith(repo.wtRoot) && currentDir !== repo.wtRoot) {
-              try {
-                if (fs.readdirSync(currentDir).length === 0) {
-                  fs.rmdirSync(currentDir);
-                  stepSuccess("Cleaned up empty directory", path.relative(repo.wtRoot, currentDir) + "/");
-                } else {
-                  break;
-                }
-              } catch (err) {
-                break;
-              }
-              currentDir = path.dirname(currentDir);
+            const removedDirs = cleanupEmptyParents(repo.wtRoot, repo.mainPath, wtPath);
+            for (const dir of removedDirs) {
+              stepSuccess("Cleaned up empty directory", path.relative(repo.wtRoot, dir) + "/");
             }
           }
 
           successCount++;
         } catch (err: any) {
           stepError("Failed to remove worktree", err.message);
+          skipCount++;
         }
       }
 
