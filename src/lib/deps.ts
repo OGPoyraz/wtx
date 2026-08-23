@@ -52,11 +52,11 @@ export function detectDepsState(wtPath: string, mainPath: string): DepsState {
 }
 
 export async function autoInstallDeps(wtPath: string, mainPath: string, opts: GlobalOptions): Promise<void> {
-  const config = loadConfig();
   let manager: string | undefined;
   let strategy: DepsStrategy = "auto";
-  
+
   try {
+    const config = loadConfig();
     const repos = resolveRepos(config, []);
     const repo = repos.find(r => wtPath.startsWith(r.wtRoot));
     if (repo && repo.config.deps) {
@@ -81,10 +81,10 @@ export async function autoInstallDeps(wtPath: string, mainPath: string, opts: Gl
 }
 
 export async function switchToInstall(wtPath: string, opts: GlobalOptions): Promise<void> {
-  const config = loadConfig();
-  let mainPath = wtPath; 
+  let mainPath = wtPath;
   let manager: string | undefined;
   try {
+    const config = loadConfig();
     const repos = resolveRepos(config, []);
     const repo = repos.find(r => wtPath.startsWith(r.wtRoot));
     if (repo) {
@@ -107,9 +107,9 @@ export async function switchToInstall(wtPath: string, opts: GlobalOptions): Prom
 }
 
 export async function switchToSymlink(wtPath: string, mainPath: string, opts: GlobalOptions): Promise<void> {
-  const config = loadConfig();
   let manager: string | undefined;
   try {
+    const config = loadConfig();
     const repos = resolveRepos(config, []);
     const repo = repos.find(r => wtPath.startsWith(r.wtRoot));
     if (repo && repo.config.deps && repo.config.deps.manager !== "auto") {
