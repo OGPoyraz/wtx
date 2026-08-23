@@ -26,6 +26,7 @@ import { resolveIde, spawnIde } from "../lib/ide.js";
 import { runPostCreateSetup } from "../lib/worktree-setup.js";
 import { resolveForge } from "../lib/forge/index.js";
 import { resolveOwnership, type Ownership } from "../lib/owner.js";
+import { resolveAgentCommand, listAvailableAgents, spawnAgentInWorktree } from "../lib/agents.js";
 
 interface CreateOptions {
   repo?: string[];
@@ -34,6 +35,8 @@ interface CreateOptions {
   ide?: string;
   track?: boolean;
   local?: boolean;
+  agent?: string;
+  prompt?: string;
 }
 
 async function fetchPrAuthorLogin(
@@ -66,9 +69,25 @@ export function registerCreateCommand(program: Command) {
     .option("--ide <editor>", "IDE to open with (used with --open)")
     .option("--track", "Track existing remote branch even if owned by someone else")
     .option("--local", "Use local branch even if diverged from remote")
+    .option("--agent <name>", "Spawn a coding agent in the new worktree")
+    .option("--prompt <text>", "Prompt to pass to the coding agent")
     .action(async (branch: string, options: CreateOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
+
+      let agentCmd: string | null = null;
+      if (options.agent) {
+        agentCmd = resolveAgentCommand(options.agent, config.agents);
+        if (!agentCmd) {
+          const available = listAvailableAgents(config.agents).join(", ");
+          stepError(`Unknown agent: ${options.agent}`, `Available: ${available}`);
+          process.exit(1);
+        }
+      } else if (options.prompt) {
+        stepError("--prompt requires --agent");
+        process.exit(1);
+      }
+
       const repoFilter = parseRepoFlag(options.repo);
 
       const ide = options.open ? resolveIde(options.ide, config) : undefined;
@@ -209,6 +228,29 @@ export function registerCreateCommand(program: Command) {
           }
 
           openWorktree(wtPath);
+
+          if (agentCmd) {
+            try {
+              if (globalOpts.dryRun) {
+                stepProgress("Would spawn agent", options.agent);
+              } else {
+                stepProgress(`Spawning agent: ${options.agent}...`);
+              }
+              const agentRes = await spawnAgentInWorktree(agentCmd, wtPath, {
+                prompt: options.prompt,
+                dryRun: globalOpts.dryRun,
+                branch,
+                repoName: repo.name
+              });
+              if (agentRes.mode === "tmux" && agentRes.session) {
+                stepSuccess("Agent spawned in tmux", `tmux attach -t ${agentRes.session}`);
+              } else {
+                stepSuccess("Agent spawned directly");
+              }
+            } catch {
+              stepWarning("Failed to spawn agent", "binary may not be installed");
+            }
+          }
 
           successCount++;
         } catch (err: any) {
