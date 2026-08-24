@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-24
+
+### Added
+
+- Agent hand-off: `wtx create <branch> --agent <name> [--prompt "..."]` runs the full create pipeline, then spawns the configured coding agent inside the new worktree — in a detached named tmux session when tmux is available; if post-create hooks fail, the agent is not spawned
+- Agents registry under `agents.<name>.command` in config with `{wt}`, `{branch}`, `{repo}` template expansion
+- MCP server: `wtx mcp` exposes `list_worktrees`, `worktree_status`, `create_worktree`, `remove_worktree`, and `rebase_worktree` over stdio — scoped to configured repos, removal requires explicit confirm (plus force for dirty trees)
+- Deterministic port isolation: `{port}` template variable and `WTX_PORT` environment variable hash `repo+branch` into the configured range and probe collisions against active worktrees — two branches can run dev servers simultaneously
+- Dependency syncing redesigned around per-ecosystem adapters (npm, bun, pnpm, yarn, Go, Python/uv, Cargo) with lockfile-based detection, overridable via `deps.manager`
+- Safe linking strategy: when manifests match main, the worktree gets a real `node_modules` of per-package symlinks into main's tree — installs inside one worktree never mutate another checkout; failed directory replacements restore the original
+- Workspace-aware installs: `workspaces` globs (including `**`) and `pnpm-workspace.yaml` are parsed; when only some workspaces changed, installs target just those
+- Cargo adapter shares main's build cache through a worktree-local `.cargo/config.toml`; Python venvs are installed, never symlinked
+- Guided first-run wizard: any command without a config scans common dev directories, lets you pick which repos to manage, and writes the config atomically
+- `wtx exec <branch> <command...>` runs a command inside a worktree with `WTX_PORT` injected
+- Persistent action history: mutating commands record to `~/.local/state/wtx/history.jsonl` with automatic rotation at ~5 MB — inspect via `wtx history [--limit] [--json] [--source]` or the `H` key in the terminal dashboard
+- Machine-readable output: `wtx ls --json` and `wtx status <branch> --json`; global `-q`/`--quiet` suppresses progress lines
+- Destructive commands (`remove`, `prune`) ask for confirmation on interactive terminals; scripts pass `--yes` or set `WTX_YES=1`
+- Fish shell integration (`wtx init fish`) alongside updated bash/zsh/fish completions
+- Terminal dashboard: fuzzy filter (`/`), multi-select batch rebase/remove/sync (`Space` + `R`/`D`/`s`), agent spawn keybind (`a`)
+- Inline progress in the dashboard: busy indicators next to the repo/branch during create, delete, rebase, sync, and refresh — input locked until the operation finishes, failures open a log modal with captured output
+- Repo fetches run concurrently with bounded parallelism across `wtx fetch` and dashboard refreshes
+
+### Fixed
+
+- `wtx remove` resolves worktrees by registered branch instead of derived path, fixing removals for non-standard checkout layouts
+- `wtx open` opens the main checkout when the requested branch is checked out there instead of failing
+- Missing local refs are treated as absent — `git show-ref` exits 128, not 1
+- Ownership detection attributes foreign branches via PR author only; the last-commit-author fallback was removed
+- Dashboard actions spawn correctly from compiled binaries via a PATH-first launcher
+- Broken dependency states are detected with repair instructions; legacy `symlink` strategy keeps its old precedence
+- Config rejects semantically invalid values with field-level errors instead of accepting them silently
+- Branch resolution on `create` is deterministic and no longer hardcodes `origin`
+- Post-create/post-sync hook failures propagate and fail the command with a rerun hint
+- Worktree cleanup is contained to resolved worktree roots; port exclusion matches by path instead of derived names
+- Security: MCP tool inputs are validated and shell-interpolated values quoted
+- `wtx ls` prints guidance when no repositories are configured instead of exiting silently
+
+### Changed
+
+- README rewritten around dependency adapters, agent spawning, MCP, and scripting
+
 ## [0.5.0] - 2026-08-23
 
 ### Added
@@ -121,7 +162,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/OGPoyraz/wtx/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OGPoyraz/wtx/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/OGPoyraz/wtx/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/OGPoyraz/wtx/compare/v0.3.0...v0.4.0
