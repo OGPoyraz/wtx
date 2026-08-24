@@ -87,6 +87,29 @@ describe("config", () => {
     expect(() => loadConfig()).toThrow("root invalid because must be an absolute path after tilde expansion");
   });
 
+  it("migrates legacy repo keys (pr, forge, pr_repo) to new names", () => {
+    const { path: configPath } = createTempConfig({
+      repos: {
+        "legacy-repo": { main_branch: "auto", pr: false, forge: "github", pr_repo: "owner/name" }
+      }
+    });
+
+    const loaded = loadConfig();
+    const repo = loaded.repos["legacy-repo"]!;
+    expect(repo.check_prs).toBe(false);
+    expect(repo.forge_provider).toBe("github");
+    expect(repo.pr_lookup_repo).toBe("owner/name");
+    expect((repo as Record<string, unknown>).pr).toBeUndefined();
+
+    saveConfig(loaded);
+    const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    const savedRepo = raw.repos["legacy-repo"];
+    expect(savedRepo.pr).toBeUndefined();
+    expect(savedRepo.forge).toBeUndefined();
+    expect(savedRepo.pr_repo).toBeUndefined();
+    expect(savedRepo.check_prs).toBe(false);
+  });
+
   it("warns when main checkout directory does not exist", () => {
     const root = createTempDir("wtx-fake-root-");
     createTempConfig({

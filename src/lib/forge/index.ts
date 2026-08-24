@@ -56,7 +56,7 @@ export function detectRepoForge(mainPath: string): { forgeId: string; slug: Forg
 }
 
 export function resolveForge(repoCtx: RepoContext): ForgeAdapter | null {
-  if (repoCtx.config.pr === false) return null;
+  if (repoCtx.config.check_prs === false) return null;
 
   const remoteUrl = readOriginUrl(repoCtx.mainPath);
   if (!remoteUrl) return null;
@@ -64,13 +64,13 @@ export function resolveForge(repoCtx: RepoContext): ForgeAdapter | null {
   const parsed = parseGithubRemote(remoteUrl);
   if (!parsed) return null;
 
-  if (repoCtx.config.forge === "auto" && parsed.host !== "github.com") {
+  if (repoCtx.config.forge_provider === "auto" && parsed.host !== "github.com") {
     return null;
   }
 
   let slug: GithubSlug = parsed;
-  if (repoCtx.config.pr_repo) {
-    slug = parseSlugOverride(repoCtx.config.pr_repo) ?? parsed;
+  if (repoCtx.config.pr_lookup_repo) {
+    slug = parseSlugOverride(repoCtx.config.pr_lookup_repo) ?? parsed;
   }
 
   return createGithubAdapter(slug);

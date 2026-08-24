@@ -70,9 +70,9 @@ describe("MCP Server", () => {
         [repoName]: {
           main_branch: "main",
           fetch_main_on_create: true,
-          pr: true,
-          forge: "auto",
-          pr_repo: null,
+          check_prs: true,
+          forge_provider: "auto",
+          pr_lookup_repo: null,
           deps: { manager: "auto", strategy: "auto" }
         }
       },

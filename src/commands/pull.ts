@@ -55,7 +55,7 @@ export function registerPullCommand(program: Command) {
       if (!repoFilter || repoFilter.length === 0) {
         const candidates = [];
         for (const name of Object.keys(config.repos).sort()) {
-          if (config.repos[name]!.pr === false) continue;
+          if (config.repos[name]!.check_prs === false) continue;
 
           const mainPath = path.join(expandTilde(config.root), name);
           const detected = detectRepoForge(mainPath);
