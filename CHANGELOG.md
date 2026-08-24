@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Worktree rename (`wtx rename <old> <new>` and `m` in the dashboard): renames the branch, moves the checkout to the matching new directory (code carried over), cleans up emptied parent directories, rolls back the branch rename if the move fails, and hints at the stale upstream after the fact
+- Branch pull (`wtx pull-branch [branch]` and `p` in the dashboard): fast-forward-only `git pull` inside a worktree; auto-detects the repo from the current directory and fails loudly when it can't, when the worktree doesn't exist, or when the branch diverged (points at `wtx rebase`)
+- Per-repo `install_script` config key: command run inside a worktree for dependency installs, with `{wt}` / `{branch}` / `{main}` template expansion; used by `wtx deps --install`, `wtx create --deps install`, and the new dashboard install action
+- Dependency strategy picker when creating worktrees from the dashboard: choose Auto (default), Install (real install / `install_script`), or Symlink before creation
+- Dashboard install action (`i`): run dependencies install directly on the selected worktree(s) from the detail pane flow
+
+### Fixed
+
+- Dashboard repositories are now always sorted alphabetically — create/delete operations no longer reshuffle repo order
+- Rebase conflicts abort cleanly: a failing rebase is rolled back automatically ("Rebase failed — manual merge needed"), the worktree keeps its pre-rebase commits, and `wtx rebase` exits non-zero so scripts and the dashboard surface the failure
+- Fetch failures during rebase no longer report a bogus conflict — they're reported as skipped with the fetch error instead
+
+### Changed
+
+- Repo config keys renamed for clarity: `pr` → `check_prs` (master switch for PR lookups), `forge` → `forge_provider` (GitHub Enterprise forcing), `pr_repo` → `pr_lookup_repo` (`owner/repo` override for fork workflows); legacy names are migrated transparently and rewritten on next config save — README documents what each does
+- Dashboard history overlay is wider and taller, shows durations, and loads more entries for easier debugging
+- Repositories appear immediately when the dashboard opens with a per-repo `refreshing…` indicator while data loads; scoped refreshes show `refreshing` next to affected repos just like fetching/syncing
+- Dashboard footer keybinding row sorted alphabetically by action name
+
 ## [0.6.1] - 2026-08-24
 
 - Loading state fixes in TUI
