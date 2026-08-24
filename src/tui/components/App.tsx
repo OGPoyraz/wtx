@@ -11,11 +11,13 @@ import { runWtxAction } from "../actions.js";
 import { validateSafeBranchName } from "../../lib/git.js";
 import type { WorktreeRow } from "../types.js";
 import { ActionLogModal } from "./ActionLogModal.js";
+import { HistoryOverlay } from "./HistoryOverlay.js";
 import { InputModal } from "./InputModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
 import { matchesFilter, toggleSelection } from "../utils.js";
 import { resolveAgentCommand, spawnAgentInWorktree } from "../../lib/agents.js";
 import { loadConfig } from "../../lib/config.js";
+import { appendHistory } from "../../lib/history.js";
 
 export interface AppProps {
   opts: GlobalOptions;
@@ -24,6 +26,7 @@ export interface AppProps {
 type ModalState = 
   | { type: "none" }
   | { type: "help" }
+  | { type: "history" }
   | { type: "confirm_remove"; rows: WorktreeRow[] }
   | { type: "confirm_rebase"; rows: WorktreeRow[] }
   | { type: "confirm_sync"; rows: WorktreeRow[] }
@@ -156,7 +159,7 @@ export function App({ opts }: AppProps) {
 
       // Modal handling
       if (modal.type !== "none") {
-        if (modal.type === "error" || modal.type === "help") {
+        if (modal.type === "error" || modal.type === "help" || modal.type === "history") {
           // any key closes
           setModal({ type: "none" });
           if (modal.type === "error" && error) {
@@ -226,13 +229,30 @@ export function App({ opts }: AppProps) {
           if (targets.length === 0) return;
           const target = targets[0]; // Agent runs on first target or solo selection
           if (!target) return;
+          const startedAt = Date.now();
           try {
             const config = await loadConfig();
-            const cmdTemplate = resolveAgentCommand("claude", config.agents) ?? "claude"; 
+            const cmdTemplate = resolveAgentCommand("claude", config.agents) ?? "claude";
             const result = await spawnAgentInWorktree(cmdTemplate, target.path, { repoName: target.repoName, branch: target.branch });
+            appendHistory({
+              ts: new Date().toISOString(),
+              source: "terminal",
+              command: "agent",
+              args: ["agent", target.branch, "--repo", target.repoName],
+              durationMs: Date.now() - startedAt,
+              exit: 0,
+            });
             setActionMessage(`Agent spawned (${result.mode}${result.session ? ` session ${result.session}` : ""})`);
             setTimeout(() => setActionMessage(undefined), 5000);
           } catch (e: any) {
+            appendHistory({
+              ts: new Date().toISOString(),
+              source: "terminal",
+              command: "agent",
+              args: ["agent", target.branch, "--repo", target.repoName],
+              durationMs: Date.now() - startedAt,
+              exit: 1,
+            });
             setActionMessage(`Agent failed: ${e.message}`);
           }
         })();
@@ -258,8 +278,12 @@ export function App({ opts }: AppProps) {
         refresh();
       } else if (key.name === "c") {
         setConfigOpen(true);
-      } else if (key.name === "?") {
-        setModal({ type: "help" });
+      } else if (key.name === "?" || key.name === "H" || (key.name === "h" && key.shift)) {
+        if (key.name === "?") {
+          setModal({ type: "help" });
+        } else {
+          setModal({ type: "history" });
+        }
       } else if (key.name === "n") {
         if (!selectedRow) return;
         setCreateModal(true);
@@ -327,6 +351,7 @@ export function App({ opts }: AppProps) {
       />
       
       {modal.type === "help" && <HelpOverlay />}
+      {modal.type === "history" && <HistoryOverlay />}
       {modal.type === "error" && (
         <ConfirmModal 
           title="Error" 

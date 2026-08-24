@@ -49,6 +49,7 @@ export async function runWtxAction(
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
+      env: { ...process.env, WTX_SOURCE: "terminal" },
     }
   );
 
