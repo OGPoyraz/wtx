@@ -1,3 +1,4 @@
+import { Semaphore } from "../lib/semaphore.js";
 import { getWorktreeList, getDirtyFiles, detectInProgressRebase, gitExec } from "../lib/git.js";
 import { resolveRepos, resolveMainBranch } from "../lib/resolver.js";
 import { loadConfig } from "../lib/config.js";
@@ -8,35 +9,6 @@ import { derivePrDisplay } from "../lib/forge/types.js";
 import type { GlobalOptions, Config, RepoContext } from "../types.js";
 import type { WorktreeRow } from "./types.js";
 import type { PrInfo } from "../lib/forge/types.js";
-
-// Simple semaphore for concurrency limiting
-export class Semaphore {
-  private permits: number;
-  private queue: Array<() => void> = [];
-
-  constructor(permits: number) {
-    this.permits = permits;
-  }
-
-  async acquire(): Promise<void> {
-    if (this.permits > 0) {
-      this.permits--;
-      return Promise.resolve();
-    }
-    return new Promise<void>((resolve) => {
-      this.queue.push(resolve);
-    });
-  }
-
-  release(): void {
-    const next = this.queue.shift();
-    if (next) {
-      next();
-    } else {
-      this.permits++;
-    }
-  }
-}
 
 export interface TuiDataResult {
   rows: WorktreeRow[];
