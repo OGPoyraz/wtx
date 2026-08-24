@@ -4,10 +4,18 @@ import type { RepoBlock } from "../hooks/useWorktrees.js";
 import type { WorktreeRow } from "../types.js";
 import { tokens, truncateBranch } from "../theme.js";
 
+interface BusyIndicator {
+  repoNames: string[];
+  rowPath?: string;
+  verb: string;
+  frame: string;
+}
+
 interface WorktreeTableProps {
   blocks: RepoBlock[];
   selectedIndex: number;
   selection?: Set<string>;
+  busy?: BusyIndicator;
 }
 
 const SECONDARY_INDENT = "      ";
@@ -22,8 +30,10 @@ function statusBadge(row: WorktreeRow): { text: string; fg: string } {
   return { text: "clean", fg: tokens.dim };
 }
 
-function WorktreeItem({ row, isSelected, isMultiSelected, id }: { row: WorktreeRow; isSelected: boolean; isMultiSelected: boolean; id?: string }) {
-  const badge = statusBadge(row);
+function WorktreeItem({ row, isSelected, isMultiSelected, busy, id }: { row: WorktreeRow; isSelected: boolean; isMultiSelected: boolean; busy?: BusyIndicator; id?: string }) {
+  const badge = busy
+    ? { text: `${busy.frame} ${busy.verb}…`, fg: tokens.accent }
+    : statusBadge(row);
   const primary = isSelected ? tokens.bright : tokens.fg;
 
   const divergence =
@@ -76,7 +86,7 @@ function WorktreeItem({ row, isSelected, isMultiSelected, id }: { row: WorktreeR
   );
 }
 
-export function WorktreeTable({ blocks, selectedIndex, selection = new Set() }: WorktreeTableProps) {
+export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), busy }: WorktreeTableProps) {
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   useEffect(() => {
@@ -108,13 +118,16 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set() }: 
               <text>
                 <span fg={tokens.bright}>{block.repoName}</span>
                 <span fg={tokens.dim}>{` · ${block.rows.length}`}</span>
+                {busy && busy.repoNames.includes(block.repoName) && !busy.rowPath && (
+                  <span fg={tokens.accent}>{`  ${busy.frame} ${busy.verb}…`}</span>
+                )}
               </text>
             </box>
 
             {block.rows.map((row) => {
               const isSelected = flatIndex === selectedIndex;
               flatIndex++;
-              return <WorktreeItem key={row.path} row={row} isSelected={isSelected} isMultiSelected={selection.has(row.path)} id={isSelected ? "selected-row" : undefined} />;
+              return <WorktreeItem key={row.path} row={row} isSelected={isSelected} isMultiSelected={selection.has(row.path)} busy={busy?.rowPath === row.path ? busy : undefined} id={isSelected ? "selected-row" : undefined} />;
             })}
           </box>
         ))
