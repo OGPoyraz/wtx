@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-25
+
 ### Added
 
+- Stacked worktrees via `wtx create <branch> --base <ref>` (and `wtx stack <branch>`): create dependent worktrees whose base is any Git ref (committed history only, main remains the default); parent/base recorded in local git-common metadata (`.git/wtx/stack.json`), `wtx status`/`rebase`/`ls`/`prs` and the terminal dashboard are base-aware, `wtx rebase` rebases onto the recorded parent instead of main, `wtx ls` and the dashboard render full-depth hierarchies (e.g. `main → api → ui → tests`), `wtx remove`/`prune` guard against removing a parent with children, `wtx rename` keeps stack metadata in sync, and the base is exposed in JSON/MCP/forge outputs
 - Install dependencies in the main checkout: `wtx deps --install` without a branch runs the detected package manager (or the repo's `install_script`) inside the main checkout, and the dashboard install action (`i`) now works on main rows — handy for refreshing main's `node_modules` after pulling new packages so worktrees can keep safe-linking against it
 
 ## [0.7.0] - 2026-08-24
@@ -193,7 +196,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/OGPoyraz/wtx/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/OGPoyraz/wtx/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/OGPoyraz/wtx/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/OGPoyraz/wtx/compare/v0.5.0...v0.6.0
