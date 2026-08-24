@@ -10,17 +10,22 @@ import type { GlobalOptions, Config, RepoContext } from "../types.js";
 import type { WorktreeRow } from "./types.js";
 import type { PrInfo } from "../lib/forge/types.js";
 
+export interface DataWarning {
+  repoName: string;
+  message: string;
+}
+
 export interface TuiDataResult {
   rows: WorktreeRow[];
-  warnings: string[];
+  warnings: DataWarning[];
 }
 
 const prCache = new Map<string, PrInfo>();
 
-export async function fetchWorktreeData(opts: GlobalOptions): Promise<TuiDataResult> {
-  const warnings: string[] = [];
+export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): Promise<TuiDataResult> {
+  const warnings: DataWarning[] = [];
   let config: Config;
-  
+
   try {
     config = loadConfig();
   } catch (err: any) {
@@ -32,6 +37,11 @@ export async function fetchWorktreeData(opts: GlobalOptions): Promise<TuiDataRes
     repos = resolveRepos(config);
   } catch (err: any) {
     throw new Error(`Failed to resolve repos: ${err.message}`);
+  }
+
+  if (scope) {
+    const scopeSet = new Set(scope);
+    repos = repos.filter(r => scopeSet.has(r.name));
   }
 
   const semaphore = new Semaphore(4);
@@ -54,7 +64,7 @@ export async function fetchWorktreeData(opts: GlobalOptions): Promise<TuiDataRes
             prCache.set(`${repo.name}/${br}`, pr);
           }
         } catch (err: any) {
-          warnings.push(`PR lookup failed for ${repo.name}: ${err.message}`);
+          warnings.push({ repoName: repo.name, message: `PR lookup failed for ${repo.name}: ${err.message}` });
           // use cache fallback
           for (const br of branches) {
             const cached = prCache.get(`${repo.name}/${br}`);
@@ -174,7 +184,7 @@ export async function fetchWorktreeData(opts: GlobalOptions): Promise<TuiDataRes
         allRows.push(row);
       }
     } catch (err: any) {
-      warnings.push(`Failed to process repo ${repo.name}: ${err.message}`);
+      warnings.push({ repoName: repo.name, message: `Failed to process repo ${repo.name}: ${err.message}` });
     } finally {
       semaphore.release();
     }

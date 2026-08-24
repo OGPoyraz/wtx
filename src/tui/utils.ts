@@ -1,4 +1,5 @@
-import type { WorktreeRow } from "./types.js";
+import type { WorktreeRow, RepoBlock } from "./types.js";
+import type { DataWarning } from "./data.js";
 
 export function matchesFilter(entry: WorktreeRow, term: string): boolean {
   if (!term) return true;
@@ -47,6 +48,72 @@ export function computeScrollWindow(
   
   const end = Math.min(start + visibleRows, totalRows);
   return { start, end };
+}
+
+export function rowSort(a: WorktreeRow, b: WorktreeRow): number {
+  if (a.isMainCheckout && !b.isMainCheckout) return -1;
+  if (!a.isMainCheckout && b.isMainCheckout) return 1;
+  return a.branch.localeCompare(b.branch);
+}
+
+export function mergeBlocks(prev: RepoBlock[], next: RepoBlock[], scope?: Set<string>): RepoBlock[] {
+  if (!scope) return next;
+  const kept = prev.filter(b => !scope.has(b.repoName));
+  return [...kept, ...next].sort((a, b) => a.repoName.localeCompare(b.repoName));
+}
+
+export function mergeWarnings(prev: DataWarning[], next: DataWarning[], scope?: Set<string>): DataWarning[] {
+  if (!scope) return next;
+  const kept = prev.filter(w => !scope.has(w.repoName));
+  return [...kept, ...next];
+}
+
+export function makePlaceholderRow(repoName: string, branch: string): WorktreeRow {
+  return {
+    repoName,
+    branch,
+    path: `pending-create:${repoName}:${branch}`,
+    commitShort: "",
+    isMainCheckout: false,
+    isLocked: false,
+    isPrunable: false,
+    isBare: false,
+    dirtyFiles: [],
+    ahead: null,
+    behind: null,
+    prNumber: null,
+    prState: null,
+    prChecks: null,
+    prUrl: null,
+    owner: null,
+    rebaseStatus: null,
+    depsStrategy: "none",
+    isPendingCreate: true,
+  };
+}
+
+export function withCreatePlaceholders(
+  blocks: RepoBlock[],
+  creating: { repoName: string; branch: string }[]
+): RepoBlock[] {
+  if (creating.length === 0) return blocks;
+
+  const byRepo = new Map<string, string[]>();
+  for (const c of creating) {
+    const arr = byRepo.get(c.repoName);
+    if (arr) {
+      arr.push(c.branch);
+    } else {
+      byRepo.set(c.repoName, [c.branch]);
+    }
+  }
+
+  return blocks.map(block => {
+    const branches = byRepo.get(block.repoName);
+    if (!branches) return block;
+    const placeholders = branches.map(br => makePlaceholderRow(block.repoName, br));
+    return { ...block, rows: [...block.rows, ...placeholders].sort(rowSort) };
+  });
 }
 
 

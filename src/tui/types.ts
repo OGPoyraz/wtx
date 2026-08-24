@@ -17,4 +17,10 @@ export interface WorktreeRow {
   owner: string | null;
   rebaseStatus: string | null;
   depsStrategy: string;
+  isPendingCreate?: boolean;
+}
+
+export interface RepoBlock {
+  repoName: string;
+  rows: WorktreeRow[];
 }

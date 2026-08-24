@@ -6,9 +6,10 @@ export interface ActionLogModalProps {
   lines: { text: string; type: "out" | "err" }[];
   done: boolean;
   exitCode: number | null;
+  remaining?: number;
 }
 
-export function ActionLogModal({ title, lines, done, exitCode }: ActionLogModalProps) {
+export function ActionLogModal({ title, lines, done, exitCode, remaining }: ActionLogModalProps) {
   return (
     <Overlay title={title} borderColor={tokens.border}>
       <box flexGrow={1} flexDirection="column" style={{ minHeight: 10, maxHeight: 20 }}>
@@ -26,6 +27,9 @@ export function ActionLogModal({ title, lines, done, exitCode }: ActionLogModalP
         {done && exitCode !== 0 && (
           <text>
             <span fg={tokens.error}>✗ Exit {exitCode}</span>
+            {remaining !== undefined && remaining > 0 && (
+              <span fg={tokens.warning}>{` · ${remaining} more failure${remaining > 1 ? "s" : ""}`}</span>
+            )}
             <span fg={tokens.dim}> - press any key to close</span>
           </text>
         )}
