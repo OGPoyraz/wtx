@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-24
+
 ### Added
 
 - Worktree rename (`wtx rename <old> <new>` and `m` in the dashboard): renames the branch, moves the checkout to the matching new directory (code carried over), cleans up emptied parent directories, rolls back the branch rename if the move fails, and hints at the stale upstream after the fact
@@ -187,7 +189,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/OGPoyraz/wtx/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/OGPoyraz/wtx/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/OGPoyraz/wtx/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OGPoyraz/wtx/compare/v0.4.1...v0.5.0
