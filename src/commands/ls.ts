@@ -3,7 +3,7 @@ import type { GlobalOptions } from "../types.js";
 import { loadConfig } from "../lib/config.js";
 import { repoHeader, indented, stepWarning, info, error } from "../lib/log.js";
 import { getWorktreeList, getDirtyFiles } from "../lib/git.js";
-import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
+import { resolveRepos, parseRepoFlag , warnIfNoRepos } from "../lib/resolver.js";
 import { resolveForge } from "../lib/forge/index.js";
 import { derivePrDisplay, type PrInfo } from "../lib/forge/types.js";
 import { renderDisplayState } from "../lib/forge/render.js";
@@ -102,6 +102,9 @@ export function registerLsCommand(program: Command) {
         const config = loadConfig();
         const repoFilter = parseRepoFlag(options.repo);
         const repos = resolveRepos(config, repoFilter);
+        if (!options.json) {
+          warnIfNoRepos(repos, { quiet: globalOpts.quiet });
+        }
         const jsonRepos: LsJsonInputRepo[] = [];
 
         for (const repo of repos) {

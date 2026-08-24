@@ -9,11 +9,9 @@ import {
 } from "../lib/log.js";
 import { gitExec, getLatestCommit } from "../lib/git.js";
 import { resolveBaseRemote } from "../lib/remotes.js";
-import {
-  resolveRepos,
+import { resolveRepos,
   resolveMainBranch,
-  parseRepoFlag,
-} from "../lib/resolver.js";
+  parseRepoFlag, warnIfNoRepos } from "../lib/resolver.js";
 
 interface FetchOptions {
   repo?: string[];
@@ -30,6 +28,7 @@ export function registerFetchCommand(program: Command) {
       const config = loadConfig();
       const targetRepos = parseRepoFlag(opts.repo);
       const repos = resolveRepos(config, targetRepos);
+        warnIfNoRepos(repos, { quiet: opts.quiet });
       
       let successCount = 0;
 
