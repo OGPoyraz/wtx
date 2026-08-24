@@ -210,7 +210,7 @@ export async function getLocalBranchSha(
   opts: GlobalOptions
 ): Promise<string | null> {
   if (opts.verbose) {
-    verbose(`Checking local branch: git -C ${repoPath} show-ref --verify refs/heads/${branch}`, true);
+    verbose(`Checking local branch: git -C ${repoPath} rev-parse --verify --quiet refs/heads/${branch}`, true);
   }
 
   if (opts.dryRun) {
@@ -218,13 +218,20 @@ export async function getLocalBranchSha(
   }
 
   try {
-    const { stdout } = await execa("git", ["-C", repoPath, "show-ref", "--verify", `refs/heads/${branch}`]);
-    const match = stdout.trim().split(/\s+/);
-    return match[0] || null;
+    const { stdout } = await execa("git", [
+      "-C",
+      repoPath,
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/heads/${branch}`,
+    ]);
+    const sha = stdout.trim();
+    return sha || null;
   } catch (err: any) {
     if (err.exitCode === 1) {
       return null;
     }
-    throw new Error(`git show-ref failed:\n${err.stderr || err.message}`);
+    throw new Error(`git rev-parse failed:\n${err.stderr || err.message}`);
   }
 }
