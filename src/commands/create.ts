@@ -24,6 +24,7 @@ import {
 } from "../lib/resolver.js";
 import { resolveIde, spawnIde } from "../lib/ide.js";
 import { runPostCreateSetup } from "../lib/worktree-setup.js";
+import { switchToInstall, switchToSymlink } from "../lib/deps.js";
 import { resolveForge } from "../lib/forge/index.js";
 import { resolveOwnership, type Ownership } from "../lib/owner.js";
 import { resolveAgentCommand, listAvailableAgents, spawnAgentInWorktree } from "../lib/agents.js";
@@ -37,6 +38,25 @@ interface CreateOptions {
   local?: boolean;
   agent?: string;
   prompt?: string;
+  deps?: string;
+}
+
+const DEPS_STRATEGIES = ["auto", "link", "symlink", "install", "off"] as const;
+
+async function applyDepsStrategy(
+  strategy: string,
+  wtPath: string,
+  mainPath: string,
+  opts: GlobalOptions
+): Promise<boolean> {
+  if (strategy === "install") {
+    return switchToInstall(wtPath, opts);
+  }
+  if (strategy === "symlink") {
+    await switchToSymlink(wtPath, mainPath, opts);
+    return true;
+  }
+  return true;
 }
 
 async function fetchPrAuthorLogin(
@@ -71,9 +91,15 @@ export function registerCreateCommand(program: Command) {
     .option("--local", "Use local branch even if diverged from remote")
     .option("--agent <name>", "Spawn a coding agent in the new worktree")
     .option("--prompt <text>", "Prompt to pass to the coding agent")
+    .option("--deps <strategy>", `Dependency strategy for the new worktree: ${DEPS_STRATEGIES.join("|")}`)
     .action(async (branch: string, options: CreateOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
+
+      if (options.deps && !DEPS_STRATEGIES.includes(options.deps as (typeof DEPS_STRATEGIES)[number])) {
+        stepError(`Invalid --deps strategy: ${options.deps}`, `Expected one of: ${DEPS_STRATEGIES.join(", ")}`);
+        process.exit(1);
+      }
 
       let agentCmd: string | null = null;
       if (options.agent) {
@@ -111,6 +137,7 @@ export function registerCreateCommand(program: Command) {
       let successCount = 0;
       let skipCount = 0;
       let hookFailures = false;
+      let depsFailed = false;
 
       for (const repo of repos) {
         repoHeader(repo.name);
@@ -218,6 +245,12 @@ export function registerCreateCommand(program: Command) {
           stepSuccess("Worktree created", wtPath);
 
           const setupResult = await runPostCreateSetup({ config, repo, wtPath, branch, globalOpts });
+
+          if (options.deps && options.deps !== "auto" && options.deps !== "link" && options.deps !== "off") {
+            const ok = await applyDepsStrategy(options.deps, wtPath, repo.mainPath, globalOpts);
+            if (!ok) depsFailed = true;
+          }
+
           if (setupResult && setupResult.hooks) {
             const failedHooks = setupResult.hooks.filter(h => !h.ok);
             if (failedHooks.length > 0) {
@@ -227,8 +260,8 @@ export function registerCreateCommand(program: Command) {
             }
           }
 
-          if (hookFailures) {
-            stepWarning("Skipping IDE open and agent spawn", `worktree has failed hooks — fix with 'wtx sync ${branch}' first`);
+          if (hookFailures || depsFailed) {
+            stepWarning("Skipping IDE open and agent spawn", `worktree has failures — fix with 'wtx sync ${branch}' or 'wtx deps ${branch} --install' first`);
           } else {
             openWorktree(wtPath);
           }
@@ -270,7 +303,7 @@ export function registerCreateCommand(program: Command) {
         summary(`Done — ${successCount} worktrees created`);
       }
 
-      if (hookFailures) {
+      if (hookFailures || depsFailed) {
         process.exit(1);
       }
     });

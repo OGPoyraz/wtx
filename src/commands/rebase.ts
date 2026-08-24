@@ -6,6 +6,7 @@ import {
   repoHeader,
   stepProgress,
   stepSuccess,
+  stepWarning,
   stepError,
   summary,
   indented,
@@ -36,6 +37,7 @@ export function registerRebaseCommand(program: Command) {
       const repos = resolveRepos(config, targetRepos);
       
       let successCount = 0;
+      let failCount = 0;
 
       for (const repo of repos) {
         repoHeader(repo.name);
@@ -45,9 +47,11 @@ export function registerRebaseCommand(program: Command) {
         
         if (!fs.existsSync(wtPath)) {
           stepError("No worktree found", `${wtPath} (skipped)`);
+          failCount++;
           continue;
         }
 
+        let rebaseStarted = false;
         try {
           const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
           await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, "--", mainBranch], opts);
@@ -55,6 +59,7 @@ export function registerRebaseCommand(program: Command) {
           stepProgress(`Fetching ${resolvedRemote}/${mainBranch}...`, `${commit.hash} "${commit.subject}"`);
           
           stepProgress(`Rebasing ${branch} onto main...`);
+          rebaseStarted = true;
           const rebaseOut = await gitExec(["-C", wtPath, "rebase", "--", `${resolvedRemote}/${mainBranch}`], opts);
           
           if (rebaseOut.includes("is up to date") || rebaseOut.includes("up-to-date")) {
@@ -65,24 +70,30 @@ export function registerRebaseCommand(program: Command) {
           }
           successCount++;
         } catch (err: any) {
-          stepError("Rebase conflict:");
-          
-          try {
-            const statusStdout = await gitExec(["-C", wtPath, "status", "--porcelain"], opts);
-            const lines = statusStdout.split("\n");
-            for (const line of lines) {
-              if (line.startsWith("UU ") || line.startsWith("AA ") || line.startsWith("AU ") || line.startsWith("UA ")) {
-                indented(`CONFLICT (content): ${line.substring(3)}`);
-              }
-            }
-          } catch (e) {
+          if (!rebaseStarted) {
+            stepError("Rebase skipped — could not fetch base branch:", err.message.split("\n")[0] ?? err.message);
+            failCount++;
+            continue;
           }
-          
-          indented(`Resolve, then run:`);
-          indented(`  cd ${wtPath} && git rebase --continue`);
+
+          stepError("Rebase failed — manual merge needed:", err.message.split("\n")[0] ?? err.message);
+
+          try {
+            await gitExec(["-C", wtPath, "rebase", "--abort"], opts);
+            stepWarning("Rebase aborted", `${branch} restored to its pre-rebase state`);
+          } catch {
+            indented("Could not auto-abort — resolve manually:");
+            indented(`  cd ${wtPath} && git status`);
+          }
+          failCount++;
         }
       }
       
+      if (failCount > 0) {
+        summary(`Done — ${successCount} rebased, ${failCount} failed`);
+        process.exit(1);
+      }
+
       summary(`Done — ${successCount} repos rebased`);
     });
 }

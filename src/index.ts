@@ -6,6 +6,7 @@ import type { GlobalOptions } from "./types.js";
 import { registerConfigCommand } from "./commands/config.js";
 import { registerCreateCommand } from "./commands/create.js";
 import { registerPullCommand } from "./commands/pull.js";
+import { registerPullBranchCommand } from "./commands/pull-branch.js";
 import { registerRemoveCommand } from "./commands/remove.js";
 import { registerPruneCommand } from "./commands/prune.js";
 import { registerLsCommand } from "./commands/ls.js";
@@ -15,6 +16,7 @@ import { registerFetchCommand } from "./commands/fetch.js";
 import { registerSyncCommand } from "./commands/sync.js";
 import { registerDepsCommand } from "./commands/deps.js";
 import { registerOpenCommand } from "./commands/open.js";
+import { registerRenameCommand } from "./commands/rename.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerPrsCommand } from "./commands/prs.js";
 import { registerSkillCommand } from "./commands/skill.js";
@@ -41,6 +43,7 @@ program
 const MUTATING_COMMANDS = new Set([
   "create",
   "pull",
+  "pull-branch",
   "remove",
   "prune",
   "rebase",
@@ -48,6 +51,7 @@ const MUTATING_COMMANDS = new Set([
   "fetch",
   "open",
   "exec",
+  "rename",
 ]);
 
 const MUTATING_CONFIG_SUBCOMMANDS = new Set(["set", "add-repo", "remove-repo"]);
@@ -114,6 +118,7 @@ program.hook("postAction", () => {
 registerConfigCommand(program);
 registerCreateCommand(program);
 registerPullCommand(program);
+registerPullBranchCommand(program);
 registerRemoveCommand(program);
 registerPruneCommand(program);
 registerLsCommand(program);
@@ -123,6 +128,7 @@ registerFetchCommand(program);
 registerSyncCommand(program);
 registerDepsCommand(program);
 registerOpenCommand(program);
+registerRenameCommand(program);
 registerStatusCommand(program);
 registerPrsCommand(program);
 registerSkillCommand(program);

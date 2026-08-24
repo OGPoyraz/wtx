@@ -66,7 +66,8 @@ export function registerDepsCommand(program: Command) {
         }
 
         if (options.install) {
-          await switchToInstall(wtPath, globalOpts);
+          const ok = await switchToInstall(wtPath, globalOpts);
+          if (!ok) process.exitCode = 1;
           if (options.json) {
             jsonResults[repo.name] = detectDepsState(wtPath, repo.mainPath);
           }
