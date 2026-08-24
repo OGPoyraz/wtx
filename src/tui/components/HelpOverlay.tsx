@@ -11,7 +11,7 @@ const HELP_ENTRIES: [string, string][] = [
   ["p", "Pull latest changes for selected branch(es)"],
   ["b", "Rebase selected onto main"],
   ["s", "Sync selected (env files + hooks)"],
-  ["i", "Install dependencies in selected worktree(s)"],
+  ["i", "Install dependencies in selection (worktrees and main)"],
   ["m", "Rename selected worktree (branch + directory)"],
   ["o", "Open selected in IDE"],
   ["a", "Spawn agent in selected"],

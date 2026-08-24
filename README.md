@@ -90,7 +90,7 @@ If origin already has a branch with that name owned by someone else, `wtx` warns
 | `rebase` | `<branch>` | `--repo` | Fetch base remote main, rebase worktree onto it |
 | `fetch` | | `--repo` | Fetch main for each repo |
 | `sync` | `<branch>` | `--repo` | Re-copy sync files, run post-sync hooks |
-| `deps` | `[branch]` | `--repo`, `--install`, `--symlink`, `--json` | Inspect or switch dependency strategy |
+| `deps` | `[branch]` | `--repo`, `--install`, `--symlink`, `--json` | Inspect or switch dependency strategy; omit the branch and `--install` runs in the main checkout |
 | `ls` | | `--repo`, `--pr`, `--json` | List all worktrees with clean/dirty state |
 | `status` | `<branch>` | `--repo`, `--json` | Ahead/behind, dirty files, rebase state, deps strategy |
 | `prs` | | `--repo`, `--json`, `--all` | Pull request status across worktrees |
@@ -167,7 +167,7 @@ Config lives at `~/.config/wtx/config.json`.
 | `repos.<name>.fetch_main_on_create` | `true` | Fetch before creating so branches start fresh |
 | `repos.<name>.sync_files` | `[]` | Files copied from main checkout on create and sync |
 | `repos.<name>.post_create` / `post_sync` | `[]` | Hook commands; failures fail the command with a rerun hint |
-| `repos.<name>.install_script` | `null` | Command run inside a worktree for `deps --install` and `create --deps install` (`{wt}`, `{branch}`, `{main}` expanded); when unset, the detected package manager performs a real install |
+| `repos.<name>.install_script` | `null` | Command run inside a worktree (or the main checkout via `wtx deps --install`) for dependency installs (`{wt}`, `{branch}`, `{main}` expanded); when unset, the detected package manager performs a real install |
 | `repos.<name>.deps.manager` | `"auto"` | Force a manager: `npm` `bun` `pnpm` `yarn` `go` `python` `cargo` |
 | `repos.<name>.deps.strategy` | `"auto"` | `auto` `link` `symlink` `install` `off` — see below |
 | `repos.<name>.check_prs` | `true` | Set `false` to skip all PR lookups for this repo's branches (no `gh` calls) |
@@ -214,7 +214,7 @@ Hooks also receive `WTX_PORT` as an environment variable, as does `wtx exec`. Po
 | `install` | Always a real install in the worktree |
 | `off` | Leave dependencies alone |
 
-Per-repo `install_script` overrides the install command entirely — useful for non-standard setups (`pnpm install --frozen-lockfile`, bootstrap scripts, codegen steps). It runs inside the worktree with the same `{wt}` / `{branch}` / `{main}` template expansion as hooks.
+Per-repo `install_script` overrides the install command entirely — useful for non-standard setups (`pnpm install --frozen-lockfile`, bootstrap scripts, codegen steps). It runs inside the worktree (or the main checkout when installing via `wtx deps --install` with no branch) with the same `{wt}` / `{branch}` / `{main}` template expansion as hooks.
 
 ### Safe linking (the `auto` default)
 

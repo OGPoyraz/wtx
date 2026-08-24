@@ -104,7 +104,7 @@ function findRepoDepsContext(wtPath: string): RepoDepsContext {
   try {
     const config = loadConfig();
     const repos = resolveRepos(config, []);
-    const repo = repos.find(r => wtPath === r.wtRoot || wtPath.startsWith(r.wtRoot + "/"));
+    const repo = repos.find(r => wtPath === r.mainPath || wtPath === r.wtRoot || wtPath.startsWith(r.wtRoot + "/"));
     if (repo) {
       return {
         name: repo.name,

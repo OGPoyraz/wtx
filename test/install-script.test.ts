@@ -48,9 +48,13 @@ beforeAll(() => {
 });
 
 describe("switchToInstall with repo install_script", () => {
-  it("runs the configured install script inside the worktree", async () => {
-    const ok = await switchToInstall(wtPath, opts);
-    expect(ok).toBe(true);
+  it("runs the configured install script inside the worktree and the main checkout", async () => {
+    const okWt = await switchToInstall(wtPath, opts);
+    expect(okWt).toBe(true);
     expect(fs.existsSync(path.join(wtPath, "marker.txt"))).toBe(true);
+
+    const okMain = await switchToInstall(mainPath, opts);
+    expect(okMain).toBe(true);
+    expect(fs.existsSync(path.join(mainPath, "marker.txt"))).toBe(true);
   });
 });
