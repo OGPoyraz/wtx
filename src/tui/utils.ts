@@ -1,5 +1,6 @@
 import type { WorktreeRow, RepoBlock } from "./types.js";
 import type { DataWarning } from "./data.js";
+import { buildStackHierarchy } from "../lib/stack.js";
 
 export function matchesFilter(entry: WorktreeRow, term: string): boolean {
   if (!term) return true;
@@ -11,6 +12,7 @@ export function matchesFilter(entry: WorktreeRow, term: string): boolean {
   if (entry.owner?.toLowerCase().includes(lower)) return true;
   if (entry.prState?.toLowerCase().includes(lower)) return true;
   if (entry.prUrl?.toLowerCase().includes(lower)) return true;
+  if (entry.base?.toLowerCase().includes(lower)) return true;
   
   return false;
 }
@@ -54,6 +56,19 @@ export function rowSort(a: WorktreeRow, b: WorktreeRow): number {
   if (a.isMainCheckout && !b.isMainCheckout) return -1;
   if (!a.isMainCheckout && b.isMainCheckout) return 1;
   return a.branch.localeCompare(b.branch);
+}
+
+export function sortRowsHierarchically(rows: WorktreeRow[]): WorktreeRow[] {
+  return buildStackHierarchy(
+    rows,
+    (row) => row.branch,
+    (row) => row.base,
+    rowSort
+  ).map(({ item, depth, prefix }) => ({
+    ...item,
+    hierarchyDepth: depth,
+    hierarchyPrefix: prefix,
+  }));
 }
 
 export function sortBlocks(blocks: RepoBlock[]): RepoBlock[] {
@@ -116,8 +131,6 @@ export function withCreatePlaceholders(
     const branches = byRepo.get(block.repoName);
     if (!branches) return block;
     const placeholders = branches.map(br => makePlaceholderRow(block.repoName, br));
-    return { ...block, rows: [...block.rows, ...placeholders].sort(rowSort) };
+    return { ...block, rows: sortRowsHierarchically([...block.rows, ...placeholders]) };
   });
 }
-
-

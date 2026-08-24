@@ -13,9 +13,10 @@ import {
   summaryWarning,
   verbose,
 } from "../lib/log.js";
-import { gitExec, getLatestCommit, getLocalBranchSha, getRemoteBranchSha, getWorktreeList } from "../lib/git.js";
+import { gitExec, getLatestCommit, getLocalBranchSha, getRemoteBranchSha, getWorktreeList, resolveCommitSha } from "../lib/git.js";
 import { resolveBaseRemote } from "../lib/remotes.js";
 import { resolveBranchTarget } from "../lib/branch-resolution.js";
+import { recordStackEntry } from "../lib/stack.js";
 import {
   resolveRepos,
   resolveMainBranch,
@@ -153,10 +154,6 @@ export function registerCreateCommand(program: Command) {
             continue;
           }
 
-          if (!globalOpts.dryRun) {
-            fs.mkdirSync(path.dirname(wtPath), { recursive: true });
-          }
-
           const mainBranch = await resolveMainBranch(repo, config);
           const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
 
@@ -169,6 +166,21 @@ export function registerCreateCommand(program: Command) {
 
           stepProgress("Checking branch status...");
           const baseRef = options.base || `${resolvedRemote}/${mainBranch}`;
+          if (baseRef === branch || baseRef === `refs/heads/${branch}`) {
+            throw new Error(`Base ref '${baseRef}' cannot be the new branch '${branch}'`);
+          }
+
+          let baseSha: string | null = null;
+          if (!globalOpts.dryRun) {
+            baseSha = await resolveCommitSha(repo.mainPath, baseRef, globalOpts);
+            stepSuccess("Base resolved", `${baseRef} at ${baseSha.substring(0, 7)}`);
+          } else {
+            stepProgress("Using base", baseRef);
+          }
+
+          if (!globalOpts.dryRun) {
+            fs.mkdirSync(path.dirname(wtPath), { recursive: true });
+          }
           
           const localSha = await getLocalBranchSha(repo.mainPath, branch, globalOpts);
           const remoteSha = await getRemoteBranchSha(repo.mainPath, resolvedRemote, branch, globalOpts);
@@ -243,6 +255,22 @@ export function registerCreateCommand(program: Command) {
           }
 
           stepSuccess("Worktree created", wtPath);
+
+          if (!globalOpts.dryRun && baseSha && resolvedAction.kind === "create-new") {
+            try {
+              const metadataBaseRef = options.base ? baseRef : mainBranch;
+              await recordStackEntry(repo.mainPath, branch, {
+                baseRef: metadataBaseRef,
+                baseSha,
+                explicit: options.base !== undefined,
+                createdAt: new Date().toISOString(),
+              }, globalOpts);
+              stepSuccess("Base recorded", metadataBaseRef);
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              stepWarning("Base metadata not recorded", message);
+            }
+          }
 
           const setupResult = await runPostCreateSetup({ config, repo, wtPath, branch, globalOpts });
 

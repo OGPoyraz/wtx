@@ -18,6 +18,7 @@ export interface PrInfo {
   mergeable: Mergeable;
   checks: PrChecks;
   reviewDecision: "approved" | "changes_requested" | null;
+  baseRefName?: string;
   unresolvedThreads: number;
   updatedAt: string;
 }
@@ -130,6 +131,7 @@ export interface PrHead {
   state: "open" | "merged" | "closed";
   isDraft: boolean;
   headRefName: string;
+  baseRefName?: string;
   isCrossRepository: boolean;
   headOwnerLogin: string | null;
   headRepoName: string | null;

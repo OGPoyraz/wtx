@@ -93,6 +93,31 @@ describe("JSON Output Builders", () => {
   });
 
   describe("buildStatusJson", () => {
+    it("includes the recorded base and moved-base warning for stacked worktrees", () => {
+      const result = buildStatusJson({
+        repo: "my-api",
+        branch: "feature/ui",
+        dirtyFiles: [],
+        ahead: 2,
+        behind: 0,
+        deps: { strategy: "installed" },
+        rebase: null,
+        base: "feature/api",
+        baseChanged: true,
+      });
+
+      expect(result).toEqual({
+        repo: "my-api",
+        branch: "feature/ui",
+        clean: true,
+        ahead: 2,
+        behind: 0,
+        deps: { strategy: "installed" },
+        base: "feature/api",
+        baseChanged: true,
+      });
+    });
+
     it("should build correct JSON structure for status output", () => {
       const input: StatusJsonInput = {
         repo: "my-frontend",

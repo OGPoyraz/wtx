@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolveActionLauncher } from "../src/tui/actions.js";
-import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort } from "../src/tui/utils.js";
+import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort, sortRowsHierarchically } from "../src/tui/utils.js";
 import type { WorktreeRow, RepoBlock } from "../src/tui/types.js";
 
 const mockRow: WorktreeRow = {
@@ -21,7 +21,8 @@ const mockRow: WorktreeRow = {
   prUrl: "https://github.com/wtx/pull/123",
   owner: "alice",
   rebaseStatus: null,
-  depsStrategy: "npm"
+  depsStrategy: "npm",
+  base: "main",
 };
 
 describe("TUI Interactions", () => {
@@ -32,6 +33,7 @@ describe("TUI Interactions", () => {
     expect(matchesFilter(mockRow, "123")).toBe(true);
     expect(matchesFilter(mockRow, "alice")).toBe(true);
     expect(matchesFilter(mockRow, "open")).toBe(true);
+    expect(matchesFilter(mockRow, "main")).toBe(true);
     expect(matchesFilter(mockRow, "nope")).toBe(false);
   });
 
@@ -91,6 +93,27 @@ describe("TUI repo ordering", () => {
     const a: WorktreeRow = { ...mockRow, branch: "a-branch" };
     const sorted = [z, main, a].sort(rowSort);
     expect(sorted.map(r => r.branch)).toEqual(["main", "a-branch", "z-branch"]);
+  });
+
+  it("sortRowsHierarchically places children after their base and preserves unrelated roots", () => {
+    const main: WorktreeRow = { ...mockRow, branch: "main", isMainCheckout: true, base: undefined };
+    const api: WorktreeRow = { ...mockRow, branch: "feature/api", base: "main" };
+    const docs: WorktreeRow = { ...mockRow, branch: "feature/docs", base: "main" };
+    const ui: WorktreeRow = { ...mockRow, branch: "feature/ui", base: "feature/api" };
+    const tests: WorktreeRow = { ...mockRow, branch: "feature/tests", base: "feature/ui" };
+    const independent: WorktreeRow = { ...mockRow, branch: "hotfix", base: undefined };
+
+    const sorted = sortRowsHierarchically([tests, ui, independent, docs, api, main]);
+
+    expect(sorted.map(row => row.branch)).toEqual([
+      "main",
+      "feature/api",
+      "feature/ui",
+      "feature/tests",
+      "feature/docs",
+      "hotfix",
+    ]);
+    expect(sorted.map(row => row.hierarchyPrefix)).toEqual(["", "├─ ", "│  └─ ", "│     └─ ", "└─ ", ""]);
   });
 
 });

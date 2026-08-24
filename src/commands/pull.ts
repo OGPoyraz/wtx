@@ -15,15 +15,17 @@ import {
   verbose,
   indented,
 } from "../lib/log.js";
-import { gitExec, localBranchExists, validateSafeBranchName, getWorktreeList } from "../lib/git.js";
+import { gitExec, localBranchExists, validateSafeBranchName, getWorktreeList, resolveCommitSha } from "../lib/git.js";
 import {
   resolveRepos,
   getWorktreePath,
   parseRepoFlag,
+  resolveMainBranch,
 } from "../lib/resolver.js";
 import { resolveBaseRemote } from "../lib/remotes.js";
 import { runPostCreateSetup } from "../lib/worktree-setup.js";
 import { parsePrLink, descriptorFor, detectRepoForge } from "../lib/forge/index.js";
+import { recordStackEntry } from "../lib/stack.js";
 
 interface PullOptions {
   repo?: string[];
@@ -184,7 +186,10 @@ export function registerPullCommand(program: Command) {
           return;
         }
 
-        const baseRemote = await resolveBaseRemote(target.mainPath, target.config.main_branch === "auto" ? config.default_main_branch : target.config.main_branch);
+        const mainBranch = await resolveMainBranch(target, config);
+        const baseRemote = await resolveBaseRemote(target.mainPath, mainBranch);
+        const baseBranch = head.baseRefName || mainBranch;
+        const baseRef = `${baseRemote}/${baseBranch}`;
 
         const fetch = adapter.buildHeadFetch(head);
         stepProgress(
@@ -194,6 +199,17 @@ export function registerPullCommand(program: Command) {
         );
 
         try {
+          if (baseBranch !== mainBranch) {
+            try {
+              await gitExec(
+                ["-C", target.mainPath, "fetch", baseRemote, "--", baseBranch],
+                { verbose: globalOpts.verbose, dryRun: globalOpts.dryRun }
+              );
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              stepWarning("PR base was not fetched", message.split("\n")[0] ?? message);
+            }
+          }
           await gitExec(
             [
               "-C",
@@ -231,6 +247,23 @@ export function registerPullCommand(program: Command) {
         }
 
         stepSuccess("Worktree created", wtPath);
+
+        if (!globalOpts.dryRun) {
+          try {
+            const baseSha = await resolveCommitSha(target.mainPath, baseRef, globalOpts);
+            const metadataBaseRef = baseBranch === mainBranch ? mainBranch : baseRef;
+            await recordStackEntry(target.mainPath, branch, {
+              baseRef: metadataBaseRef,
+              baseSha,
+              explicit: baseBranch !== mainBranch,
+              createdAt: new Date().toISOString(),
+            }, globalOpts);
+            stepSuccess("Base recorded", metadataBaseRef);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            stepWarning("Base metadata not recorded", message);
+          }
+        }
 
         const setupResult = await runPostCreateSetup({ config, repo: target, wtPath, branch, globalOpts });
         const failedHooks = setupResult.hooks.filter((h) => !h.ok);

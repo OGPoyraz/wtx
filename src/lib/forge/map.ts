@@ -117,6 +117,7 @@ export function mapGithubPr(raw: unknown): PrInfo | null {
   const url = typeof raw.url === "string" ? raw.url : "";
   const isDraft = raw.isDraft === true;
   const updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : "";
+  const baseRefName = typeof raw.baseRefName === "string" ? raw.baseRefName : undefined;
 
   const checks = bucketChecks(collectCheckItems(raw.statusCheckRollup));
 
@@ -133,6 +134,7 @@ export function mapGithubPr(raw: unknown): PrInfo | null {
     mergeable: mapMergeable(raw.mergeable),
     checks,
     reviewDecision: mapReviewDecision(raw.reviewDecision),
+    ...(baseRefName ? { baseRefName } : {}),
     unresolvedThreads: 0,
     updatedAt,
   };
@@ -156,6 +158,7 @@ export function mapPrHead(raw: unknown): PrHead | null {
   const url = typeof raw.url === "string" ? raw.url : "";
   const isDraft = raw.isDraft === true;
   const isCrossRepository = raw.isCrossRepository === true;
+  const baseRefName = typeof raw.baseRefName === "string" ? raw.baseRefName : undefined;
 
   let headOwnerLogin: string | null = null;
   if (isRecord(raw.headRepositoryOwner) && typeof raw.headRepositoryOwner.login === "string") {
@@ -174,6 +177,7 @@ export function mapPrHead(raw: unknown): PrHead | null {
     state,
     isDraft,
     headRefName,
+    ...(baseRefName ? { baseRefName } : {}),
     isCrossRepository,
     headOwnerLogin,
     headRepoName,

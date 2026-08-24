@@ -4,7 +4,7 @@ import type { DataWarning } from "../data.js";
 import { loadConfig } from "../../lib/config.js";
 import type { GlobalOptions } from "../../types.js";
 import type { RepoBlock, WorktreeRow } from "../types.js";
-import { mergeBlocks, mergeWarnings, rowSort } from "../utils.js";
+import { mergeBlocks, mergeWarnings, sortRowsHierarchically } from "../utils.js";
 
 function initialPendingRepos(): string[] {
   try {
@@ -46,8 +46,7 @@ export function useWorktrees(opts: GlobalOptions) {
 
       const newBlocks: RepoBlock[] = [];
       for (const [repoName, rows] of byRepo.entries()) {
-        rows.sort(rowSort);
-        newBlocks.push({ repoName, rows });
+        newBlocks.push({ repoName, rows: sortRowsHierarchically(rows) });
       }
       newBlocks.sort((a, b) => a.repoName.localeCompare(b.repoName));
 
