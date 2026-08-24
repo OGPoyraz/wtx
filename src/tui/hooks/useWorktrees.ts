@@ -2,13 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchWorktreeData } from "../data.js";
 import type { DataWarning } from "../data.js";
 import type { GlobalOptions } from "../../types.js";
-import type { WorktreeRow } from "../types.js";
+import type { RepoBlock, WorktreeRow } from "../types.js";
 import { mergeBlocks, mergeWarnings, rowSort } from "../utils.js";
-
-export interface RepoBlock {
-  repoName: string;
-  rows: WorktreeRow[];
-}
 
 export function useWorktrees(opts: GlobalOptions) {
   const [blocks, setBlocks] = useState<RepoBlock[]>([]);

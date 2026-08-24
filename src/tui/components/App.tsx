@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useKeyboard, useRenderer } from "@opentui/react";
 import type { GlobalOptions } from "../../types.js";
 import { useWorktrees } from "../hooks/useWorktrees.js";
 import { WorktreeTable } from "./WorktreeTable.js";
+import type { VerbIndicator } from "./WorktreeTable.js";
 import { DetailPane } from "./DetailPane.js";
 import { Footer } from "./Footer.js";
 import { HelpOverlay } from "./HelpOverlay.js";
@@ -14,7 +15,7 @@ import { ActionLogModal } from "./ActionLogModal.js";
 import { HistoryOverlay } from "./HistoryOverlay.js";
 import { InputModal } from "./InputModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
-import { matchesFilter, toggleSelection } from "../utils.js";
+import { matchesFilter, toggleSelection, withCreatePlaceholders } from "../utils.js";
 import { resolveAgentCommand, spawnAgentInWorktree } from "../../lib/agents.js";
 import { loadConfig } from "../../lib/config.js";
 import { appendHistory } from "../../lib/history.js";
@@ -24,7 +25,7 @@ export interface AppProps {
   opts: GlobalOptions;
 }
 
-type ModalState = 
+type ModalState =
   | { type: "none" }
   | { type: "help" }
   | { type: "history" }
@@ -46,29 +47,37 @@ const VERBS: Record<BusyKind, string> = {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-interface BusyState {
+interface PendingOp {
+  id: number;
   kind: BusyKind;
   repoNames: string[];
   rowPath?: string;
+  branch?: string;
+  label: string;
+  title: string;
+  status: "queued" | "running";
+  lines: { text: string; type: "out" | "err" }[];
 }
 
-type ActionRunState = BusyState & {
+interface FailedAction {
   title: string;
-  label: string;
   lines: { text: string; type: "out" | "err" }[];
-  done: boolean;
-  exitCode: number | null;
-};
+  exitCode: number;
+}
 
 export function App({ opts }: AppProps) {
   const renderer = useRenderer();
-  const { blocks, loading, error, warnings, lastRefreshed, refresh } = useWorktrees(opts);
-  
+  const { blocks, loading, refreshing, error, warnings, lastRefreshed, refresh } = useWorktrees(opts);
+
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [actionMessage, setActionMessage] = useState<string | undefined>();
-  
-  const [actionRun, setActionRun] = useState<ActionRunState | null>(null);
+  const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [ops, setOps] = useState<PendingOp[]>([]);
+  const [failedLogs, setFailedLogs] = useState<FailedAction[]>([]);
+  const nextOpId = useRef(1);
+
   const [createModal, setCreateModal] = useState(false);
   const [createError, setCreateError] = useState<string | undefined>();
   const [configOpen, setConfigOpen] = useState(false);
@@ -83,12 +92,41 @@ export function App({ opts }: AppProps) {
     }
   }, [error]);
 
-  const filteredBlocks = blocks.map(b => ({
-    ...b,
-    rows: b.rows.filter(r => matchesFilter(r, filterText))
-  })).filter(b => b.rows.length > 0);
+  const flash = useCallback((message: string, ms = 3000) => {
+    if (messageTimer.current) clearTimeout(messageTimer.current);
+    setActionMessage(message);
+    messageTimer.current = setTimeout(() => setActionMessage(undefined), ms);
+  }, []);
 
-  const flatRows = filteredBlocks.flatMap(b => b.rows);
+  const busyRepos = useMemo(() => new Set(ops.flatMap(o => o.repoNames)), [ops]);
+  const busyRowPaths = useMemo(
+    () => new Set(ops.map(o => o.rowPath).filter((p): p is string => p !== undefined)),
+    [ops]
+  );
+  const anyRunning = ops.some(o => o.status === "running");
+  const spinnerFrame = useSpinnerFrame(anyRunning || loading || refreshing);
+
+  const baseFiltered = useMemo(
+    () =>
+      blocks
+        .map(b => ({ ...b, rows: b.rows.filter(r => matchesFilter(r, filterText)) }))
+        .filter(b => b.rows.length > 0),
+    [blocks, filterText]
+  );
+
+  const displayBlocks = useMemo(
+    () =>
+      withCreatePlaceholders(
+        baseFiltered,
+        ops.filter(o => o.branch !== undefined).map(o => ({ repoName: o.repoNames[0]!, branch: o.branch! }))
+      ),
+    [baseFiltered, ops]
+  );
+
+  const flatRows = useMemo(
+    () => displayBlocks.flatMap(b => b.rows.filter(r => !r.isPendingCreate)),
+    [displayBlocks]
+  );
   const totalRows = blocks.flatMap(b => b.rows).length;
   const maxIndex = Math.max(0, flatRows.length - 1);
 
@@ -100,11 +138,22 @@ export function App({ opts }: AppProps) {
 
   const selectedRow = flatRows[selectedIndex] ?? null;
 
-  const busy: BusyState | null =
-    actionRun !== null && !actionRun.done
-      ? { kind: actionRun.kind, repoNames: actionRun.repoNames, rowPath: actionRun.rowPath }
-      : null;
-  const spinnerFrame = useSpinnerFrame(busy !== null || loading);
+  const { repoVerbs, rowVerbs } = useMemo(() => {
+    const rv = new Map<string, VerbIndicator>();
+    const nv = new Map<string, VerbIndicator>();
+    for (const o of ops) {
+      const indicator: VerbIndicator = { verb: VERBS[o.kind], running: o.status === "running" };
+      if (o.rowPath) {
+        nv.set(o.rowPath, indicator);
+      } else {
+        for (const rn of o.repoNames) rv.set(rn, indicator);
+      }
+    }
+    return { repoVerbs: rv, rowVerbs: nv };
+  }, [ops]);
+
+  const runningOps = ops.filter(o => o.status === "running");
+  const latestOp = runningOps[runningOps.length - 1];
 
   const getSelectedRows = (): WorktreeRow[] => {
     if (selection.size > 0) {
@@ -113,41 +162,105 @@ export function App({ opts }: AppProps) {
     return selectedRow ? [selectedRow] : [];
   };
 
-  const runSequentialActions = async (kind: BusyKind, targets: WorktreeRow[], actionArgs: (row: WorktreeRow) => string[]) => {
-    for (const row of targets) {
-      await startAction(kind, `${capitalize(VERBS[kind])} ${row.branch}`, row.branch, [row.repoName], row.path, actionArgs(row));
+  const findConflict = (targets: WorktreeRow[]): string | null => {
+    for (const t of targets) {
+      if (busyRowPaths.has(t.path)) return `${t.branch} is busy`;
     }
-    setSelection(new Set());
+    for (const t of targets) {
+      if (busyRepos.has(t.repoName)) return `${t.repoName} is busy`;
+    }
+    return null;
   };
 
-  const startAction = async (kind: BusyKind, title: string, label: string, repoNames: string[], rowPath: string | undefined, args: string[]) => {
-    return new Promise<void>((resolve) => {
-      setActionRun({ kind, repoNames, rowPath, title, label, lines: [], done: false, exitCode: null });
-      runWtxAction(args, (text, type) => {
-        setActionRun(prev => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            lines: [...prev.lines, { text, type }]
-          };
-        });
-      }).then((result) => {
-        if (result.exitCode === 0) {
-          setActionRun(null);
-        } else {
-          setActionRun(prev => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              done: true,
-              exitCode: result.exitCode
-            };
-          });
-        }
-        refresh();
-        resolve();
+  const executeOp = async (op: PendingOp, args: string[], refreshScope: string[] | null) => {
+    setOps(prev => prev.map(o => (o.id === op.id ? { ...o, status: "running" } : o)));
+
+    const collected: { text: string; type: "out" | "err" }[] = [];
+    let exitCode: number;
+    try {
+      const result = await runWtxAction(args, (text, type) => {
+        collected.push({ text, type });
+        setOps(prev => prev.map(o => (o.id === op.id ? { ...o, lines: [...o.lines, { text, type }] } : o)));
       });
+      exitCode = result.exitCode;
+    } catch (err) {
+      exitCode = 1;
+      const msg = err instanceof Error ? err.message : String(err);
+      collected.push({ text: `Failed to run wtx ${args.join(" ")}: ${msg}`, type: "err" });
+    }
+
+    if (exitCode === 0) {
+      if (refreshScope) await refresh(refreshScope);
+      setOps(prev => prev.filter(o => o.id !== op.id));
+    } else {
+      setOps(prev => prev.filter(o => o.id !== op.id));
+      setFailedLogs(prev => [...prev, { title: op.title, lines: collected, exitCode }]);
+    }
+  };
+
+  const startBatchActions = (
+    kind: Exclude<BusyKind, "fetch">,
+    targets: WorktreeRow[],
+    argsFor: (row: WorktreeRow) => string[]
+  ) => {
+    const created = targets.map(row => {
+      const op: PendingOp = {
+        id: nextOpId.current++,
+        kind,
+        repoNames: [row.repoName],
+        rowPath: row.path,
+        label: row.branch,
+        title: `${capitalize(VERBS[kind])} ${row.branch}`,
+        status: "queued",
+        lines: [],
+      };
+      return { op, row };
     });
+    setOps(prev => [...prev, ...created.map(c => c.op)]);
+    void (async () => {
+      for (const { op, row } of created) {
+        await executeOp(op, argsFor(row), [row.repoName]);
+      }
+      setSelection(new Set());
+    })();
+  };
+
+  const startFetch = (targets: WorktreeRow[]) => {
+    const repoNames = [...new Set(targets.map(t => t.repoName))];
+    const conflict = repoNames.find(rn => busyRepos.has(rn));
+    if (conflict) {
+      flash(`${conflict} is busy`);
+      return;
+    }
+    const label = repoNames.length === 1 ? repoNames[0]! : `${repoNames.length} repos`;
+    const op: PendingOp = {
+      id: nextOpId.current++,
+      kind: "fetch",
+      repoNames,
+      label,
+      title: `Fetch ${label}`,
+      status: "queued",
+      lines: [],
+    };
+    setOps(prev => [...prev, op]);
+    void executeOp(op, ["fetch", "--repo", repoNames.join(",")], repoNames).then(() =>
+      setSelection(new Set())
+    );
+  };
+
+  const startCreate = (branch: string, repoName: string) => {
+    const op: PendingOp = {
+      id: nextOpId.current++,
+      kind: "create",
+      repoNames: [repoName],
+      branch,
+      label: `${branch} in ${repoName}`,
+      title: `Create ${branch}`,
+      status: "queued",
+      lines: [],
+    };
+    setOps(prev => [...prev, op]);
+    void executeOp(op, ["create", branch, "--repo", repoName], [repoName]);
   };
 
   useKeyboard(
@@ -163,12 +276,8 @@ export function App({ opts }: AppProps) {
         return;
       }
 
-      if (loading || busy) {
-        return;
-      }
-
-      if (actionRun) {
-        setActionRun(null);
+      if (failedLogs.length > 0) {
+        setFailedLogs(prev => prev.slice(1));
         return;
       }
 
@@ -193,7 +302,7 @@ export function App({ opts }: AppProps) {
           }
           return;
         }
-        
+
         // Confirm modals
         if (
           modal.type === "confirm_remove" ||
@@ -206,15 +315,15 @@ export function App({ opts }: AppProps) {
             setModal({ type: "none" });
 
             if (action === "confirm_remove") {
-              runSequentialActions("remove", rows, (r) => {
+              startBatchActions("remove", rows, (r) => {
                 const args = ["remove", r.branch, "--repo", r.repoName, "--yes"];
                 if (r.dirtyFiles.length > 0) args.push("--force");
                 return args;
               });
             } else if (action === "confirm_rebase") {
-              runSequentialActions("rebase", rows, (r) => ["rebase", r.branch, "--repo", r.repoName]);
+              startBatchActions("rebase", rows, (r) => ["rebase", r.branch, "--repo", r.repoName]);
             } else {
-              runSequentialActions("sync", rows, (r) => ["sync", r.branch, "--repo", r.repoName]);
+              startBatchActions("sync", rows, (r) => ["sync", r.branch, "--repo", r.repoName]);
             }
             return;
           }
@@ -226,7 +335,6 @@ export function App({ opts }: AppProps) {
         }
       }
 
-      // Normal navigation
       if (key.name === "q" || key.name === "escape" || (key.name === "c" && key.ctrl)) {
         if (key.name === "escape" && selection.size > 0) {
           setSelection(new Set());
@@ -248,12 +356,136 @@ export function App({ opts }: AppProps) {
         return;
       }
 
+      if (key.name === "down" || key.name === "j") {
+        setSelectedIndex(prev => Math.min(prev + 1, maxIndex));
+        return;
+      }
+
+      if (key.name === "up" || key.name === "k") {
+        setSelectedIndex(prev => Math.max(prev - 1, 0));
+        return;
+      }
+
+      if (key.name === "r" && !key.shift) {
+        void refresh();
+        return;
+      }
+
+      if (key.name === "c" && !key.ctrl) {
+        setConfigOpen(true);
+        return;
+      }
+
+      if (key.name === "?" || key.name === "H" || (key.name === "h" && key.shift)) {
+        if (key.name === "?") {
+          setModal({ type: "help" });
+        } else {
+          setModal({ type: "history" });
+        }
+        return;
+      }
+
+      if (key.name === "n") {
+        if (!selectedRow) return;
+        setCreateModal(true);
+        setCreateError(undefined);
+        return;
+      }
+
+      if (key.name === "f") {
+        const targets = getSelectedRows();
+        if (targets.length > 0) startFetch(targets);
+        return;
+      }
+
+      if (key.name === "o") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.length > 1) {
+          flash("Cannot open multiple worktrees");
+          return;
+        }
+        const target = targets[0];
+        if (!target) return;
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        const op: PendingOp = {
+          id: nextOpId.current++,
+          kind: "open",
+          repoNames: [target.repoName],
+          rowPath: target.path,
+          label: target.branch,
+          title: `Open ${target.branch}`,
+          status: "queued",
+          lines: [],
+        };
+        setOps(prev => [...prev, op]);
+        void executeOp(op, ["open", target.branch, "--repo", target.repoName], null);
+        return;
+      }
+
+      if (key.name === "d" || (key.name === "D" && key.shift)) {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.some(r => r.isMainCheckout)) {
+          flash("Cannot remove main checkout");
+          return;
+        }
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        setModal({ type: "confirm_remove", rows: targets });
+        return;
+      }
+
+      if (key.name === "b" || key.name === "R" || (key.name === "r" && key.shift)) {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.some(r => r.isMainCheckout)) {
+          flash("Cannot rebase main checkout");
+          return;
+        }
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        setModal({ type: "confirm_rebase", rows: targets });
+        return;
+      }
+
+      if (key.name === "s") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.some(r => r.isMainCheckout)) {
+          flash("Cannot sync main checkout");
+          return;
+        }
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        setModal({ type: "confirm_sync", rows: targets });
+        return;
+      }
+
       if (key.name === "a") {
-        (async () => {
-          const targets = getSelectedRows();
-          if (targets.length === 0) return;
-          const target = targets[0]; // Agent runs on first target or solo selection
-          if (!target) return;
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        const target = targets[0];
+        if (!target) return;
+        const conflict = findConflict([target]);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        void (async () => {
           const startedAt = Date.now();
           try {
             const config = await loadConfig();
@@ -267,8 +499,7 @@ export function App({ opts }: AppProps) {
               durationMs: Date.now() - startedAt,
               exit: 0,
             });
-            setActionMessage(`Agent spawned (${result.mode}${result.session ? ` session ${result.session}` : ""})`);
-            setTimeout(() => setActionMessage(undefined), 5000);
+            flash(`Agent spawned (${result.mode}${result.session ? ` session ${result.session}` : ""})`, 5000);
           } catch (e: any) {
             appendHistory({
               ts: new Date().toISOString(),
@@ -278,76 +509,9 @@ export function App({ opts }: AppProps) {
               durationMs: Date.now() - startedAt,
               exit: 1,
             });
-            setActionMessage(`Agent failed: ${e.message}`);
+            flash(`Agent failed: ${e.message}`, 5000);
           }
         })();
-        return;
-      }
-
-      if (key.name === "f") {
-        const targets = getSelectedRows();
-        if (targets.length === 0) return;
-        const repoNames = [...new Set(targets.map((t) => t.repoName))];
-        const label = repoNames.length === 1 ? repoNames[0]! : `${repoNames.length} repos`;
-        startAction("fetch", `Fetch ${label}`, label, repoNames, undefined, ["fetch", "--repo", repoNames.join(",")])
-          .then(() => setSelection(new Set()));
-        return;
-      } else if (key.name === "down" || key.name === "j") {
-        setSelectedIndex(prev => Math.min(prev + 1, maxIndex));
-      } else if (key.name === "up" || key.name === "k") {
-        setSelectedIndex(prev => Math.max(prev - 1, 0));
-      } else if (key.name === "r") {
-        refresh();
-      } else if (key.name === "c") {
-        setConfigOpen(true);
-      } else if (key.name === "?" || key.name === "H" || (key.name === "h" && key.shift)) {
-        if (key.name === "?") {
-          setModal({ type: "help" });
-        } else {
-          setModal({ type: "history" });
-        }
-      } else if (key.name === "n") {
-        if (!selectedRow) return;
-        setCreateModal(true);
-        setCreateError(undefined);
-      } else if (key.name === "o") {
-        const targets = getSelectedRows();
-        if (targets.length === 0) return;
-        if (targets.length > 1) {
-          setActionMessage("Cannot open multiple worktrees");
-          setTimeout(() => setActionMessage(undefined), 3000);
-          return;
-        }
-        const target = targets[0];
-        if (!target) return;
-        startAction("open", `Open ${target.branch}`, target.branch, [target.repoName], target.path, ["open", target.branch, "--repo", target.repoName]);
-      } else if (key.name === "d" || (key.name === "D" && key.shift)) {
-        const targets = getSelectedRows();
-        if (targets.length === 0) return;
-        if (targets.some(r => r.isMainCheckout)) {
-          setActionMessage("Cannot remove main checkout");
-          setTimeout(() => setActionMessage(undefined), 3000);
-          return;
-        }
-        setModal({ type: "confirm_remove", rows: targets });
-      } else if (key.name === "b" || key.name === "R" || (key.name === "r" && key.shift)) {
-        const targets = getSelectedRows();
-        if (targets.length === 0) return;
-        if (targets.some(r => r.isMainCheckout)) {
-          setActionMessage("Cannot rebase main checkout");
-          setTimeout(() => setActionMessage(undefined), 3000);
-          return;
-        }
-        setModal({ type: "confirm_rebase", rows: targets });
-      } else if (key.name === "s") {
-        const targets = getSelectedRows();
-        if (targets.length === 0) return;
-        if (targets.some(r => r.isMainCheckout)) {
-          setActionMessage("Cannot sync main checkout");
-          setTimeout(() => setActionMessage(undefined), 3000);
-          return;
-        }
-        setModal({ type: "confirm_sync", rows: targets });
       }
     }
   );
@@ -356,14 +520,12 @@ export function App({ opts }: AppProps) {
     <box flexDirection="column" width="100%" height="100%">
       <box flexDirection="row" width="100%" flexGrow={1}>
         <WorktreeTable
-          blocks={filteredBlocks}
+          blocks={displayBlocks}
           selectedIndex={selectedIndex}
           selection={selection}
-          busy={
-            busy
-              ? { repoNames: busy.repoNames, rowPath: busy.rowPath, verb: VERBS[busy.kind], frame: spinnerFrame }
-              : undefined
-          }
+          frame={spinnerFrame}
+          repoVerbs={repoVerbs}
+          rowVerbs={rowVerbs}
         />
         <DetailPane selectedRow={selectedRow} />
       </box>
@@ -373,31 +535,31 @@ export function App({ opts }: AppProps) {
           <input focused={true} placeholder="Type to filter..." onInput={(v: string) => setFilterText(v)} />
         </box>
       )}
-      <Footer 
-        loading={loading} 
-        lastRefreshed={lastRefreshed} 
-        errorCount={warnings.length} 
+      <Footer
+        loading={loading || refreshing}
+        lastRefreshed={lastRefreshed}
+        errorCount={warnings.length}
         message={actionMessage}
         busyText={
-          actionRun && !actionRun.done
-            ? `${capitalize(VERBS[actionRun.kind])} ${actionRun.label}…`
+          latestOp
+            ? `${capitalize(VERBS[latestOp.kind])} ${latestOp.label}…${runningOps.length > 1 ? ` (+${runningOps.length - 1})` : ""}`
             : undefined
         }
         spinnerFrame={spinnerFrame}
         filter={filterText ? { term: filterText, matches: flatRows.length, total: totalRows } : undefined}
       />
-      
+
       {modal.type === "help" && <HelpOverlay />}
       {modal.type === "history" && <HistoryOverlay />}
       {modal.type === "error" && (
-        <ConfirmModal 
-          title="Error" 
-          message={modal.message} 
+        <ConfirmModal
+          title="Error"
+          message={modal.message}
         />
       )}
       {modal.type === "confirm_remove" && (
-        <ConfirmModal 
-          title={`Remove ${modal.rows.length} Worktree(s)`} 
+        <ConfirmModal
+          title={`Remove ${modal.rows.length} Worktree(s)`}
           message={(() => {
             const count = modal.rows.length;
             const lines = [`Are you sure you want to remove ${count === 1 ? modal.rows[0]?.branch : count + " worktrees"}?`];
@@ -414,20 +576,20 @@ export function App({ opts }: AppProps) {
         />
       )}
       {modal.type === "confirm_rebase" && (
-        <ConfirmModal 
-          title={`Rebase ${modal.rows.length} Worktree(s)`} 
-          message={`Are you sure you want to fetch and rebase ${modal.rows.length === 1 ? modal.rows[0]?.branch : modal.rows.length + " worktrees"}?`} 
+        <ConfirmModal
+          title={`Rebase ${modal.rows.length} Worktree(s)`}
+          message={`Are you sure you want to fetch and rebase ${modal.rows.length === 1 ? modal.rows[0]?.branch : modal.rows.length + " worktrees"}?`}
         />
       )}
       {modal.type === "confirm_sync" && (
-        <ConfirmModal 
-          title={`Sync ${modal.rows.length} Worktree(s)`} 
-          message={`Are you sure you want to sync ${modal.rows.length === 1 ? modal.rows[0]?.branch : modal.rows.length + " worktrees"}?`} 
+        <ConfirmModal
+          title={`Sync ${modal.rows.length} Worktree(s)`}
+          message={`Are you sure you want to sync ${modal.rows.length === 1 ? modal.rows[0]?.branch : modal.rows.length + " worktrees"}?`}
         />
       )}
       {createModal && (
         <InputModal
-          title="New worktree branch"
+          title={`New worktree branch in ${selectedRow?.repoName ?? ""}`}
           placeholder="Branch name (empty to cancel)"
           errorMessage={createError}
           onSubmit={(value) => {
@@ -440,14 +602,19 @@ export function App({ opts }: AppProps) {
               setCreateError("Invalid branch name");
               return;
             }
-            setCreateModal(false);
-            if (selectedRow) {
-              startAction("create", `Create ${branch}`, `${branch} in ${selectedRow.repoName}`, [selectedRow.repoName], undefined, ["create", branch, "--repo", selectedRow.repoName]);
+            const repoName = selectedRow?.repoName;
+            if (!repoName) return;
+            if (busyRepos.has(repoName)) {
+              setCreateError(`${repoName} is busy`);
+              return;
             }
+            setCreateModal(false);
+            setCreateError(undefined);
+            startCreate(branch, repoName);
           }}
         />
       )}
-      
+
       {configOpen && (
         <ConfigOverlay
           onClose={() => setConfigOpen(false)}
@@ -456,12 +623,13 @@ export function App({ opts }: AppProps) {
         />
       )}
 
-      {actionRun?.done && (
+      {failedLogs.length > 0 && (
         <ActionLogModal
-          title={actionRun.title}
-          lines={actionRun.lines}
-          done={actionRun.done}
-          exitCode={actionRun.exitCode}
+          title={failedLogs[0]!.title}
+          lines={failedLogs[0]!.lines}
+          done={true}
+          exitCode={failedLogs[0]!.exitCode}
+          remaining={failedLogs.length - 1}
         />
       )}
     </box>

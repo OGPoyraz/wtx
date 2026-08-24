@@ -1,21 +1,21 @@
 import { useEffect, useRef } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
-import type { RepoBlock } from "../hooks/useWorktrees.js";
+import type { RepoBlock } from "../types.js";
 import type { WorktreeRow } from "../types.js";
 import { tokens, truncateBranch } from "../theme.js";
 
-interface BusyIndicator {
-  repoNames: string[];
-  rowPath?: string;
+export interface VerbIndicator {
   verb: string;
-  frame: string;
+  running: boolean;
 }
 
 interface WorktreeTableProps {
   blocks: RepoBlock[];
   selectedIndex: number;
   selection?: Set<string>;
-  busy?: BusyIndicator;
+  frame: string;
+  repoVerbs: Map<string, VerbIndicator>;
+  rowVerbs: Map<string, VerbIndicator>;
 }
 
 const SECONDARY_INDENT = "      ";
@@ -30,11 +30,17 @@ function statusBadge(row: WorktreeRow): { text: string; fg: string } {
   return { text: "clean", fg: tokens.dim };
 }
 
-function WorktreeItem({ row, isSelected, isMultiSelected, busy, id }: { row: WorktreeRow; isSelected: boolean; isMultiSelected: boolean; busy?: BusyIndicator; id?: string }) {
-  const badge = busy
-    ? { text: `${busy.frame} ${busy.verb}…`, fg: tokens.accent }
-    : statusBadge(row);
-  const primary = isSelected ? tokens.bright : tokens.fg;
+function WorktreeItem({ row, isSelected, isMultiSelected, indicator, frame, id }: { row: WorktreeRow; isSelected: boolean; isMultiSelected: boolean; indicator?: VerbIndicator; frame: string; id?: string }) {
+  const badge = indicator
+    ? indicator.running
+      ? { text: `${frame} ${indicator.verb}…`, fg: tokens.accent }
+      : { text: `◌ ${indicator.verb}`, fg: tokens.dim }
+    : row.isPendingCreate
+      ? { text: `${frame} creating…`, fg: tokens.accent }
+      : statusBadge(row);
+
+  const disabled = indicator !== undefined || row.isPendingCreate === true;
+  const primary = isSelected ? tokens.bright : disabled ? tokens.dim : tokens.fg;
 
   const divergence =
     row.ahead !== null && row.behind !== null && (row.ahead > 0 || row.behind > 0)
@@ -86,7 +92,7 @@ function WorktreeItem({ row, isSelected, isMultiSelected, busy, id }: { row: Wor
   );
 }
 
-export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), busy }: WorktreeTableProps) {
+export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), frame, repoVerbs, rowVerbs }: WorktreeTableProps) {
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   useEffect(() => {
@@ -112,25 +118,43 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), bu
       {blocks.length === 0 ? (
         <text fg={tokens.dim}>No repositories configured.</text>
       ) : (
-        blocks.map((block) => (
-          <box key={block.repoName} flexDirection="column" style={{ marginBottom: 1 }}>
-            <box style={{ marginTop: flatIndex === 0 ? 0 : 1 }}>
-              <text>
-                <span fg={tokens.bright}>{block.repoName}</span>
-                <span fg={tokens.dim}>{` · ${block.rows.length}`}</span>
-                {busy && busy.repoNames.includes(block.repoName) && !busy.rowPath && (
-                  <span fg={tokens.accent}>{`  ${busy.frame} ${busy.verb}…`}</span>
-                )}
-              </text>
-            </box>
+        blocks.map((block) => {
+          const repoIndicator = repoVerbs.get(block.repoName);
+          return (
+            <box key={block.repoName} flexDirection="column" style={{ marginBottom: 1 }}>
+              <box style={{ marginTop: flatIndex === 0 ? 0 : 1 }}>
+                <text>
+                  <span fg={tokens.bright}>{block.repoName}</span>
+                  <span fg={tokens.dim}>{` · ${block.rows.filter(r => !r.isPendingCreate).length}`}</span>
+                  {repoIndicator && (
+                    <span fg={repoIndicator.running ? tokens.accent : tokens.dim}>
+                      {repoIndicator.running
+                        ? `  ${frame} ${repoIndicator.verb}…`
+                        : `  ◌ ${repoIndicator.verb}`}
+                    </span>
+                  )}
+                </text>
+              </box>
 
-            {block.rows.map((row) => {
-              const isSelected = flatIndex === selectedIndex;
-              flatIndex++;
-              return <WorktreeItem key={row.path} row={row} isSelected={isSelected} isMultiSelected={selection.has(row.path)} busy={busy?.rowPath === row.path ? busy : undefined} id={isSelected ? "selected-row" : undefined} />;
-            })}
-          </box>
-        ))
+              {block.rows.map((row) => {
+                const navigable = !row.isPendingCreate;
+                const isSelected = navigable && flatIndex === selectedIndex;
+                if (navigable) flatIndex++;
+                return (
+                  <WorktreeItem
+                    key={row.path}
+                    row={row}
+                    isSelected={isSelected}
+                    isMultiSelected={selection.has(row.path)}
+                    indicator={rowVerbs.get(row.path)}
+                    frame={frame}
+                    id={isSelected ? "selected-row" : undefined}
+                  />
+                );
+              })}
+            </box>
+          );
+        })
       )}
     </scrollbox>
   );
