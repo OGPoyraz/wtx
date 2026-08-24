@@ -5,6 +5,7 @@ import {
   resolveRepos,
   getWorktreePath,
   resolveMainBranch,
+  findWorktreeForBranch,
 } from "../resolver.js";
 import {
   validateSafeBranchName,
@@ -358,18 +359,18 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
         throw { isToolError: true, message: "removal requires confirm:true" };
       }
       const repo = resolveRepos(config, [args.repo])[0]!;
-      const wtPath = getWorktreePath(repo, args.branch);
-      const safeWtPath = safeResolve(wtPath);
+      const candidatePath = getWorktreePath(repo, args.branch);
       
       if (!isSafeWorktreeConfig(repo.wtRoot, repo.mainPath)) {
         throw { isToolError: true, message: "Unsafe worktree configuration" };
       }
 
       const existing = await getWorktreeList(repo.mainPath);
-      const wt = existing.find(w => safeResolve(w.path) === safeWtPath);
-      if (!wt) {
+      const target = findWorktreeForBranch(existing, args.branch, repo.mainPath, candidatePath);
+      if (!target) {
         throw { isToolError: true, message: `Worktree for ${args.branch} is not registered` };
       }
+      const wtPath = target.path;
 
       if (!args.force && fs.existsSync(wtPath)) {
         const dirty = await getDirtyFiles(wtPath);

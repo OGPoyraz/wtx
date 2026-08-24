@@ -4,8 +4,10 @@ import {
   parseRepoFlag, 
   resolveRepos, 
   getWorktreePath, 
-  detectRepoFromCwd 
+  detectRepoFromCwd,
+  findWorktreeForBranch
 } from "../src/lib/resolver.js";
+import type { Worktree } from "../src/lib/git.js";
 import { createTempConfig, createTempDir, createTempGitRepo } from "./setup.js";
 import type { Config, RepoContext } from "../src/types.js";
 
@@ -177,5 +179,72 @@ describe("resolver", () => {
       process.cwd = () => "/home/user";
       expect(detectRepoFromCwd(config)).toBeUndefined();
     });
+  });
+});
+
+describe("findWorktreeForBranch", () => {
+  const MAIN_PATH = "/repos/wtx";
+
+  function makeWt(partial: Partial<Worktree>): Worktree {
+    return {
+      path: "/repos/wtx-wt/branch",
+      branch: "branch",
+      commit: "abc1234",
+      isLocked: false,
+      isPrunable: false,
+      isBare: false,
+      ...partial,
+    };
+  }
+
+  it("finds a worktree whose directory no longer matches the branch name", () => {
+    const worktrees = [
+      makeWt({ path: MAIN_PATH, branch: "main" }),
+      makeWt({ path: "/repos/wtx-wt/feat/next", branch: "fix/m1-safety" }),
+    ];
+
+    const target = findWorktreeForBranch(
+      worktrees,
+      "fix/m1-safety",
+      MAIN_PATH,
+      "/repos/wtx-wt/fix/m1-safety"
+    );
+
+    expect(target?.path).toBe("/repos/wtx-wt/feat/next");
+  });
+
+  it("falls back to the expected path when the worktree has no branch (detached)", () => {
+    const worktrees = [
+      makeWt({ path: MAIN_PATH, branch: "main" }),
+      makeWt({ path: "/repos/wtx-wt/detached", branch: undefined }),
+    ];
+
+    const target = findWorktreeForBranch(
+      worktrees,
+      "detached",
+      MAIN_PATH,
+      "/repos/wtx-wt/detached"
+    );
+
+    expect(target?.path).toBe("/repos/wtx-wt/detached");
+  });
+
+  it("never resolves the main checkout, even when its branch matches", () => {
+    const worktrees = [makeWt({ path: MAIN_PATH, branch: "main" })];
+
+    expect(
+      findWorktreeForBranch(worktrees, "main", MAIN_PATH, "/repos/wtx-wt/main")
+    ).toBeUndefined();
+  });
+
+  it("returns undefined when nothing matches", () => {
+    const worktrees = [
+      makeWt({ path: MAIN_PATH, branch: "main" }),
+      makeWt({ path: "/repos/wtx-wt/feat/a", branch: "feat/a" }),
+    ];
+
+    expect(
+      findWorktreeForBranch(worktrees, "feat/b", MAIN_PATH, "/repos/wtx-wt/feat/b")
+    ).toBeUndefined();
   });
 });

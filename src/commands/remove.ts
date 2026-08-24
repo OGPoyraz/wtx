@@ -16,8 +16,9 @@ import {
   resolveRepos,
   getWorktreePath,
   parseRepoFlag,
+  findWorktreeForBranch,
 } from "../lib/resolver.js";
-import { isSafeWorktreeConfig, cleanupEmptyParents, safeResolve, planEmptyParentRemoval } from "../lib/path-safety.js";
+import { isSafeWorktreeConfig, cleanupEmptyParents, planEmptyParentRemoval } from "../lib/path-safety.js";
 import { isInteractive, confirm, canProceedDeletion } from "../lib/prompts.js";
 
 interface RemoveOptions {
@@ -51,17 +52,18 @@ export function registerRemoveCommand(program: Command) {
         }
 
         try {
-          const wtPath = getWorktreePath(repo, branch);
-          const resolvedWtPath = safeResolve(wtPath);
-          
-          const worktrees = await getWorktreeList(repo.mainPath);
-          const isRegistered = worktrees.some(wt => safeResolve(wt.path) === resolvedWtPath);
+          const candidatePath = getWorktreePath(repo, branch);
 
-          if (!isRegistered) {
+          const worktrees = await getWorktreeList(repo.mainPath);
+          const target = findWorktreeForBranch(worktrees, branch, repo.mainPath, candidatePath);
+
+          if (!target) {
             stepWarning("No worktree found", `${branch} (skipped)`);
             skipCount++;
             continue;
           }
+
+          const wtPath = target.path;
 
           if (!options.force && !globalOpts.dryRun) {
             try {
