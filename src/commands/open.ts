@@ -11,10 +11,21 @@ import {
 } from "../lib/log.js";
 import { resolveRepos, getWorktreePath, parseRepoFlag } from "../lib/resolver.js";
 import { resolveIde, spawnIde } from "../lib/ide.js";
+import { gitExec } from "../lib/git.js";
+import type { RepoContext } from "../types.js";
 
 interface OpenOptions {
   repo?: string[];
   ide?: string;
+}
+
+async function resolveMainCheckoutPath(repoCtx: RepoContext, branch: string): Promise<string | undefined> {
+  try {
+    const currentBranch = await gitExec(["-C", repoCtx.mainPath, "branch", "--show-current"]);
+    return currentBranch.trim() === branch ? repoCtx.mainPath : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function registerOpenCommand(program: Command) {
@@ -39,20 +50,25 @@ export function registerOpenCommand(program: Command) {
 
       for (const repo of repos) {
         const wtPath = getWorktreePath(repo, branch);
+        let targetPath = wtPath;
         if (!fs.existsSync(wtPath)) {
-          continue;
+          const mainCheckoutPath = await resolveMainCheckoutPath(repo, branch);
+          if (!mainCheckoutPath) {
+            continue;
+          }
+          targetPath = mainCheckoutPath;
         }
 
         repoHeader(repo.name);
 
         if (globalOpts.dryRun) {
-          stepSuccess(`Would open in ${ide}`, wtPath);
+          stepSuccess(`Would open in ${ide}`, targetPath);
           openCount++;
           continue;
         }
 
-        spawnIde(ide, wtPath);
-        stepSuccess(`Opened in ${ide}`, wtPath);
+        spawnIde(ide, targetPath);
+        stepSuccess(`Opened in ${ide}`, targetPath);
         openCount++;
       }
 
