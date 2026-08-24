@@ -1,5 +1,5 @@
 import { Semaphore } from "../lib/semaphore.js";
-import { getWorktreeList, getDirtyFiles, detectInProgressRebase, gitExec } from "../lib/git.js";
+import { getWorktreeList, getDirtyFiles, detectInProgressRebase, gitExec, resolveCommitSha } from "../lib/git.js";
 import { resolveRepos, resolveMainBranch } from "../lib/resolver.js";
 import { loadConfig } from "../lib/config.js";
 import { detectDepsState } from "../lib/deps.js";
@@ -9,6 +9,7 @@ import { derivePrDisplay } from "../lib/forge/types.js";
 import type { GlobalOptions, Config, RepoContext } from "../types.js";
 import type { WorktreeRow } from "./types.js";
 import type { PrInfo } from "../lib/forge/types.js";
+import { readStackMetadata, type StackMetadata } from "../lib/stack.js";
 
 export interface DataWarning {
   repoName: string;
@@ -52,6 +53,13 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
     try {
       const mainBranch = await resolveMainBranch(repo, config);
       const wts = await getWorktreeList(repo.mainPath);
+      let stackMetadata: StackMetadata = { version: 1, branches: {} };
+      try {
+        stackMetadata = await readStackMetadata(repo.mainPath, opts);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        warnings.push({ repoName: repo.name, message });
+      }
       
       const forge = resolveForge(repo);
       const branches = wts.map(w => w.branch).filter(Boolean);
@@ -85,6 +93,15 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
           branch = mainBranch;
         }
 
+        const stackEntry = branch ? stackMetadata.branches[branch] : undefined;
+        const pr = branch ? prMap.get(branch) : undefined;
+        const base = stackEntry?.baseRef ?? pr?.baseRefName;
+        const comparisonBase = stackEntry?.explicit
+          ? stackEntry.baseRef
+          : pr?.baseRefName && pr.baseRefName !== mainBranch
+            ? pr.baseRefName
+            : `origin/${mainBranch}`;
+
         const row: WorktreeRow = {
           repoName: repo.name,
           branch: branch || "(detached)",
@@ -104,6 +121,8 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
           owner: null,
           rebaseStatus: null,
           depsStrategy: "none",
+          base,
+          baseChanged: false,
         };
 
         if (isMainCheckout) {
@@ -119,7 +138,7 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
           (async () => {
             try {
               const stdout = await gitExec(
-                ["-C", wt.path, "rev-list", "--left-right", "--count", `origin/${mainBranch}...HEAD`],
+                ["-C", wt.path, "rev-list", "--left-right", "--count", `${comparisonBase}...HEAD`],
                 { dryRun: opts.dryRun }
               );
               if (stdout) {
@@ -131,6 +150,15 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
               }
             } catch {
               // ignore
+            }
+          })(),
+          (async () => {
+            if (!stackEntry?.explicit || opts.dryRun) return;
+            try {
+              const currentBaseSha = await resolveCommitSha(repo.mainPath, stackEntry.baseRef, opts);
+              row.baseChanged = currentBaseSha !== stackEntry.baseSha;
+            } catch {
+              row.baseChanged = true;
             }
           })(),
           (async () => {
@@ -146,7 +174,6 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
           })(),
           (async () => {
             if (branch && config.user) {
-              const pr = prMap.get(branch);
               try {
                 const owner = await resolveOwnership({
                   configUser: config.user,
@@ -166,7 +193,6 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
         ]);
 
         if (branch) {
-          const pr = prMap.get(branch);
           if (pr) {
             row.prNumber = pr.number;
             row.prUrl = pr.url;

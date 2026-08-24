@@ -23,6 +23,7 @@ const PR_LIST_FIELDS = [
   "statusCheckRollup",
   "reviewDecision",
   "headRefName",
+  "baseRefName",
   "updatedAt",
 ].join(",");
 
@@ -271,7 +272,7 @@ export function createGithubAdapter(slug: GithubSlug | null): ForgeAdapter {
         "-R",
         `${slug.owner}/${slug.name}`,
         "--json",
-        "number,title,url,state,isDraft,headRefName,isCrossRepository,headRepositoryOwner,headRepository",
+        "number,title,url,state,isDraft,headRefName,baseRefName,isCrossRepository,headRepositoryOwner,headRepository",
       ];
 
       const stdout = await ghExec(args, opts);

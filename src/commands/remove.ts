@@ -20,6 +20,7 @@ import {
 } from "../lib/resolver.js";
 import { isSafeWorktreeConfig, cleanupEmptyParents, planEmptyParentRemoval } from "../lib/path-safety.js";
 import { isInteractive, confirm, canProceedDeletion } from "../lib/prompts.js";
+import { getStackChildren, readStackMetadata, removeStackEntry } from "../lib/stack.js";
 
 interface RemoveOptions {
   repo?: string[];
@@ -64,6 +65,19 @@ export function registerRemoveCommand(program: Command) {
           }
 
           const wtPath = target.path;
+          const stackMetadata = await readStackMetadata(repo.mainPath, globalOpts);
+          const children = getStackChildren(stackMetadata, branch);
+          if (children.length > 0 && !options.force) {
+            stepError(
+              "Worktree has dependent branches",
+              `${children.join(", ")} — retarget or remove them first (use --force to override)`
+            );
+            skipCount++;
+            continue;
+          }
+          if (children.length > 0) {
+            stepWarning("Removing a parent with dependent branches", children.join(", "));
+          }
 
           if (!options.force && !globalOpts.dryRun) {
             try {
@@ -134,6 +148,16 @@ export function registerRemoveCommand(program: Command) {
             for (const dir of removedDirs) {
               stepSuccess("Cleaned up empty directory", path.relative(repo.wtRoot, dir) + "/");
             }
+          }
+
+          try {
+            await removeStackEntry(repo.mainPath, branch, globalOpts);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            stepWarning("Stack metadata not removed", message);
+          }
+          if (children.length > 0) {
+            stepWarning("Dependent base metadata retained", children.join(", "));
           }
 
           successCount++;

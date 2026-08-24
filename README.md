@@ -59,13 +59,16 @@ Run any command without a config and `wtx` walks you through setup: it scans com
 # create a worktree (deps + sync_files handled automatically)
 wtx create ogp/my-feature --repo my-frontend
 
+# create a dependent worktree from another branch
+wtx create ogp/my-ui --repo my-frontend --base ogp/my-api
+
 # hand it to a coding agent
 wtx create ogp/my-feature --repo my-frontend --agent claude --prompt "add OAuth login"
 
 # list everything across all repos
 wtx ls
 
-# rebase onto main when origin moves
+# rebase onto the recorded base (main for independent branches)
 wtx rebase ogp/my-feature
 
 # remove when merged — refuses dirty worktrees unless forced
@@ -87,12 +90,13 @@ If origin already has a branch with that name owned by someone else, `wtx` warns
 | `rename` | `<old-branch> <new-branch>` | `--repo` | Rename the branch and move the checkout to the matching new directory |
 | `prune` | | `--repo`, `--force`, `--yes` | Remove worktrees whose PR has merged |
 | `open` | `<branch>` | `--repo`, `--ide` | Open worktree in IDE |
-| `rebase` | `<branch>` | `--repo` | Fetch base remote main, rebase worktree onto it |
+| `rebase` | `<branch>` | `--repo`, `--onto <ref>` | Rebase worktree onto its recorded base, or an explicit ref |
 | `fetch` | | `--repo` | Fetch main for each repo |
 | `sync` | `<branch>` | `--repo` | Re-copy sync files, run post-sync hooks |
 | `deps` | `[branch]` | `--repo`, `--install`, `--symlink`, `--json` | Inspect or switch dependency strategy; omit the branch and `--install` runs in the main checkout |
 | `ls` | | `--repo`, `--pr`, `--json` | List all worktrees with clean/dirty state |
-| `status` | `<branch>` | `--repo`, `--json` | Ahead/behind, dirty files, rebase state, deps strategy |
+| `status` | `<branch>` | `--repo`, `--base <ref>`, `--json` | Ahead/behind against base, dirty files, rebase state, deps strategy |
+| `stack` | `<branch>` | `--repo`, `--json` | Show recorded parent and descendant branches |
 | `prs` | | `--repo`, `--json`, `--all` | Pull request status across worktrees |
 | `exec` | `<branch> <command...>` | `--repo` | Run a command inside a worktree (`WTX_PORT` injected) |
 | `terminal` | | | Interactive worktree dashboard (requires Bun) |
@@ -282,6 +286,23 @@ wtx prune                                          # remove worktrees whose PR m
 ```
 
 Lookups degrade gracefully: if `gh` is missing or unauthenticated you get a warning and everything else keeps working. Fork workflows are covered by `check_prs` / `forge_provider` / `pr_lookup_repo`.
+
+### Stacked branches
+
+Worktrees remain sibling directories on disk, while their branches can form a dependency stack:
+
+```bash
+wtx create feat/api
+wtx create feat/ui --base feat/api
+
+# Open the PRs with these bases:
+# feat/api -> main
+# feat/ui  -> feat/api
+```
+
+`--base` accepts a normal Git ref and uses committed history only; uncommitted files in the parent worktree are not copied. The default remains the configured main branch. `wtx stack feat/ui` shows the recorded local relationship, and `wtx rebase feat/ui` rebases onto the recorded parent instead of flattening the stack onto main. After the parent merges, retarget the child PR to main before rebasing it onto main.
+
+Stack metadata is stored under the repository's common Git directory and is not committed to the project. If a parent branch moves, `wtx status <child>` and the terminal dashboard mark the base as moved. Removing a parent with recorded children is refused unless `--force` is supplied.
 
 ---
 

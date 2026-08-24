@@ -43,7 +43,7 @@ _wtx_completions() {
     cword=$COMP_CWORD
   }
 
-  local subcommands="config create remove prune open rebase fetch sync deps ls cd status prs pull pull-branch init skill terminal mcp exec rename"
+  local subcommands="config create remove prune open rebase fetch sync deps ls cd status prs pull pull-branch init skill terminal mcp exec rename stack"
   local config_subcommands="init show set add-repo remove-repo"
   local skill_subcommands="show path list"
   local skill_names="opencode cursor claude"
@@ -80,7 +80,7 @@ _wtx_completions() {
     return 0
   fi
 
-  if [ "$prev" = "--base" ]; then
+  if [ "$prev" = "--base" ] || [ "$prev" = "--onto" ]; then
     COMPREPLY=($(compgen -W "main master develop dev" -- "$cur"))
     return 0
   fi
@@ -92,14 +92,15 @@ _wtx_completions() {
       remove)  flags="-f --force -y --yes -r --repo -q --quiet --verbose --dry-run --help" ;;
       prune)   flags="-f --force -y --yes -r --repo -q --quiet --verbose --dry-run --help" ;;
       open)    flags="-r --repo --ide -q --quiet --verbose --dry-run --help" ;;
-      rebase)  flags="--repo -q --quiet --verbose --dry-run --help" ;;
+      rebase)  flags="--repo --onto -q --quiet --verbose --dry-run --help" ;;
       rename)  flags="-r --repo -q --quiet --verbose --dry-run --help" ;;
       fetch)   flags="--repo -q --quiet --verbose --dry-run --help" ;;
       sync)    flags="--repo -q --quiet --verbose --dry-run --help" ;;
       deps)    flags="-r --repo --install --symlink --json -q --quiet --verbose --dry-run --help" ;;
       pull)    flags="-r --repo -q --quiet --verbose --dry-run --help" ;;
       ls)      flags="-r --repo --pr --json -q --quiet --verbose --dry-run --help" ;;
-      status)  flags="-r --repo --json -q --quiet --verbose --dry-run --help" ;;
+      status)  flags="-r --repo --base --json -q --quiet --verbose --dry-run --help" ;;
+      stack)   flags="-r --repo --json -q --quiet --verbose --dry-run --help" ;;
       prs)     flags="-r --repo --json --all -q --quiet --verbose --dry-run --help" ;;
       config)
         case "$subsubcommand" in
@@ -153,7 +154,7 @@ _wtx_completions() {
     cd)
       [ "$prev" = "cd" ] && COMPREPLY=($(compgen -W "$(_wtx_get_repos)" -- "$cur")) && return 0
       ;;
-    rebase|open|status|remove|sync|deps|rename)
+    rebase|open|status|remove|sync|deps|rename|stack)
       [ "$prev" = "$subcommand" ] && COMPREPLY=($(compgen -W "$(_wtx_get_branches)" -- "$cur")) && return 0
       ;;
   esac

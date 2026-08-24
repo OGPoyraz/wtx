@@ -7,6 +7,7 @@ import { getWorktreeList } from "../lib/git.js";
 import { resolveRepos, parseRepoFlag, warnIfNoRepos } from "../lib/resolver.js";
 import { resolveForge } from "../lib/forge/index.js";
 import { resolveOwnership, type Ownership } from "../lib/owner.js";
+import { readStackMetadata } from "../lib/stack.js";
 import {
   derivePrDisplay,
   displayStateRank,
@@ -44,6 +45,7 @@ interface PrRow {
   updatedAt: string;
   authorLogin: string | null;
   ownership: Ownership | null;
+  baseRef: string | null;
 }
 
 interface PrsOptions {
@@ -78,6 +80,7 @@ async function collectPrRows(
 
     try {
       const worktrees = await getWorktreeList(repo.mainPath);
+      const stackMetadata = await readStackMetadata(repo.mainPath, { verbose: verboseFlag, dryRun: false });
       const branches = worktrees
         .filter((wt) => wt.path !== repo.mainPath && wt.branch)
         .map((wt) => wt.branch);
@@ -113,6 +116,7 @@ async function collectPrRows(
           updatedAt: pr.updatedAt,
           authorLogin: pr.authorLogin ?? null,
           ownership,
+          baseRef: pr.baseRefName ?? stackMetadata.branches[branch]?.baseRef ?? null,
         });
       }
     } catch (err) {
@@ -145,6 +149,7 @@ function renderTable(rows: PrRow[]): void {
           : null;
       const details = [row.checksSummary, threads].filter(Boolean).join(" · ");
       const detailSuffix = details ? `  ${details}` : "";
+      const baseSuffix = row.baseRef ? `  → ${row.baseRef}` : "";
 
       const authorTag =
         row.ownership && !row.ownership.mine && row.ownership.author
@@ -152,7 +157,7 @@ function renderTable(rows: PrRow[]): void {
           : "";
 
       info(
-        `  #${row.prNumber}  ${paddedBranch} ${renderDisplayState(row.prDisplay)}${detailSuffix}${authorTag}  ${formatRelativeTime(row.updatedAt)}  ${chalk.dim(row.url)}`
+        `  #${row.prNumber}  ${paddedBranch} ${renderDisplayState(row.prDisplay)}${baseSuffix}${detailSuffix}${authorTag}  ${formatRelativeTime(row.updatedAt)}  ${chalk.dim(row.url)}`
       );
     }
   }
@@ -168,6 +173,7 @@ function toJsonOutput(rows: PrRow[]): unknown[] {
     approved: row.prDisplay.approved,
     prNumber: row.prNumber,
     author: row.authorLogin,
+    base: row.baseRef,
   }));
 }
 

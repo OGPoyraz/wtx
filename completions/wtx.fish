@@ -41,7 +41,7 @@ complete -c wtx -l dry-run -d "Show what would happen"
 complete -c wtx -s h -l help -d "Display help for command"
 
 # Subcommands
-set -l commands config create remove prune open rebase fetch sync deps ls cd status prs pull pull-branch init skill terminal mcp exec rename
+set -l commands config create remove prune open rebase fetch sync deps ls cd status prs pull pull-branch init skill terminal mcp exec rename stack
 
 # Setup completions for commands
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "config" -d "Manage configuration"
@@ -49,7 +49,7 @@ complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "create" -d "C
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "remove" -d "Remove worktrees"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "prune" -d "Remove worktrees with merged PRs"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "open" -d "Open worktree in IDE"
-complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "rebase" -d "Fetch and rebase vs main"
+complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "rebase" -d "Fetch and rebase onto recorded base"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "pull" -d "Fetch a PR and create its worktree"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "pull-branch" -d "Fast-forward pull a worktree branch"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "rename" -d "Rename branch and move worktree directory"
@@ -59,6 +59,7 @@ complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "deps" -d "Man
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "ls" -d "List worktrees with status"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "cd" -d "Change directory to worktree"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "status" -d "Show worktree status"
+complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "stack" -d "Show recorded branch stack"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "prs" -d "Show pull request status across worktrees"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "init" -d "Output shell integration code"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "skill" -d "Manage AI agent skills"
@@ -67,10 +68,10 @@ complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "mcp" -d "Run 
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "exec" -d "Execute commands across worktrees"
 
 # Dynamically complete branch arguments
-complete -c wtx -n "__fish_seen_subcommand_from create open rebase sync deps status remove rename pull-branch" -a "(_wtx_get_branches)"
+complete -c wtx -n "__fish_seen_subcommand_from create open rebase sync deps status remove rename pull-branch stack" -a "(_wtx_get_branches)"
 
 # Flags
-complete -c wtx -n "__fish_seen_subcommand_from create remove prune open rebase fetch sync deps ls status prs pull pull-branch rename" -s r -l repo -xa "(_wtx_get_repos)" -d "Target specific repo(s)"
+complete -c wtx -n "__fish_seen_subcommand_from create remove prune open rebase fetch sync deps ls status stack prs pull pull-branch rename" -s r -l repo -xa "(_wtx_get_repos)" -d "Target specific repo(s)"
 
 # create flags
 complete -c wtx -n "__fish_seen_subcommand_from create" -l base -xa "main master develop dev" -d "Base ref"
@@ -90,13 +91,17 @@ complete -c wtx -n "__fish_seen_subcommand_from deps" -l install -d "Switch to i
 complete -c wtx -n "__fish_seen_subcommand_from deps" -l symlink -d "Switch to symlinked node_modules"
 
 # json flag
-complete -c wtx -n "__fish_seen_subcommand_from ls status prs deps" -l json -d "Output machine-readable JSON"
+complete -c wtx -n "__fish_seen_subcommand_from ls status stack prs deps" -l json -d "Output machine-readable JSON"
 
 # ls flags
 complete -c wtx -n "__fish_seen_subcommand_from ls" -l pr -d "Include pull request status column"
 
 # prs flags
 complete -c wtx -n "__fish_seen_subcommand_from prs" -l all -d "Include drafts and closed/merged PRs"
+
+# stack-aware flags
+complete -c wtx -n "__fish_seen_subcommand_from rebase" -l onto -xa "main master develop dev" -d "Override recorded base"
+complete -c wtx -n "__fish_seen_subcommand_from status" -l base -xa "main master develop dev" -d "Override recorded base"
 
 # config subcommands
 set -l config_commands init show set add-repo remove-repo

@@ -6,6 +6,7 @@ import {
   repoHeader,
   stepProgress,
   stepSuccess,
+  stepWarning,
   stepError,
   summary,
   indented,
@@ -13,6 +14,7 @@ import {
 import { validateSafeBranchName } from "../lib/git.js";
 import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
 import { planRename, renameWorktree } from "../lib/rename-worktree.js";
+import { renameStackEntry } from "../lib/stack.js";
 
 interface RenameOptions {
   repo?: string[];
@@ -73,6 +75,14 @@ export function registerRenameCommand(program: Command) {
 
         if (outcome.upstream) {
           indented(`Upstream still tracks '${outcome.upstream}' — after pushing run: git push -u origin ${newBranch}`);
+        }
+
+        try {
+          await renameStackEntry(repo.mainPath, oldBranch, newBranch, globalOpts);
+          stepSuccess("Updated stack metadata", newBranch);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          stepWarning("Stack metadata not updated", message);
         }
 
         summary(`Done — renamed ${oldBranch} to ${newBranch}`);

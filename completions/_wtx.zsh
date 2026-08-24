@@ -59,7 +59,7 @@ _wtx() {
         'remove[Remove worktrees]' \
         'prune[Remove worktrees with merged PRs]' \
         'open[Open worktree in IDE]' \
-        'rebase[Fetch and rebase vs main]' \
+         'rebase[Fetch and rebase onto recorded base]' \
         'pull[Fetch a PR and create its worktree]' \
         'pull-branch[Fast-forward pull a worktree branch]' \
         'rename[Rename branch and move worktree directory]' \
@@ -68,7 +68,8 @@ _wtx() {
         'deps[Manage node_modules strategy]' \
         'ls[List worktrees with status]' \
         'cd[Change directory to worktree]' \
-        'status[Show worktree status]' \
+         'status[Show worktree status]' \
+         'stack[Show recorded branch stack]' \
         'prs[Show pull request status across worktrees]' \
         'init[Output shell integration code]' \
         'skill[Manage AI agent skills]' \
@@ -127,6 +128,7 @@ _wtx() {
           _arguments \
             ':branch:_wtx_branches' \
             '--repo[Target specific repo(s)]:repo:_wtx_repos' \
+            '--onto[Override recorded base]:ref:' \
             {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
@@ -197,6 +199,16 @@ _wtx() {
             ':branch:_wtx_branches'
           ;;
         status)
+          _arguments \
+            ':branch:_wtx_branches' \
+            {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
+            '--base[Override recorded base]:ref:' \
+            '--json[Output machine-readable JSON]' \
+            {-q,--quiet}'[Suppress output]' \
+            '--verbose[Show git commands]' \
+            '--dry-run[Show what would happen]'
+          ;;
+        stack)
           _arguments \
             ':branch:_wtx_branches' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \

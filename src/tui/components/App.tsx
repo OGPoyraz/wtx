@@ -104,7 +104,9 @@ export function App({ opts }: AppProps) {
 
   const [createModal, setCreateModal] = useState(false);
   const [createError, setCreateError] = useState<string | undefined>();
-  const [createDepsChoice, setCreateDepsChoice] = useState<{ branch: string; repoName: string } | null>(null);
+  const [createBaseModal, setCreateBaseModal] = useState<{ branch: string; repoName: string } | null>(null);
+  const [createBaseError, setCreateBaseError] = useState<string | undefined>();
+  const [createDepsChoice, setCreateDepsChoice] = useState<{ branch: string; repoName: string; base?: string } | null>(null);
   const [renameModal, setRenameModal] = useState(false);
   const [renameError, setRenameError] = useState<string | undefined>();
   const [configOpen, setConfigOpen] = useState(false);
@@ -304,7 +306,7 @@ export function App({ opts }: AppProps) {
     );
   };
 
-  const startCreate = (branch: string, repoName: string, deps?: string) => {
+  const startCreate = (branch: string, repoName: string, deps?: string, base?: string) => {
     const op: PendingOp = {
       id: nextOpId.current++,
       kind: "create",
@@ -317,6 +319,7 @@ export function App({ opts }: AppProps) {
     };
     setOps(prev => [...prev, op]);
     const args = ["create", branch, "--repo", repoName];
+    if (base) args.push("--base", base);
     if (deps && deps !== "auto") args.push("--deps", deps);
     void executeOp(op, args, [repoName]);
   };
@@ -345,6 +348,14 @@ export function App({ opts }: AppProps) {
         if (key.name === "escape") {
           setCreateModal(false);
           setCreateError(undefined);
+        }
+        return;
+      }
+
+      if (createBaseModal) {
+        if (key.name === "escape") {
+          setCreateBaseModal(null);
+          setCreateBaseError(undefined);
         }
         return;
       }
@@ -743,7 +754,27 @@ export function App({ opts }: AppProps) {
             }
             setCreateModal(false);
             setCreateError(undefined);
-            setCreateDepsChoice({ branch, repoName });
+            setCreateBaseError(undefined);
+            setCreateBaseModal({ branch, repoName });
+          }}
+        />
+      )}
+
+      {createBaseModal && (
+        <InputModal
+          title={`Base ref for ${createBaseModal.branch}`}
+          placeholder="origin/main (empty for default main)"
+          errorMessage={createBaseError}
+          onSubmit={(value) => {
+            const base = value.trim();
+            if (base && !validateSafeBranchName(base)) {
+              setCreateBaseError("Invalid base ref");
+              return;
+            }
+            const { branch, repoName } = createBaseModal;
+            setCreateBaseModal(null);
+            setCreateBaseError(undefined);
+            setCreateDepsChoice({ branch, repoName, base: base || undefined });
           }}
         />
       )}
@@ -753,9 +784,9 @@ export function App({ opts }: AppProps) {
           title={`Dependencies for ${createDepsChoice.branch}`}
           options={DEPS_CHOICES}
           onSubmit={(choice) => {
-            const { branch, repoName } = createDepsChoice;
+            const { branch, repoName, base } = createDepsChoice;
             setCreateDepsChoice(null);
-            startCreate(branch, repoName, choice);
+            startCreate(branch, repoName, choice, base);
           }}
           onCancel={() => setCreateDepsChoice(null)}
         />

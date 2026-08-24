@@ -18,6 +18,7 @@ import { resolveForge } from "../lib/forge/index.js";
 import { selectMergedCandidates } from "../lib/prune.js";
 import { isSafeWorktreeConfig, cleanupEmptyParents, safeResolve } from "../lib/path-safety.js";
 import { isInteractive, confirm, canProceedDeletion } from "../lib/prompts.js";
+import { getStackChildren, readStackMetadata, removeStackEntry } from "../lib/stack.js";
 
 interface PruneOptions {
   repo?: string[];
@@ -60,6 +61,7 @@ export function registerPruneCommand(program: Command) {
 
         try {
           const worktrees = await getWorktreeList(repo.mainPath);
+          const stackMetadata = await readStackMetadata(repo.mainPath, globalOpts);
           const branches = worktrees
             .filter((wt) => wt.path !== repo.mainPath && wt.branch)
             .map((wt) => wt.branch);
@@ -91,6 +93,15 @@ export function registerPruneCommand(program: Command) {
             }
 
             const wtInfo = worktrees.find((wt) => wt.path === candidate.path);
+            const children = getStackChildren(stackMetadata, candidate.branch);
+            if (children.length > 0 && !options.force) {
+              stepWarning("Skipped — branch has dependent worktrees", `${label}: ${children.join(", ")}`);
+              skippedCount++;
+              continue;
+            }
+            if (children.length > 0) {
+              stepWarning("Pruning parent with dependent worktrees", `${label}: ${children.join(", ")}`);
+            }
 
             if (wtInfo?.isLocked && !options.force) {
               stepWarning("Skipped — worktree is locked 🔒", label);
@@ -187,6 +198,12 @@ export function registerPruneCommand(program: Command) {
           for (const dir of removedDirs) {
             stepSuccess("Cleaned up empty directory", path.relative(repo.wtRoot, dir) + "/");
           }
+        }
+        try {
+          await removeStackEntry(repo.mainPath, candidate.branch, globalOpts);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          stepWarning("Stack metadata not removed", message);
         }
         removedCount++;
       }
