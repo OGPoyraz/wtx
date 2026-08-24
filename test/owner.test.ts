@@ -40,7 +40,7 @@ describe("deriveOwnership", () => {
       ).toEqual({ mine: false, author: "@alice" });
     });
 
-    it("falls back to git email if configUser is null", () => {
+    it("attributes PR author even when configUser is null", () => {
       const result = deriveOwnership({
         hasRemoteRef: true,
         configUser: null,
@@ -49,7 +49,7 @@ describe("deriveOwnership", () => {
         remoteAuthorEmail: "alice@example.com",
         prAuthorLogin: "alice",
       });
-      expect(result).toEqual({ mine: false, author: "Alice Doe" });
+      expect(result).toEqual({ mine: false, author: "@alice" });
     });
   });
 
@@ -66,7 +66,7 @@ describe("deriveOwnership", () => {
       expect(result).toEqual({ mine: true, author: null });
     });
 
-    it("returns mine: false and author name when emails differ", () => {
+    it("returns null when emails differ and no PR exists (no commit-author attribution)", () => {
       const result = deriveOwnership({
         hasRemoteRef: true,
         configUser: null,
@@ -75,10 +75,10 @@ describe("deriveOwnership", () => {
         remoteAuthorEmail: "alice@example.com",
         prAuthorLogin: null,
       });
-      expect(result).toEqual({ mine: false, author: "Alice Doe" });
+      expect(result).toBeNull();
     });
 
-    it("falls back to email prefix when author name is missing", () => {
+    it("returns null on email mismatch even with missing author name", () => {
       const result = deriveOwnership({
         hasRemoteRef: true,
         configUser: null,
@@ -87,7 +87,7 @@ describe("deriveOwnership", () => {
         remoteAuthorEmail: "alice.smith@example.com",
         prAuthorLogin: null,
       });
-      expect(result).toEqual({ mine: false, author: "alice.smith" });
+      expect(result).toBeNull();
     });
 
     it("returns null if emails are missing or partial", () => {
