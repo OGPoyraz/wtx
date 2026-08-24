@@ -32,8 +32,8 @@ export function deriveOwnership(input: {
     return { mine: true, author: null };
   }
 
-  if (input.prAuthorLogin && input.configUser) {
-    if (input.prAuthorLogin.toLowerCase() === input.configUser.toLowerCase()) {
+  if (input.prAuthorLogin) {
+    if (input.configUser && input.prAuthorLogin.toLowerCase() === input.configUser.toLowerCase()) {
       return { mine: true, author: null };
     }
     return { mine: false, author: "@" + input.prAuthorLogin };
@@ -43,8 +43,6 @@ export function deriveOwnership(input: {
     if (input.localEmail.toLowerCase() === input.remoteAuthorEmail.toLowerCase()) {
       return { mine: true, author: null };
     }
-    const fallbackAuthor = input.remoteAuthorName || input.remoteAuthorEmail.split("@")[0] || null;
-    return { mine: false, author: fallbackAuthor };
   }
 
   return null;

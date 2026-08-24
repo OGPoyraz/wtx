@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { selectMergedCandidates } from "../src/lib/prune.js";
 import type { Worktree } from "../src/lib/git.js";
 import type { PrInfo } from "../src/lib/forge/types.js";
@@ -81,5 +81,94 @@ describe("selectMergedCandidates", () => {
   it("returns empty when there are no merged PRs at all", () => {
     const worktrees = [makeWt({ path: "/repos/wtx-wt/feat/a", branch: "feat/a" })];
     expect(selectMergedCandidates(worktrees, MAIN_PATH, new Map())).toEqual([]);
+  });
+});
+
+import fs from "fs";
+import path from "path";
+import os from "os";
+import { cleanupEmptyParents, isSafeWorktreeConfig } from "../src/lib/path-safety.js";
+
+describe("cleanupEmptyParents & isSafeWorktreeConfig", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wtx-prune-test-")));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("cleanup stops at wtRoot boundary", () => {
+    const wtRoot = path.join(tmpDir, "wts");
+    const mainPath = path.join(tmpDir, "main");
+    const deepEmpty = path.join(wtRoot, "feat", "a", "b");
+    
+    fs.mkdirSync(deepEmpty, { recursive: true });
+    
+    // Simulate removing the worktree at 'b'
+    fs.rmdirSync(deepEmpty);
+    const removed = cleanupEmptyParents(wtRoot, mainPath, deepEmpty);
+    
+    // Should have removed 'a' and 'feat', but NOT 'wts'
+    expect(removed).toContain(path.join(wtRoot, "feat", "a"));
+    expect(removed).toContain(path.join(wtRoot, "feat"));
+    expect(removed).not.toContain(wtRoot);
+    expect(fs.existsSync(wtRoot)).toBe(true);
+    expect(fs.existsSync(path.join(wtRoot, "feat"))).toBe(false);
+  });
+
+  it("nested repo containing .git stops the walk", () => {
+    const wtRoot = path.join(tmpDir, "wts");
+    const mainPath = path.join(tmpDir, "main");
+    const repoPath = path.join(wtRoot, "nested-repo");
+    const emptySub = path.join(repoPath, "empty");
+    
+    fs.mkdirSync(emptySub, { recursive: true });
+    fs.mkdirSync(path.join(repoPath, ".git"));
+    
+    // Simulate removing worktree at 'empty'
+    fs.rmdirSync(emptySub);
+    const removed = cleanupEmptyParents(wtRoot, mainPath, emptySub);
+    
+    // Should not have removed repoPath because it contains .git
+    expect(removed).not.toContain(repoPath);
+    expect(fs.existsSync(repoPath)).toBe(true);
+  });
+
+  it("misconfigured root cannot delete unrelated sibling dirs", () => {
+    const mainPath = path.join(tmpDir, "main");
+    // Misconfigured: wtRoot points to something outside or parallel, 
+    // but the actual removed path is sibling to main
+    const wtRoot = path.join(tmpDir, "other"); 
+    
+    const siblingEmpty = path.join(tmpDir, "sibling", "empty");
+    fs.mkdirSync(siblingEmpty, { recursive: true });
+    
+    fs.rmdirSync(siblingEmpty);
+    const removed = cleanupEmptyParents(wtRoot, mainPath, siblingEmpty);
+    
+    // Should not remove sibling because it is not within wtRoot
+    expect(removed.length).toBe(0);
+    expect(fs.existsSync(path.join(tmpDir, "sibling"))).toBe(true);
+  });
+
+  it("registered-membership check prevents misconfigured boundary deletions (isSafeWorktreeConfig)", () => {
+    const root = path.join(tmpDir, "project");
+    const main = path.join(root, "main");
+    const wts = path.join(root, "wts");
+
+    expect(isSafeWorktreeConfig(wts, main)).toBe(true);
+    
+    // wtRoot === mainPath
+    expect(isSafeWorktreeConfig(main, main)).toBe(false);
+    
+    // wtRoot contains mainPath
+    expect(isSafeWorktreeConfig(root, main)).toBe(false);
+    
+    // mainPath contains wtRoot
+    const innerWts = path.join(main, "wts");
+    expect(isSafeWorktreeConfig(innerWts, main)).toBe(false);
   });
 });

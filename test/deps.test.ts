@@ -1,20 +1,22 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
-import { detectDepsState } from "../src/lib/deps.js";
+import { detectDepsState, switchToSymlink } from "../src/lib/deps.js";
+import { performSafeLink } from "../src/lib/deps/linking.js";
+import { getWorkspaceDelta } from "../src/lib/deps/diff.js";
 import { createTempDir } from "./setup.js";
 
 describe("deps", () => {
   describe("detectDepsState", () => {
-    it("returns 'none' when no node_modules exists", () => {
+    it("returns 'missing' when no node_modules exists", () => {
       const mainPath = createTempDir("wtx-deps-main-");
       const wtPath = createTempDir("wtx-deps-wt-");
       
       const state = detectDepsState(wtPath, mainPath);
-      expect(state.strategy).toBe("none");
+      expect(state.strategy).toBe("missing");
     });
 
-    it("returns 'symlinked' when node_modules is a symlink", () => {
+    it("returns 'symlinked' when node_modules is a valid symlink to main", () => {
       const mainPath = createTempDir("wtx-deps-main-");
       const wtPath = createTempDir("wtx-deps-wt-");
       
@@ -22,14 +24,40 @@ describe("deps", () => {
       fs.mkdirSync(mainNm);
       
       const wtNm = path.join(wtPath, "node_modules");
-      fs.symlinkSync(mainNm, wtNm);
+      fs.symlinkSync(mainNm, wtNm, "dir");
       
       const state = detectDepsState(wtPath, mainPath);
       expect(state.strategy).toBe("symlinked");
       expect(state.symlinkTarget).toBe(mainNm);
     });
 
-    it("returns 'independent' when node_modules is a real directory", () => {
+    it("returns 'broken' when node_modules is a dangling symlink", () => {
+      const mainPath = createTempDir("wtx-deps-main-");
+      const wtPath = createTempDir("wtx-deps-wt-");
+      
+      const wtNm = path.join(wtPath, "node_modules");
+      const target = path.join(mainPath, "nonexistent");
+      fs.symlinkSync(target, wtNm, "dir");
+      
+      const state = detectDepsState(wtPath, mainPath);
+      expect(state.strategy).toBe("broken");
+      expect(state.symlinkTarget).toBe(target);
+    });
+
+    it("returns 'external' when node_modules symlinks outside main checkout", () => {
+      const mainPath = createTempDir("wtx-deps-main-");
+      const wtPath = createTempDir("wtx-deps-wt-");
+      const externalPath = createTempDir("wtx-deps-external-");
+      
+      const wtNm = path.join(wtPath, "node_modules");
+      fs.symlinkSync(externalPath, wtNm, "dir");
+      
+      const state = detectDepsState(wtPath, mainPath);
+      expect(state.strategy).toBe("external");
+      expect(state.symlinkTarget).toBe(externalPath);
+    });
+
+    it("returns 'installed' when node_modules is a real directory", () => {
       const mainPath = createTempDir("wtx-deps-main-");
       const wtPath = createTempDir("wtx-deps-wt-");
       
@@ -37,7 +65,7 @@ describe("deps", () => {
       fs.mkdirSync(wtNm);
       
       const state = detectDepsState(wtPath, mainPath);
-      expect(state.strategy).toBe("independent");
+      expect(state.strategy).toBe("installed");
     });
 
     it("detects matching lockfiles", () => {
@@ -103,6 +131,115 @@ describe("deps", () => {
       
       const state = detectDepsState(wtPath, mainPath);
       expect(state.packageManager).toBe("pnpm");
+    });
+  });
+
+  describe("switchToSymlink repairs", () => {
+    it("repairs a broken symlink", async () => {
+      const mainPath = createTempDir("wtx-deps-main-");
+      const wtPath = createTempDir("wtx-deps-wt-");
+      
+      const mainNm = path.join(mainPath, "node_modules");
+      fs.mkdirSync(mainNm);
+      
+      const wtNm = path.join(wtPath, "node_modules");
+      const brokenTarget = path.join(mainPath, "nonexistent");
+      fs.symlinkSync(brokenTarget, wtNm, "dir");
+      
+      let state = detectDepsState(wtPath, mainPath);
+      expect(state.strategy).toBe("broken");
+
+      await switchToSymlink(wtPath, mainPath, { dryRun: false, verbose: false });
+      
+      state = detectDepsState(wtPath, mainPath);
+      expect(state.strategy).toBe("symlinked");
+      expect(state.symlinkTarget).toBe(mainNm);
+    });
+
+    it("repairs an external symlink", async () => {
+      const mainPath = createTempDir("wtx-deps-main-");
+      const wtPath = createTempDir("wtx-deps-wt-");
+      const externalPath = createTempDir("wtx-deps-external-");
+      
+      const mainNm = path.join(mainPath, "node_modules");
+      fs.mkdirSync(mainNm);
+      
+      const wtNm = path.join(wtPath, "node_modules");
+      fs.symlinkSync(externalPath, wtNm, "dir");
+      
+      let state = detectDepsState(wtPath, mainPath);
+      expect(state.strategy).toBe("external");
+
+      await switchToSymlink(wtPath, mainPath, { dryRun: false, verbose: false });
+      
+      state = detectDepsState(wtPath, mainPath);
+      expect(state.strategy).toBe("symlinked");
+      expect(state.symlinkTarget).toBe(mainNm);
+    });
+  });
+
+  describe("safe linking", () => {
+    it("creates relative symlinks for top-level entries and .bin", () => {
+      const mainPath = createTempDir("wtx-deps-safe-main-");
+      const wtPath = createTempDir("wtx-deps-safe-wt-");
+      
+      const mainNm = path.join(mainPath, "node_modules");
+      fs.mkdirSync(mainNm);
+      fs.mkdirSync(path.join(mainNm, "foo"));
+      fs.writeFileSync(path.join(mainNm, "foo", "package.json"), "{}");
+      fs.mkdirSync(path.join(mainNm, "@scope"));
+      fs.mkdirSync(path.join(mainNm, "@scope", "bar"));
+      fs.writeFileSync(path.join(mainNm, "@scope", "bar", "package.json"), "{}");
+      fs.mkdirSync(path.join(mainNm, ".bin"));
+      fs.writeFileSync(path.join(mainNm, ".bin", "exec"), "echo");
+      
+      performSafeLink(wtPath, mainPath, false, true);
+
+      const wtNm = path.join(wtPath, "node_modules");
+      expect(fs.existsSync(wtNm)).toBe(true);
+      
+      expect(fs.lstatSync(path.join(wtNm, "foo")).isSymbolicLink()).toBe(true);
+      expect(fs.lstatSync(path.join(wtNm, "@scope", "bar")).isSymbolicLink()).toBe(true);
+      expect(fs.lstatSync(path.join(wtNm, ".bin")).isSymbolicLink()).toBe(true);
+    });
+
+    it("does not alter main tree when wt link is removed", () => {
+      const mainPath = createTempDir("wtx-deps-safe-main-2-");
+      const wtPath = createTempDir("wtx-deps-safe-wt-2-");
+      
+      const mainNm = path.join(mainPath, "node_modules");
+      fs.mkdirSync(mainNm);
+      fs.mkdirSync(path.join(mainNm, "foo"));
+      
+      performSafeLink(wtPath, mainPath, false, true);
+
+      const wtNm = path.join(wtPath, "node_modules");
+      fs.rmSync(path.join(wtNm, "foo"), { recursive: true, force: true });
+      
+      expect(fs.existsSync(path.join(mainNm, "foo"))).toBe(true);
+    });
+  });
+
+  describe("workspace delta", () => {
+    it("detects workspace changes correctly", () => {
+      const mainPath = createTempDir("wtx-deps-ws-main-");
+      const wtPath = createTempDir("wtx-deps-ws-wt-");
+      
+      fs.writeFileSync(path.join(mainPath, "package-lock.json"), "root lock");
+      fs.writeFileSync(path.join(wtPath, "package-lock.json"), "root lock");
+      fs.writeFileSync(path.join(mainPath, "package.json"), JSON.stringify({ workspaces: ["packages/*"] }));
+      fs.writeFileSync(path.join(wtPath, "package.json"), JSON.stringify({ workspaces: ["packages/*"] }));
+      
+      fs.mkdirSync(path.join(mainPath, "packages", "a"), { recursive: true });
+      fs.writeFileSync(path.join(mainPath, "packages", "a", "package.json"), '{"name":"a"}');
+      
+      fs.mkdirSync(path.join(wtPath, "packages", "a"), { recursive: true });
+      fs.writeFileSync(path.join(wtPath, "packages", "a", "package.json"), '{"name":"a-changed"}');
+      
+      const delta = getWorkspaceDelta(wtPath, mainPath, ["package-lock.json"]);
+      
+      expect(delta.rootMatches).toBe(true);
+      expect(delta.changedWorkspaces).toContain("packages/a");
     });
   });
 });

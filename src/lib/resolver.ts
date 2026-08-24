@@ -3,6 +3,7 @@ import { expandTilde } from "./config.js";
 import { gitExec } from "./git.js";
 import fs from "fs";
 import path from "path";
+import { stepWarning } from "./log.js";
 
 export function detectRepoFromCwd(config: Config): string | undefined {
   const cwd = process.cwd();
@@ -21,6 +22,14 @@ export function detectRepoFromCwd(config: Config): string | undefined {
   }
 
   return undefined;
+}
+
+export function warnIfNoRepos(repos: RepoContext[], opts: { quiet?: boolean } = {}): void {
+  if (repos.length > 0 || opts.quiet) return;
+  stepWarning(
+    "No repositories configured",
+    "run 'wtx config init' for guided setup, or 'wtx config add-repo <name>'"
+  );
 }
 
 export function resolveRepos(config: Config, repoFilter?: string[]): RepoContext[] {

@@ -19,6 +19,7 @@ interface DepsOptions {
   repo?: string[];
   install?: boolean;
   symlink?: boolean;
+  json?: boolean;
 }
 
 export function registerDepsCommand(program: Command) {
@@ -27,43 +28,92 @@ export function registerDepsCommand(program: Command) {
     .description("Manage node_modules strategy per worktree")
     .option("-r, --repo <repos...>", "Target specific repo(s)")
     .option("--install", "Switch to independent node_modules (run install)")
-    .option("--symlink", "Switch to symlinked node_modules")
+    .option("--symlink", "Switch to legacy symlinked node_modules")
+    .option("--json", "Output machine-readable JSON state")
     .action(async (branch: string | undefined, options: DepsOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
+      // Override quiet for JSON output
+      if (options.json) {
+        globalOpts.quiet = true;
+      }
       const config = loadConfig();
       const repoFilter = parseRepoFlag(options.repo);
       const repos = resolveRepos(config, repoFilter);
 
+      const jsonResults: any = {};
+
       for (const repo of repos) {
-        repoHeader(repo.name);
+        if (!options.json) repoHeader(repo.name);
 
         if (!branch) {
           const state = detectDepsState(repo.mainPath, repo.mainPath);
-          info(`  Main repo package manager: ${state.packageManager ?? "none detected"}`);
+          if (options.json) {
+            jsonResults[repo.name] = { main: state };
+          } else {
+            info(`  Main repo package manager: ${state.packageManager ?? "none detected"}`);
+          }
           continue;
         }
 
         const wtPath = getWorktreePath(repo, branch);
         if (!fs.existsSync(wtPath)) {
-          stepWarning("No worktree found", `${branch} (skipped)`);
+          if (options.json) {
+            jsonResults[repo.name] = { error: "No worktree found", branch };
+          } else {
+            stepWarning("No worktree found", `${branch} (skipped)`);
+          }
           continue;
         }
 
         if (options.install) {
           await switchToInstall(wtPath, globalOpts);
+          if (options.json) {
+            jsonResults[repo.name] = detectDepsState(wtPath, repo.mainPath);
+          }
         } else if (options.symlink) {
           await switchToSymlink(wtPath, repo.mainPath, globalOpts);
+          if (options.json) {
+            jsonResults[repo.name] = detectDepsState(wtPath, repo.mainPath);
+          }
         } else {
+          // check if repo config overrides
+          // But wait, the command just displays state if no flags are passed.
+          // Is there a case where `deps` without flags should auto-install based on config?
+          // No, deps [branch] without flags just prints state according to current semantics.
           const state = detectDepsState(wtPath, repo.mainPath);
-          const strategyLabel = state.strategy === "symlinked"
-            ? `symlinked → ${state.symlinkTarget}`
-            : state.strategy;
+          
+          if (options.json) {
+            jsonResults[repo.name] = state;
+            continue;
+          }
+
+          let strategyLabel: string = state.strategy;
+          if (state.strategy === "symlinked") {
+            strategyLabel = `symlinked → ${state.symlinkTarget}`;
+          } else if (state.strategy === "broken") {
+            strategyLabel = `broken symlink → ${state.symlinkTarget} (run 'wtx deps ${branch} --symlink' to repair)`;
+          } else if (state.strategy === "external") {
+            strategyLabel = `external symlink → ${state.symlinkTarget} resolves outside main checkout (run 'wtx deps ${branch} --symlink' to repair)`;
+          } else if (state.strategy === "shared-target") {
+            strategyLabel = "shared cargo target → build artifacts shared with main checkout";
+          } else if (state.strategy === "linked-packages") {
+            strategyLabel = `safely linked packages (auto/link)`;
+          }
+          
+          if (state.repairHint) {
+            strategyLabel += ` [Hint: ${state.repairHint}]`;
+          }
+
           const lockLabel = state.lockfileMatch ? "matches main" : "differs from main";
           info(`  node_modules: ${strategyLabel}`);
           info(`  ${state.packageManager ?? "no"} lockfile: ${lockLabel}`);
         }
       }
 
-      summary("Done");
+      if (options.json) {
+        console.log(JSON.stringify(jsonResults, null, 2));
+      } else {
+        summary("Done");
+      }
     });
 }

@@ -69,10 +69,11 @@ export async function getWorktreeList(repoPath: string): Promise<Worktree[]> {
 export async function branchExistsOnRemote(
   repoPath: string,
   branch: string,
-  opts: GlobalOptions
+  opts: GlobalOptions,
+  remote: string
 ): Promise<boolean> {
   if (opts.verbose) {
-    verbose(`Checking remote branch: git -C ${repoPath} ls-remote --exit-code --heads origin ${branch}`, true);
+    verbose(`Checking remote branch: git -C ${repoPath} ls-remote --exit-code --heads ${remote} ${branch}`, true);
   }
   
   if (opts.dryRun) {
@@ -80,7 +81,7 @@ export async function branchExistsOnRemote(
   }
 
   try {
-    await execa("git", ["-C", repoPath, "ls-remote", "--exit-code", "--heads", "origin", branch]);
+    await execa("git", ["-C", repoPath, "ls-remote", "--exit-code", "--heads", remote, branch]);
     return true;
   } catch (err: any) {
     if (err.exitCode === 2) {
@@ -175,4 +176,62 @@ export function validateSafeBranchName(name: string): boolean {
   if (name.startsWith("-")) return false;
   if (name.includes("..")) return false;
   return /^[A-Za-z0-9._/\-]+$/.test(name);
+}
+
+export async function getRemoteBranchSha(
+  repoPath: string,
+  remote: string,
+  branch: string,
+  opts: GlobalOptions
+): Promise<string | null> {
+  if (opts.verbose) {
+    verbose(`Checking remote branch: git -C ${repoPath} ls-remote --exit-code --heads ${remote} ${branch}`, true);
+  }
+  
+  if (opts.dryRun) {
+    return null;
+  }
+
+  try {
+    const { stdout } = await execa("git", ["-C", repoPath, "ls-remote", "--exit-code", "--heads", remote, branch]);
+    const match = stdout.trim().split(/\s+/);
+    return match[0] || null;
+  } catch (err: any) {
+    if (err.exitCode === 2) {
+      return null;
+    }
+    throw new Error(`git ls-remote failed:\n${err.stderr || err.message}`);
+  }
+}
+
+export async function getLocalBranchSha(
+  repoPath: string,
+  branch: string,
+  opts: GlobalOptions
+): Promise<string | null> {
+  if (opts.verbose) {
+    verbose(`Checking local branch: git -C ${repoPath} rev-parse --verify --quiet refs/heads/${branch}`, true);
+  }
+
+  if (opts.dryRun) {
+    return null;
+  }
+
+  try {
+    const { stdout } = await execa("git", [
+      "-C",
+      repoPath,
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/heads/${branch}`,
+    ]);
+    const sha = stdout.trim();
+    return sha || null;
+  } catch (err: any) {
+    if (err.exitCode === 1) {
+      return null;
+    }
+    throw new Error(`git rev-parse failed:\n${err.stderr || err.message}`);
+  }
 }

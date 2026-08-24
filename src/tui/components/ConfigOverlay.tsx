@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useKeyboard } from "@opentui/react";
 import { Overlay } from "./Overlay.js";
+import { computeScrollWindow } from "../utils.js";
 import { tokens } from "../theme.js";
 import { loadConfig, saveConfig } from "../../lib/config.js";
 import type { Config, RepoConfig } from "../../types.js";
@@ -58,7 +59,8 @@ type DetailRow =
 export function ConfigOverlay({ onClose, onSaved, onError }: ConfigOverlayProps) {
   const [config, setConfig] = useState<Config | null>(null);
   const [viewState, setViewState] = useState<ViewState>({ type: "main" });
-  const [selectedIndex, setSelectedIndex] = useState(1); // skip first header
+  const [selectedIndex, setSelectedIndex] = useState(1);
+  const [windowStart, setWindowStart] = useState(0);
   const [editState, setEditState] = useState<EditState>({ type: "none" });
 
   useEffect(() => {
@@ -128,6 +130,17 @@ export function ConfigOverlay({ onClose, onSaved, onError }: ConfigOverlayProps)
       setEditState({ type: "none" });
     }
   };
+
+
+  const visibleRowsCount = 22;
+
+  // Windowing logic update
+  if (activeRows.length > 0) {
+    const newWindow = computeScrollWindow(selectedIndex, windowStart, visibleRowsCount, activeRows.length);
+    if (newWindow.start !== windowStart) {
+      setWindowStart(newWindow.start);
+    }
+  }
 
   useKeyboard((key) => {
     if (!config) return;
@@ -331,7 +344,8 @@ export function ConfigOverlay({ onClose, onSaved, onError }: ConfigOverlayProps)
       <Overlay title="Configuration" borderColor={tokens.border}>
         <box flexDirection="column" width="100%" height={24}>
           <box flexDirection="column" flexGrow={1} overflow="hidden">
-            {activeRows.map((row, i) => {
+            {activeRows.slice(windowStart, windowStart + visibleRowsCount).map((row, idx) => {
+              const i = windowStart + idx;
               const isSelected = i === selectedIndex;
               if (row.type === "header") {
                 return (

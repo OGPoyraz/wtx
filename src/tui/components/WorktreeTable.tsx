@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import type { ScrollBoxRenderable } from "@opentui/core";
 import type { RepoBlock } from "../hooks/useWorktrees.js";
 import type { WorktreeRow } from "../types.js";
 import { tokens, truncateBranch } from "../theme.js";
@@ -5,6 +7,7 @@ import { tokens, truncateBranch } from "../theme.js";
 interface WorktreeTableProps {
   blocks: RepoBlock[];
   selectedIndex: number;
+  selection?: Set<string>;
 }
 
 const SECONDARY_INDENT = "      ";
@@ -19,7 +22,7 @@ function statusBadge(row: WorktreeRow): { text: string; fg: string } {
   return { text: "clean", fg: tokens.dim };
 }
 
-function WorktreeItem({ row, isSelected }: { row: WorktreeRow; isSelected: boolean }) {
+function WorktreeItem({ row, isSelected, isMultiSelected, id }: { row: WorktreeRow; isSelected: boolean; isMultiSelected: boolean; id?: string }) {
   const badge = statusBadge(row);
   const primary = isSelected ? tokens.bright : tokens.fg;
 
@@ -54,12 +57,14 @@ function WorktreeItem({ row, isSelected }: { row: WorktreeRow; isSelected: boole
 
   return (
     <box
+      id={id}
       flexDirection="column"
       backgroundColor={isSelected ? tokens.selectionBg : undefined}
       style={{ paddingRight: 1 }}
     >
       <text>
         <span fg={primary}>{isSelected ? "▸ " : "  "}</span>
+        <span fg={tokens.accent}>{isMultiSelected ? "✓ " : "  "}</span>
         <span fg={primary}>{truncateBranch(row.branch)}</span>
         <span fg={badge.fg}>{`  ${badge.text}`}</span>
       </text>
@@ -71,11 +76,20 @@ function WorktreeItem({ row, isSelected }: { row: WorktreeRow; isSelected: boole
   );
 }
 
-export function WorktreeTable({ blocks, selectedIndex }: WorktreeTableProps) {
+export function WorktreeTable({ blocks, selectedIndex, selection = new Set() }: WorktreeTableProps) {
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+
+  useEffect(() => {
+    if (scrollRef.current?.scrollChildIntoView) {
+      scrollRef.current.scrollChildIntoView("selected-row");
+    }
+  }, [selectedIndex]);
+
   let flatIndex = 0;
 
   return (
     <scrollbox
+      ref={scrollRef}
       id="worktree-table"
       flexGrow={2}
       height="100%"
@@ -100,7 +114,7 @@ export function WorktreeTable({ blocks, selectedIndex }: WorktreeTableProps) {
             {block.rows.map((row) => {
               const isSelected = flatIndex === selectedIndex;
               flatIndex++;
-              return <WorktreeItem key={row.path} row={row} isSelected={isSelected} />;
+              return <WorktreeItem key={row.path} row={row} isSelected={isSelected} isMultiSelected={selection.has(row.path)} id={isSelected ? "selected-row" : undefined} />;
             })}
           </box>
         ))

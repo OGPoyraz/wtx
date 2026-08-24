@@ -2,9 +2,9 @@ import { Command } from "commander";
 import chalk from "chalk";
 import type { Config, GlobalOptions } from "../types.js";
 import { loadConfig } from "../lib/config.js";
-import { repoHeader, stepWarning, summary, summaryWarning } from "../lib/log.js";
+import { repoHeader, stepWarning, summary, summaryWarning, info } from "../lib/log.js";
 import { getWorktreeList } from "../lib/git.js";
-import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
+import { resolveRepos, parseRepoFlag, warnIfNoRepos } from "../lib/resolver.js";
 import { resolveForge } from "../lib/forge/index.js";
 import { resolveOwnership, type Ownership } from "../lib/owner.js";
 import {
@@ -151,7 +151,7 @@ function renderTable(rows: PrRow[]): void {
           ? `  ${chalk.dim(row.ownership.author)}`
           : "";
 
-      console.log(
+      info(
         `  #${row.prNumber}  ${paddedBranch} ${renderDisplayState(row.prDisplay)}${detailSuffix}${authorTag}  ${formatRelativeTime(row.updatedAt)}  ${chalk.dim(row.url)}`
       );
     }
@@ -183,6 +183,7 @@ export function registerPrsCommand(program: Command) {
       const config = loadConfig();
       const repoFilter = parseRepoFlag(options.repo);
       const repos = resolveRepos(config, repoFilter);
+        warnIfNoRepos(repos, { quiet: globalOpts.quiet });
 
       const { rows, failures } = await collectPrRows(repos, config, globalOpts.verbose);
       sortRows(rows);

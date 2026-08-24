@@ -8,11 +8,10 @@ import {
   summary,
 } from "../lib/log.js";
 import { gitExec, getLatestCommit } from "../lib/git.js";
-import {
-  resolveRepos,
+import { resolveBaseRemote } from "../lib/remotes.js";
+import { resolveRepos,
   resolveMainBranch,
-  parseRepoFlag,
-} from "../lib/resolver.js";
+  parseRepoFlag, warnIfNoRepos } from "../lib/resolver.js";
 
 interface FetchOptions {
   repo?: string[];
@@ -21,7 +20,7 @@ interface FetchOptions {
 export function registerFetchCommand(program: Command) {
   program
     .command("fetch")
-    .description("fetch origin <main_branch>")
+    .description("fetch <remote> <main_branch>")
     .option("--repo <repos...>", "comma-separated list of repos to target")
     .action(async (_options: FetchOptions, cmd: Command) => {
       const opts = cmd.optsWithGlobals() as GlobalOptions & FetchOptions;
@@ -29,6 +28,7 @@ export function registerFetchCommand(program: Command) {
       const config = loadConfig();
       const targetRepos = parseRepoFlag(opts.repo);
       const repos = resolveRepos(config, targetRepos);
+        warnIfNoRepos(repos, { quiet: opts.quiet });
       
       let successCount = 0;
 
@@ -37,10 +37,11 @@ export function registerFetchCommand(program: Command) {
         
         try {
           const mainBranch = await resolveMainBranch(repo, config);
-          await gitExec(["-C", repo.mainPath, "fetch", "origin", mainBranch], opts);
-          const commit = await getLatestCommit(repo.mainPath, `origin/${mainBranch}`);
+          const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
+          await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, mainBranch], opts);
+          const commit = await getLatestCommit(repo.mainPath, `${resolvedRemote}/${mainBranch}`);
           
-          stepSuccess(`Fetched origin/${mainBranch}`, `${commit.hash} "${commit.subject}"`);
+          stepSuccess(`Fetched ${resolvedRemote}/${mainBranch}`, `${commit.hash} "${commit.subject}"`);
           successCount++;
         } catch (err: any) {
           stepError("Failed to fetch", err.message);

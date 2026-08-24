@@ -1,5 +1,3 @@
-
-
 import { tokens } from "../theme.js";
 
 interface FooterProps {
@@ -7,10 +5,15 @@ interface FooterProps {
   lastRefreshed: string;
   errorCount: number;
   message?: string;
+  filter?: {
+    term: string;
+    matches: number;
+    total: number;
+  };
 }
 
-export function Footer({ loading, lastRefreshed, errorCount, message }: FooterProps) {
-  const hints = "c config · r refresh · n create · b rebase · d remove · o open · s sync · ? help · q quit";
+export function Footer({ loading, lastRefreshed, errorCount, message, filter }: FooterProps) {
+  const hints = "c config · r refresh · f fetch · n create · b rebase · s sync · o IDE · d rm · ? help";
   
   return (
     <box
@@ -31,6 +34,10 @@ export function Footer({ loading, lastRefreshed, errorCount, message }: FooterPr
           <text fg={tokens.warning}>{message}</text>
         ) : null}
         
+        {filter ? (
+          <text fg="magenta">filter: {filter.term} ({filter.matches}/{filter.total})</text>
+        ) : null}
+
         {errorCount > 0 ? (
           <text fg={tokens.error}>{errorCount} error{errorCount !== 1 ? 's' : ''}</text>
         ) : null}

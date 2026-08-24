@@ -13,6 +13,9 @@ import type { WorktreeRow } from "../types.js";
 import { ActionLogModal } from "./ActionLogModal.js";
 import { InputModal } from "./InputModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
+import { matchesFilter, toggleSelection } from "../utils.js";
+import { resolveAgentCommand, spawnAgentInWorktree } from "../../lib/agents.js";
+import { loadConfig } from "../../lib/config.js";
 
 export interface AppProps {
   opts: GlobalOptions;
@@ -21,9 +24,9 @@ export interface AppProps {
 type ModalState = 
   | { type: "none" }
   | { type: "help" }
-  | { type: "confirm_remove"; row: WorktreeRow }
-  | { type: "confirm_rebase"; row: WorktreeRow }
-  | { type: "confirm_sync"; row: WorktreeRow }
+  | { type: "confirm_remove"; rows: WorktreeRow[] }
+  | { type: "confirm_rebase"; rows: WorktreeRow[] }
+  | { type: "confirm_sync"; rows: WorktreeRow[] }
   | { type: "error"; message: string };
 
 type ActionRunState = {
@@ -46,13 +49,23 @@ export function App({ opts }: AppProps) {
   const [createError, setCreateError] = useState<string | undefined>();
   const [configOpen, setConfigOpen] = useState(false);
 
+  const [filterText, setFilterText] = useState("");
+  const [isFiltering, setIsFiltering] = useState(false);
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (error) {
       setModal({ type: "error", message: error });
     }
   }, [error]);
 
-  const flatRows = blocks.flatMap(b => b.rows);
+  const filteredBlocks = blocks.map(b => ({
+    ...b,
+    rows: b.rows.filter(r => matchesFilter(r, filterText))
+  })).filter(b => b.rows.length > 0);
+
+  const flatRows = filteredBlocks.flatMap(b => b.rows);
+  const totalRows = blocks.flatMap(b => b.rows).length;
   const maxIndex = Math.max(0, flatRows.length - 1);
 
   useEffect(() => {
@@ -63,36 +76,64 @@ export function App({ opts }: AppProps) {
 
   const selectedRow = flatRows[selectedIndex] ?? null;
 
+  const getSelectedRows = (): WorktreeRow[] => {
+    if (selection.size > 0) {
+      return blocks.flatMap(b => b.rows).filter(r => selection.has(r.path));
+    }
+    return selectedRow ? [selectedRow] : [];
+  };
+
+  const runSequentialActions = async (titlePrefix: string, targets: WorktreeRow[], actionArgs: (row: WorktreeRow) => string[]) => {
+    for (const row of targets) {
+      await startAction(`${titlePrefix} ${row.branch}`, actionArgs(row));
+    }
+    setSelection(new Set());
+  };
+
   const startAction = async (title: string, args: string[]) => {
-    setActionRun({ title, lines: [], done: false, exitCode: null });
-    
-    const result = await runWtxAction(args, (text, type) => {
-      setActionRun(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          lines: [...prev.lines, { text, type }]
-        };
+    return new Promise<void>((resolve) => {
+      setActionRun({ title, lines: [], done: false, exitCode: null });
+      
+      runWtxAction(args, (text, type) => {
+        setActionRun(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            lines: [...prev.lines, { text, type }]
+          };
+        });
+      }).then((result) => {
+        if (result.exitCode === 0) {
+          setActionRun(null);
+          refresh();
+        } else {
+          setActionRun(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              done: true,
+              exitCode: result.exitCode
+            };
+          });
+        }
+        resolve();
       });
     });
-
-    if (result.exitCode === 0) {
-      setActionRun(null);
-      refresh();
-    } else {
-      setActionRun(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          done: true,
-          exitCode: result.exitCode
-        };
-      });
-    }
   };
 
   useKeyboard(
     (key) => {
+      if (isFiltering) {
+        if (key.name === "escape") {
+          setIsFiltering(false);
+          setFilterText("");
+          setSelectedIndex(0);
+        } else if (key.name === "return") {
+          setIsFiltering(false);
+        }
+        return;
+      }
+
       if (actionRun) {
         if (!actionRun.done) {
           return;
@@ -132,16 +173,20 @@ export function App({ opts }: AppProps) {
           modal.type === "confirm_sync"
         ) {
           if (key.name === "y") {
-            const row = modal.row;
+            const rows = modal.rows;
             const action = modal.type;
             setModal({ type: "none" });
 
             if (action === "confirm_remove") {
-              startAction(`Remove ${row.branch}`, ["remove", row.branch, "--repo", row.repoName]);
+              runSequentialActions("Remove", rows, (r) => {
+                const args = ["remove", r.branch, "--repo", r.repoName, "--yes"];
+                if (r.dirtyFiles.length > 0) args.push("--force");
+                return args;
+              });
             } else if (action === "confirm_rebase") {
-              startAction(`Rebase ${row.branch}`, ["rebase", row.branch, "--repo", row.repoName]);
+              runSequentialActions("Rebase", rows, (r) => ["rebase", r.branch, "--repo", r.repoName]);
             } else {
-              startAction(`Sync ${row.branch}`, ["sync", row.branch, "--repo", row.repoName]);
+              runSequentialActions("Sync", rows, (r) => ["sync", r.branch, "--repo", r.repoName]);
             }
             return;
           }
@@ -155,11 +200,57 @@ export function App({ opts }: AppProps) {
 
       // Normal navigation
       if (key.name === "q" || key.name === "escape" || (key.name === "c" && key.ctrl)) {
+        if (key.name === "escape" && selection.size > 0) {
+          setSelection(new Set());
+          return;
+        }
         renderer.destroy();
         process.exit(0);
       }
 
-      if (key.name === "down" || key.name === "j") {
+      if (key.name === "/") {
+        setIsFiltering(true);
+        return;
+      }
+
+      if (key.name === "space") {
+        if (selectedRow) {
+          setSelection(prev => toggleSelection(prev, selectedRow.path));
+        }
+        return;
+      }
+
+      if (key.name === "a") {
+        (async () => {
+          const targets = getSelectedRows();
+          if (targets.length === 0) return;
+          const target = targets[0]; // Agent runs on first target or solo selection
+          if (!target) return;
+          try {
+            const config = await loadConfig();
+            const cmdTemplate = resolveAgentCommand("claude", config.agents) ?? "claude"; 
+            const result = await spawnAgentInWorktree(cmdTemplate, target.path, { repoName: target.repoName, branch: target.branch });
+            setActionMessage(`Agent spawned (${result.mode}${result.session ? ` session ${result.session}` : ""})`);
+            setTimeout(() => setActionMessage(undefined), 5000);
+          } catch (e: any) {
+            setActionMessage(`Agent failed: ${e.message}`);
+          }
+        })();
+        return;
+      }
+
+      if (key.name === "f") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        const uniqueRepos = new Map<string, WorktreeRow>();
+        for (const t of targets) {
+          if (!uniqueRepos.has(t.repoName)) {
+            uniqueRepos.set(t.repoName, t);
+          }
+        }
+        runSequentialActions("Fetch", Array.from(uniqueRepos.values()), (r) => ["fetch", "--repo", r.repoName]);
+        return;
+      } else if (key.name === "down" || key.name === "j") {
         setSelectedIndex(prev => Math.min(prev + 1, maxIndex));
       } else if (key.name === "up" || key.name === "k") {
         setSelectedIndex(prev => Math.max(prev - 1, 0));
@@ -174,32 +265,43 @@ export function App({ opts }: AppProps) {
         setCreateModal(true);
         setCreateError(undefined);
       } else if (key.name === "o") {
-        if (!selectedRow) return;
-        startAction(`Open ${selectedRow.branch}`, ["open", selectedRow.branch, "--repo", selectedRow.repoName]);
-      } else if (key.name === "d") {
-        if (!selectedRow) return;
-        if (selectedRow.isMainCheckout) {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.length > 1) {
+          setActionMessage("Cannot open multiple worktrees");
+          setTimeout(() => setActionMessage(undefined), 3000);
+          return;
+        }
+        const target = targets[0];
+        if (!target) return;
+        startAction(`Open ${target.branch}`, ["open", target.branch, "--repo", target.repoName]);
+      } else if (key.name === "d" || (key.name === "D" && key.shift)) {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.some(r => r.isMainCheckout)) {
           setActionMessage("Cannot remove main checkout");
           setTimeout(() => setActionMessage(undefined), 3000);
           return;
         }
-        setModal({ type: "confirm_remove", row: selectedRow });
-      } else if (key.name === "b") {
-        if (!selectedRow) return;
-        if (selectedRow.isMainCheckout) {
+        setModal({ type: "confirm_remove", rows: targets });
+      } else if (key.name === "b" || key.name === "R" || (key.name === "r" && key.shift)) {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.some(r => r.isMainCheckout)) {
           setActionMessage("Cannot rebase main checkout");
           setTimeout(() => setActionMessage(undefined), 3000);
           return;
         }
-        setModal({ type: "confirm_rebase", row: selectedRow });
+        setModal({ type: "confirm_rebase", rows: targets });
       } else if (key.name === "s") {
-        if (!selectedRow) return;
-        if (selectedRow.isMainCheckout) {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.some(r => r.isMainCheckout)) {
           setActionMessage("Cannot sync main checkout");
           setTimeout(() => setActionMessage(undefined), 3000);
           return;
         }
-        setModal({ type: "confirm_sync", row: selectedRow });
+        setModal({ type: "confirm_sync", rows: targets });
       }
     }
   );
@@ -207,14 +309,21 @@ export function App({ opts }: AppProps) {
   return (
     <box flexDirection="column" width="100%" height="100%">
       <box flexDirection="row" width="100%" flexGrow={1}>
-        <WorktreeTable blocks={blocks} selectedIndex={selectedIndex} />
+        <WorktreeTable blocks={filteredBlocks} selectedIndex={selectedIndex} selection={selection} />
         <DetailPane selectedRow={selectedRow} />
       </box>
+      {isFiltering && (
+        <box flexDirection="row" paddingX={1} border={true} borderColor="magenta">
+          <text>filter: </text>
+          <input focused={true} placeholder="Type to filter..." onInput={(v: string) => setFilterText(v)} />
+        </box>
+      )}
       <Footer 
         loading={loading} 
         lastRefreshed={lastRefreshed} 
         errorCount={warnings.length} 
         message={actionMessage}
+        filter={filterText ? { term: filterText, matches: flatRows.length, total: totalRows } : undefined}
       />
       
       {modal.type === "help" && <HelpOverlay />}
@@ -226,20 +335,32 @@ export function App({ opts }: AppProps) {
       )}
       {modal.type === "confirm_remove" && (
         <ConfirmModal 
-          title="Remove Worktree" 
-          message={`Are you sure you want to remove ${modal.row.branch}?`} 
+          title={`Remove ${modal.rows.length} Worktree(s)`} 
+          message={(() => {
+            const count = modal.rows.length;
+            const lines = [`Are you sure you want to remove ${count === 1 ? modal.rows[0]?.branch : count + " worktrees"}?`];
+            const dirty = modal.rows.filter(r => r.dirtyFiles.length > 0);
+            if (dirty.length > 0) {
+              lines.push("");
+              lines.push("WARNING: Uncommitted changes will be discarded for:");
+              dirty.forEach(r => {
+                lines.push(`  - ${r.branch} (${r.dirtyFiles.length} dirty file${r.dirtyFiles.length > 1 ? 's' : ''})`);
+              });
+            }
+            return lines.join("\n");
+          })()}
         />
       )}
       {modal.type === "confirm_rebase" && (
         <ConfirmModal 
-          title="Rebase Worktree" 
-          message={`Are you sure you want to fetch and rebase ${modal.row.branch}?`} 
+          title={`Rebase ${modal.rows.length} Worktree(s)`} 
+          message={`Are you sure you want to fetch and rebase ${modal.rows.length === 1 ? modal.rows[0]?.branch : modal.rows.length + " worktrees"}?`} 
         />
       )}
       {modal.type === "confirm_sync" && (
         <ConfirmModal 
-          title="Sync Worktree" 
-          message={`Are you sure you want to sync ${modal.row.branch}?`} 
+          title={`Sync ${modal.rows.length} Worktree(s)`} 
+          message={`Are you sure you want to sync ${modal.rows.length === 1 ? modal.rows[0]?.branch : modal.rows.length + " worktrees"}?`} 
         />
       )}
       {createModal && (

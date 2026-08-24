@@ -1,9 +1,11 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { spawnSync } from "child_process";
 import { ConfigSchema } from "../types.js";
 import type { Config } from "../types.js";
 import { stepWarning } from "./log.js";
+import { isWithin, safeResolve } from "./path-safety.js";
 
 export function expandTilde(value: string): string {
   if (value.startsWith("~/") || value === "~") {
@@ -30,7 +32,38 @@ export function configExists(): boolean {
 export function loadConfig(): Config {
   const configPath = getConfigPath();
   if (!fs.existsSync(configPath)) {
-    throw new Error(`Config file not found at ${configPath}. Run 'wtx config init' to create one.`);
+    if (
+      process.stdout.isTTY &&
+      process.env.WTX_NO_WIZARD !== "1" &&
+      !process.argv.includes("_resolve-path")
+    ) {
+      const argv1 = process.argv[1] ?? "";
+      const runningCompiledBinary =
+        argv1 !== "" && path.resolve(argv1) === path.resolve(process.execPath);
+      const args = runningCompiledBinary
+        ? ["config", "init"]
+        : [argv1, "config", "init"];
+
+      const res = spawnSync(process.execPath, args, { stdio: "inherit" });
+      if (res.status !== 0) {
+        process.exit(res.status ?? 1);
+      }
+      if (!fs.existsSync(configPath)) {
+        stepWarning("Config still missing after setup — continuing without it");
+        throw new Error(`Config file not found at ${configPath}. Run 'wtx config init'.`);
+      }
+    } else {
+      throw new Error(`Config file not found at ${configPath}.
+Run 'wtx config init' to create one interactively, or create it manually with:
+{
+  "version": 1,
+  "root": "~/Repos",
+  "postfix": "-wt",
+  "ide": "cursor",
+  "default_main_branch": "main",
+  "repos": {}
+}`);
+    }
   }
 
   const fileContent = fs.readFileSync(configPath, "utf-8");
@@ -43,7 +76,16 @@ export function loadConfig(): Config {
 
   const result = ConfigSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`Invalid config format: ${result.error.message}`);
+    const messages = result.error.issues.map((issue) => {
+      const pathStr = issue.path.join(".");
+      let msg = issue.message;
+      const nested = (issue as { issues?: Array<{ message: string }> }).issues;
+      if (issue.code === "invalid_key" && nested?.length) {
+        msg = nested[0]?.message ?? msg;
+      }
+      return pathStr ? `${pathStr} invalid because ${msg}` : `Invalid config: ${msg}`;
+    });
+    throw new Error(`Invalid config format:\n${messages.join("\n")}`);
   }
 
   const config = result.data;
@@ -53,9 +95,23 @@ export function loadConfig(): Config {
     stepWarning(`Root directory does not exist: ${config.root}`);
   } else {
     for (const [repoName] of Object.entries(config.repos)) {
-      const repoGitPath = path.join(config.root, repoName, ".git");
-      if (!fs.existsSync(repoGitPath)) {
+      const repoMainPath = path.join(config.root, repoName);
+      const repoGitPath = path.join(repoMainPath, ".git");
+      const wtRoot = `${repoMainPath}${config.postfix}`;
+
+      if (!fs.existsSync(repoMainPath)) {
+        stepWarning(`Repo ${repoName} main checkout directory does not exist at ${repoMainPath}`);
+      } else if (!fs.existsSync(repoGitPath)) {
         stepWarning(`Repo ${repoName} is missing .git directory at ${repoGitPath}`);
+      }
+
+      if (fs.existsSync(repoMainPath)) {
+        const resolvedMain = safeResolve(repoMainPath);
+        const resolvedWtRoot = safeResolve(wtRoot);
+        
+        if (isWithin(resolvedMain, resolvedWtRoot) || isWithin(resolvedWtRoot, resolvedMain)) {
+          stepWarning(`Config for repo ${repoName} creates a nesting issue: wtRoot and main checkout resolve inside each other. Fix your config postfix or root.`);
+        }
       }
     }
   }
