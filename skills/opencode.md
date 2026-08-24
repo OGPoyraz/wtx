@@ -47,7 +47,7 @@ Fetches a GitHub PR by URL and creates its worktree. Requires the GitHub CLI (`g
 ### `wtx terminal`
 Opens an interactive full-screen dashboard for browsing and acting on worktrees across all configured repos. Requires Bun runtime and a TTY; exits with guidance under Node.js or non-interactive shells.
 
-- Lists worktrees as two-line entries: branch with status badge (clean / dirty count / locked / missing / rebasing), then commit hash, divergence vs main (`↑n ↓n`), PR number/state/checks, and owner tags.
+- Lists worktrees as two-line entries: branch with status badge (clean / dirty count / locked / missing / rebasing), then commit hash, divergence vs its base (`↑n ↓n`), PR number/state/checks, base branch, and owner tags.
 - Keys: `r` refresh · `j/k` navigate · `n` create · `b` rebase · `d` remove · `s` sync · `o` open in IDE · `c` edit config · `?` help · `q` quit.
 - Actions run as child processes with output streamed inside the dashboard; destructive actions confirm first (`y/n`). The config editor (`c`) persists through atomic config writes and refreshes the view automatically.
 
@@ -55,8 +55,12 @@ Opens an interactive full-screen dashboard for browsing and acting on worktrees 
 Shows git statuses for all worktrees.
 
 ### `wtx rebase <branch>`
-Fetches the main branch from origin and rebases the given worktree's branch onto it.
-- **Flags**: `-r, --repo <repos...>`
+Fetches the configured main branch for an independent worktree, or rebases onto its recorded base for a stacked worktree.
+- **Flags**: `-r, --repo <repos...>`, `--onto <ref>` to override the base.
+
+### `wtx stack <branch>`
+Shows the recorded parent and descendant branches for a worktree.
+- **Flags**: `-r, --repo <repos...>`, `--json`
 
 ### `wtx sync <branch>`
 Re-copies `sync_files` from the main checkout to the worktree and runs `post_sync` hooks. Also checks for package lockfile differences if `node_modules` is symlinked.
@@ -122,15 +126,23 @@ Hooks (`post_create` and `post_sync`) support the following template variables:
    ```bash
    wtx rebase feature-xyz
    ```
-   *Fetches the latest main branch from origin and rebases the `feature-xyz` worktrees.*
+   *Fetches the latest main branch for independent work, or uses the recorded parent for a stacked branch.*
 
-3. **Syncing environment variables**:
+3. **Creating a stacked branch**:
+   ```bash
+   wtx create feature-api
+   wtx create feature-ui --base feature-api
+   wtx stack feature-ui
+   ```
+   *Open the child PR against `feature-api`; after the parent merges, retarget the child to main before rebasing it onto main.*
+
+4. **Syncing environment variables**:
    If the `.env` file in the main checkout was updated, run:
    ```bash
    wtx sync feature-xyz
    ```
 
-4. **Managing node_modules dependencies**:
+5. **Managing node_modules dependencies**:
    If a worktree requires different dependencies than the main branch (e.g. you're testing an upgrade):
    ```bash
    wtx deps feature-xyz --install

@@ -17,6 +17,10 @@ export interface WorktreeRow {
   owner: string | null;
   rebaseStatus: string | null;
   depsStrategy: string;
+  base?: string;
+  baseChanged?: boolean;
+  hierarchyDepth?: number;
+  hierarchyPrefix?: string;
   isPendingCreate?: boolean;
 }
 

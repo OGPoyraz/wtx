@@ -11,7 +11,7 @@ import {
   summary,
   indented,
 } from "../lib/log.js";
-import { gitExec, getLatestCommit } from "../lib/git.js";
+import { gitExec, getLatestCommit, resolveCommitSha } from "../lib/git.js";
 import { resolveBaseRemote } from "../lib/remotes.js";
 import {
   resolveRepos,
@@ -19,17 +19,20 @@ import {
   getWorktreePath,
   parseRepoFlag,
 } from "../lib/resolver.js";
+import { readStackMetadata, recordStackEntry } from "../lib/stack.js";
 
 interface RebaseOptions {
   repo?: string[];
+  onto?: string;
 }
 
 export function registerRebaseCommand(program: Command) {
   program
     .command("rebase <branch>")
-    .description("fetch + rebase vs main branch")
+    .description("fetch + rebase worktree onto its base")
     .option("--repo <repos...>", "comma-separated list of repos to target")
-    .action(async (branch: string, _options: RebaseOptions, cmd: Command) => {
+    .option("--onto <ref>", "Override the recorded base ref for this rebase")
+    .action(async (branch: string, options: RebaseOptions, cmd: Command) => {
       const opts = cmd.optsWithGlobals() as GlobalOptions & RebaseOptions;
       
       const config = loadConfig();
@@ -53,25 +56,58 @@ export function registerRebaseCommand(program: Command) {
 
         let rebaseStarted = false;
         try {
-          const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
-          await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, "--", mainBranch], opts);
-          const commit = await getLatestCommit(repo.mainPath, `${resolvedRemote}/${mainBranch}`);
-          stepProgress(`Fetching ${resolvedRemote}/${mainBranch}...`, `${commit.hash} "${commit.subject}"`);
+          const metadata = await readStackMetadata(repo.mainPath, opts);
+          const recorded = metadata.branches[branch];
+          const resolvedRemote = !options.onto && !recorded?.explicit
+            ? await resolveBaseRemote(repo.mainPath, mainBranch)
+            : undefined;
+          const defaultBase = resolvedRemote ? `${resolvedRemote}/${mainBranch}` : mainBranch;
+          const baseRef = options.onto || (recorded?.explicit ? recorded.baseRef : defaultBase);
+          const shouldFetchMain = !options.onto && (!recorded || !recorded.explicit);
+
+          if (shouldFetchMain) {
+            if (!resolvedRemote) {
+              throw new Error(`Could not determine the remote for base branch '${mainBranch}'`);
+            }
+            await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, "--", mainBranch], opts);
+            const commit = await getLatestCommit(repo.mainPath, defaultBase);
+            stepProgress(`Fetching ${resolvedRemote}/${mainBranch}...`, `${commit.hash} "${commit.subject}"`);
+          } else {
+            stepProgress("Using recorded base", baseRef);
+          }
+
+          const baseSha = await resolveCommitSha(repo.mainPath, baseRef, opts);
           
-          stepProgress(`Rebasing ${branch} onto main...`);
+          stepProgress(`Rebasing ${branch} onto ${baseRef}...`);
           rebaseStarted = true;
-          const rebaseOut = await gitExec(["-C", wtPath, "rebase", "--", `${resolvedRemote}/${mainBranch}`], opts);
+          const rebaseOut = await gitExec(["-C", wtPath, "rebase", "--", baseRef], opts);
           
           if (rebaseOut.includes("is up to date") || rebaseOut.includes("up-to-date")) {
             stepSuccess("Up to date", "0 commits replayed");
           } else {
-            const count = await gitExec(["-C", wtPath, "rev-list", "--count", `${resolvedRemote}/${mainBranch}..HEAD`], opts).then(s => s.trim());
+            const count = await gitExec(["-C", wtPath, "rev-list", "--count", `${baseRef}..HEAD`], opts).then(s => s.trim());
             stepSuccess("Rebased", `${count} commits replayed`);
+          }
+
+          if (recorded || options.onto) {
+            const metadataBaseRef = options.onto || (recorded?.explicit ? baseRef : mainBranch);
+            try {
+              await recordStackEntry(repo.mainPath, branch, {
+                baseRef: metadataBaseRef,
+                baseSha,
+                explicit: options.onto ? true : recorded?.explicit ?? true,
+                createdAt: recorded?.createdAt || new Date().toISOString(),
+              }, opts);
+              stepSuccess("Base recorded", metadataBaseRef);
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              stepWarning("Base metadata not updated", message);
+            }
           }
           successCount++;
         } catch (err: any) {
           if (!rebaseStarted) {
-            stepError("Rebase skipped — could not fetch base branch:", err.message.split("\n")[0] ?? err.message);
+            stepError("Rebase skipped — could not resolve base:", err.message.split("\n")[0] ?? err.message);
             failCount++;
             continue;
           }

@@ -9,7 +9,7 @@ import {
   summary,
   indented,
 } from "../lib/log.js";
-import { gitExec, getDirtyFiles, detectInProgressRebase } from "../lib/git.js";
+import { gitExec, getDirtyFiles, detectInProgressRebase, resolveCommitSha } from "../lib/git.js";
 import {
   resolveRepos,
   resolveMainBranch,
@@ -22,11 +22,13 @@ import { derivePrDisplay, type PrInfo } from "../lib/forge/types.js";
 import { renderChecksSummary, renderDisplayState } from "../lib/forge/render.js";
 import { resolveOwnership, type Ownership } from "../lib/owner.js";
 import { resolveBaseRemote } from "../lib/remotes.js";
+import { readStackMetadata } from "../lib/stack.js";
 import chalk from "chalk";
 
 interface StatusOptions {
   repo?: string[];
   json?: boolean;
+  base?: string;
 }
 
 export interface StatusJsonInput {
@@ -39,6 +41,8 @@ export interface StatusJsonInput {
   ownership?: Ownership | null;
   deps: ReturnType<typeof detectDepsState>;
   rebase: string | null;
+  base?: string;
+  baseChanged?: boolean;
 }
 
 export function buildStatusJson(item: StatusJsonInput) {
@@ -57,11 +61,13 @@ export function buildStatusJson(item: StatusJsonInput) {
   entry.deps = item.deps;
 
   if (item.prInfo) {
-    entry.pr = {
+    const prEntry: Record<string, unknown> = {
       number: item.prInfo.number,
       state: item.prInfo.state,
       url: item.prInfo.url,
     };
+    if (item.prInfo.baseRefName) prEntry.base = item.prInfo.baseRefName;
+    entry.pr = prEntry;
   }
 
   if (item.ownership && !item.ownership.mine && item.ownership.author) {
@@ -72,6 +78,9 @@ export function buildStatusJson(item: StatusJsonInput) {
     entry.rebase = item.rebase;
   }
 
+  if (item.base) entry.base = item.base;
+  if (item.baseChanged) entry.baseChanged = true;
+
   return entry;
 }
 
@@ -81,6 +90,7 @@ export function registerStatusCommand(program: Command) {
     .description("Show worktree status across repos")
     .option("-r, --repo <repos...>", "Target specific repo(s)")
     .option("--json", "Output machine-readable JSON")
+    .option("--base <ref>", "Override the recorded base ref for this status check")
     .action(async (branch: string, options: StatusOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
@@ -101,12 +111,32 @@ export function registerStatusCommand(program: Command) {
         
         let ahead: number | null = null;
         let behind: number | null = null;
+        let baseRef: string | undefined;
+        let baseChanged = false;
+        let usingStackBase = false;
         
         try {
           const mainBranch = await resolveMainBranch(repo, config);
-          const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
+          const metadata = await readStackMetadata(repo.mainPath, globalOpts);
+          const recorded = metadata.branches[branch];
+          const resolvedRemote = !options.base && !recorded?.explicit
+            ? await resolveBaseRemote(repo.mainPath, mainBranch)
+            : undefined;
+          const defaultBase = resolvedRemote ? `${resolvedRemote}/${mainBranch}` : mainBranch;
+          baseRef = options.base || (recorded?.explicit ? recorded.baseRef : defaultBase);
+          usingStackBase = Boolean(options.base || recorded?.explicit);
+
+          if (recorded?.explicit && !options.base && !globalOpts.dryRun) {
+            try {
+              const currentBaseSha = await resolveCommitSha(repo.mainPath, recorded.baseRef, globalOpts);
+              baseChanged = currentBaseSha !== recorded.baseSha;
+            } catch {
+              baseChanged = true;
+            }
+          }
+
           const countOutput = await gitExec(
-            ["-C", wtPath, "rev-list", "--left-right", "--count", `${resolvedRemote}/${mainBranch}...HEAD`],
+            ["-C", wtPath, "rev-list", "--left-right", "--count", `${baseRef}...HEAD`],
             { verbose: globalOpts.verbose }
           );
           const parts = countOutput.trim().split(/\s+/);
@@ -153,6 +183,8 @@ export function registerStatusCommand(program: Command) {
             ownership,
             deps: depsState,
             rebase: rebaseStatus,
+            base: usingStackBase ? baseRef : undefined,
+            baseChanged,
           }));
           continue;
         }
@@ -169,10 +201,17 @@ export function registerStatusCommand(program: Command) {
           }
         }
 
+        if (usingStackBase && baseRef) {
+          info(`  Base:      ${baseRef}`);
+          if (baseChanged) {
+            info(`  Base state: moved since stack entry`);
+          }
+        }
+
         if (ahead !== null && behind !== null) {
-          info(`  vs main:   ${ahead} ahead, ${behind} behind`);
+          info(`  ${usingStackBase ? "vs base" : "vs main"}:   ${ahead} ahead, ${behind} behind`);
         } else {
-          info(`  vs main:   unknown`);
+          info(`  ${usingStackBase ? "vs base" : "vs main"}:   unknown`);
         }
 
         if (prInfo) {

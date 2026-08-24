@@ -11,6 +11,8 @@ import { resolveOwnership, type Ownership } from "../lib/owner.js";
 import chalk from "chalk";
 import path from "path";
 import fs from "fs";
+import { readStackMetadata } from "../lib/stack.js";
+import { buildStackHierarchy } from "../lib/stack.js";
 
 interface LsOptions {
   repo?: string[];
@@ -25,6 +27,7 @@ export interface LsJsonInputRepo {
     path: string;
     branch: string | null;
     commit: string | null;
+    base?: string;
     isLocked: boolean;
     dirtyFiles?: string[];
     isMissing?: boolean;
@@ -70,6 +73,7 @@ export function buildLsJson(reposData: LsJsonInputRepo[]) {
       }
 
       const entry: Record<string, unknown> = { repo: repo.name, branch, sha, status };
+      if (wt.base) entry.base = wt.base;
       if (pr) entry.pr = pr;
       if (ownerStr) entry.owner = ownerStr;
       
@@ -120,9 +124,7 @@ export function registerLsCommand(program: Command) {
 
           try {
             const worktrees = await getWorktreeList(repo.mainPath);
-            const maxBranchLen = Math.max(
-              ...worktrees.map((wt) => (wt.branch || "main").length)
-            );
+            const stackMetadata = await readStackMetadata(repo.mainPath, globalOpts);
 
             let prMap: Map<string, PrInfo> | null = null;
             if (options.pr) {
@@ -140,9 +142,27 @@ export function registerLsCommand(program: Command) {
               }
             }
 
-            for (const wt of worktrees) {
+            const displayItems = buildStackHierarchy(
+              worktrees,
+              (wt) => wt.branch || path.basename(wt.path),
+              (wt) => {
+                const branch = wt.branch || path.basename(wt.path);
+                return stackMetadata.branches[branch]?.baseRef ?? prMap?.get(branch)?.baseRefName;
+              },
+              (a, b) => {
+                if (a.path === repo.mainPath && b.path !== repo.mainPath) return -1;
+                if (a.path !== repo.mainPath && b.path === repo.mainPath) return 1;
+                return (a.branch || path.basename(a.path)).localeCompare(b.branch || path.basename(b.path));
+              }
+            );
+            const maxBranchLen = Math.max(
+              0,
+              ...displayItems.map(({ item, prefix }) => `${prefix}${item.branch || path.basename(item.path)}`.length)
+            );
+
+            for (const { item: wt, prefix } of displayItems) {
               const branch = wt.branch || path.basename(wt.path);
-              const paddedBranch = branch.padEnd(maxBranchLen + 2);
+              const paddedBranch = `${prefix}${branch}`.padEnd(maxBranchLen + 2);
               const hash = (wt.commit || "0000000").substring(0, 7);
 
               let statusStr = chalk.dim("clean");
@@ -177,6 +197,10 @@ export function registerLsCommand(program: Command) {
               }
 
               let ownerSuffix = "";
+              const baseRef = wt.branch
+                ? stackMetadata.branches[wt.branch]?.baseRef ?? prInfo?.baseRefName
+                : prInfo?.baseRefName;
+              const baseSuffix = baseRef ? `  base ${baseRef}` : "";
               let ownership: Ownership | null = null;
               if (wt.path !== repo.mainPath) {
                 ownership = await resolveOwnership({
@@ -198,6 +222,7 @@ export function registerLsCommand(program: Command) {
                 path: wt.path,
                 branch: wt.branch,
                 commit: wt.commit,
+                base: baseRef,
                 isLocked: wt.isLocked,
                 dirtyFiles,
                 isMissing,
@@ -205,7 +230,7 @@ export function registerLsCommand(program: Command) {
               });
 
               if (!options.json) {
-                info(`  ${paddedBranch} ${hash}  ${statusStr}${prSegment}${ownerSuffix}`);
+                info(`  ${paddedBranch} ${hash}  ${statusStr}${baseSuffix}${prSegment}${ownerSuffix}`);
               }
             }
           } catch (err) {

@@ -103,6 +103,27 @@ export async function getLatestCommit(repoPath: string, ref: string): Promise<{ 
   };
 }
 
+export async function resolveCommitSha(
+  repoPath: string,
+  ref: string,
+  opts: GlobalOptions = { verbose: false, dryRun: false }
+): Promise<string> {
+  try {
+    const stdout = await gitExec(
+      ["-C", repoPath, "rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
+      opts
+    );
+    const sha = stdout.trim();
+    if (!sha) {
+      throw new Error("Git returned an empty commit id");
+    }
+    return sha;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Ref '${ref}' does not resolve to a commit: ${message.split("\n")[0]}`);
+  }
+}
+
 export async function getDirtyFiles(worktreePath: string): Promise<string[]> {
   const stdout = await gitExec(["-C", worktreePath, "status", "--porcelain"]);
   return stdout.split("\n").filter(Boolean);

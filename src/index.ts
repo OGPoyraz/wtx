@@ -23,6 +23,7 @@ import { registerSkillCommand } from "./commands/skill.js";
 import { registerTerminalCommand } from "./commands/terminal.js";
 import { registerMcpCommand } from "./commands/mcp.js";
 import { registerHistoryCommand } from "./commands/history.js";
+import { registerStackCommand } from "./commands/stack.js";
 import { loadConfig } from "./lib/config.js";
 import { getWorktreePath, resolveRepos } from "./lib/resolver.js";
 import { setQuiet } from "./lib/log.js";
@@ -135,6 +136,7 @@ registerSkillCommand(program);
 registerTerminalCommand(program);
 registerMcpCommand(program);
 registerHistoryCommand(program);
+registerStackCommand(program);
 
 program
   .command("_resolve-path <repo> <branch>", { hidden: true })

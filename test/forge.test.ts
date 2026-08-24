@@ -276,6 +276,11 @@ describe("collectCheckItems nested Commit variant", () => {
 });
 
 describe("mapGithubPr", () => {
+  it("maps the PR base branch when the forge provides it", () => {
+    const pr = mapGithubPr({ number: 1, headRefName: "feature/ui", baseRefName: "feature/api", state: "OPEN" });
+    expect(pr?.baseRefName).toBe("feature/api");
+  });
+
   it("maps a complete gh pr list item", () => {
     const pr = mapGithubPr({
       number: 7,

@@ -28,7 +28,7 @@ export function DetailPane({ selectedRow }: DetailPaneProps) {
   const {
     repoName, branch, path, commitShort, isMainCheckout, isLocked, isPrunable,
     dirtyFiles, ahead, behind, prNumber, prState, prChecks, prUrl, owner,
-    rebaseStatus, depsStrategy
+    rebaseStatus, depsStrategy, base, baseChanged
   } = selectedRow;
 
   const aheadBehindStr = ahead !== null && behind !== null
@@ -55,7 +55,13 @@ export function DetailPane({ selectedRow }: DetailPaneProps) {
       
       <text><span fg={tokens.dim}>Status:</span><span fg={tokens.fg}> {isLocked ? "LOCKED" : isPrunable ? "PRUNABLE" : "Active"}</span></text>
       
-      <text style={{ marginTop: 1 }}><span fg={tokens.dim}>vs main:</span><span fg={tokens.fg}> {aheadBehindStr}</span></text>
+      {base && (
+        <text><span fg={tokens.dim}>Base:</span><span fg={tokens.accent}>   {base}</span></text>
+      )}
+      {baseChanged && (
+        <text><span fg={tokens.dim}>Base state:</span><span fg={tokens.warning}> moved since recorded</span></text>
+      )}
+      <text style={{ marginTop: 1 }}><span fg={tokens.dim}>{base ? "vs base:" : "vs main:"}</span><span fg={tokens.fg}> {aheadBehindStr}</span></text>
       <text><span fg={tokens.dim}>Deps:</span><span fg={tokens.fg}>    {depsStrategy}</span></text>
       
       {rebaseStatus && (

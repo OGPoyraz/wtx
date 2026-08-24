@@ -58,14 +58,19 @@ function WorktreeItem({ row, isSelected, isMultiSelected, indicator, frame, id }
     : "";
 
   const ownerSegment = row.owner ? ` · by ${row.owner}` : "";
+  const baseSegment = row.base ? ` · base ${row.base}` : "";
   const rebaseSegment =
     !row.isMainCheckout && row.rebaseStatus && !row.isPrunable ? ` · ${row.rebaseStatus}` : "";
+  const baseChangedSegment = row.baseChanged ? " · base moved" : "";
+  const hierarchyPrefix = row.hierarchyPrefix ?? "";
+  const secondaryIndent = " ".repeat(SECONDARY_INDENT.length + hierarchyPrefix.length);
 
   const secondary = [
-    `${SECONDARY_INDENT}${row.commitShort}`,
+    `${secondaryIndent}${row.commitShort}`,
     divergence,
     prSegment,
     ownerSegment,
+    baseSegment,
   ]
     .filter(Boolean)
     .join(" ")
@@ -81,11 +86,13 @@ function WorktreeItem({ row, isSelected, isMultiSelected, indicator, frame, id }
       <text>
         <span fg={primary}>{isSelected ? "▸ " : "  "}</span>
         <span fg={tokens.accent}>{isMultiSelected ? "✓ " : "  "}</span>
+        <span fg={tokens.dim}>{hierarchyPrefix}</span>
         <span fg={primary}>{truncateBranch(row.branch)}</span>
         <span fg={badge.fg}>{`  ${badge.text}`}</span>
       </text>
       <text>
         <span fg={tokens.dim}>{secondary}</span>
+        {baseChangedSegment && <span fg={tokens.warning}>{baseChangedSegment}</span>}
         {rebaseSegment && <span fg={tokens.error}>{rebaseSegment}</span>}
       </text>
     </box>

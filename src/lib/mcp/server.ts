@@ -17,6 +17,7 @@ import {
   localBranchExists,
   getRemoteBranchSha,
   getLocalBranchSha,
+  resolveCommitSha,
 } from "../git.js";
 import { detectDepsState } from "../deps.js";
 import {
@@ -31,6 +32,7 @@ import {
   safeResolve,
 } from "../path-safety.js";
 import fs from "fs";
+import { getStackChildren, readStackMetadata, recordStackEntry, removeStackEntry } from "../stack.js";
 
 export interface McpServerOptions {
   verbose?: boolean;
@@ -142,7 +144,7 @@ async function handleRequest(req: any, send: (obj: any) => void, config: any, op
             description: "Get status of a specific worktree",
             inputSchema: {
               type: "object",
-              properties: { repo: { type: "string" }, branch: { type: "string" } },
+              properties: { repo: { type: "string" }, branch: { type: "string" }, base: { type: "string" } },
               required: ["repo", "branch"],
             },
           },
@@ -166,10 +168,10 @@ async function handleRequest(req: any, send: (obj: any) => void, config: any, op
           },
           {
             name: "rebase_worktree",
-            description: "Rebase a worktree against main branch",
+            description: "Rebase a worktree against its recorded base or an explicit ref",
             inputSchema: {
               type: "object",
-              properties: { repo: { type: "string" }, branch: { type: "string" } },
+              properties: { repo: { type: "string" }, branch: { type: "string" }, onto: { type: "string" } },
               required: ["repo", "branch"],
             },
           },
@@ -232,6 +234,7 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
       const items = [];
       for (const repo of repos) {
         const wts = await getWorktreeList(repo.mainPath);
+        const stackMetadata = await readStackMetadata(repo.mainPath, { verbose: _opts.verbose === true, dryRun: false });
         for (const wt of wts) {
           if (!wt.path.startsWith(repo.wtRoot)) continue;
           const dirtyCount = fs.existsSync(wt.path) ? (await getDirtyFiles(wt.path)).length : 0;
@@ -241,6 +244,9 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
             path: wt.path,
             sha: wt.commit ? wt.commit.substring(0, 7) : null,
             dirtyFiles: dirtyCount,
+            base: wt.branch && stackMetadata.branches[wt.branch]?.explicit
+              ? stackMetadata.branches[wt.branch]?.baseRef
+              : null,
           });
         }
       }
@@ -253,6 +259,12 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
       if (!validateSafeBranchName(args.branch)) {
         throw { isToolError: true, message: "unsafe branch name" };
       }
+      if (args.base !== undefined && typeof args.base !== "string") {
+        throw { isSchemaError: true, message: "base must be a string" };
+      }
+      if (typeof args.base === "string" && !validateSafeBranchName(args.base)) {
+        throw { isToolError: true, message: "unsafe base ref" };
+      }
       const repo = resolveRepos(config, [args.repo])[0]!;
       const wtPath = getWorktreePath(repo, args.branch);
       if (!fs.existsSync(wtPath)) {
@@ -260,13 +272,18 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
       }
       const mainBranch = await resolveMainBranch(repo, config);
       const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
+      const stackMetadata = await readStackMetadata(repo.mainPath, { verbose: _opts.verbose === true, dryRun: false });
+      const recorded = stackMetadata.branches[args.branch];
+      const baseRef = typeof args.base === "string"
+        ? args.base
+        : recorded?.explicit ? recorded.baseRef : `${resolvedRemote}/${mainBranch}`;
       
       const dirtyFiles = await getDirtyFiles(wtPath);
       let ahead = null;
       let behind = null;
       try {
         const countOutput = await gitExec(
-          ["-C", wtPath, "rev-list", "--left-right", "--count", `${resolvedRemote}/${mainBranch}...HEAD`]
+          ["-C", wtPath, "rev-list", "--left-right", "--count", `${baseRef}...HEAD`]
         );
         const parts = countOutput.trim().split(/\s+/);
         behind = parts[0] ? parseInt(parts[0], 10) : null;
@@ -285,6 +302,7 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
             dirtyCount: dirtyFiles.length,
             ahead,
             behind,
+            base: recorded?.explicit || typeof args.base === "string" ? baseRef : null,
             depsStrategy: depsState.strategy,
           }),
         }],
@@ -314,10 +332,13 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
 
       const mainBranch = await resolveMainBranch(repo, config);
       const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
+      const baseRef = args.base || `${resolvedRemote}/${mainBranch}`;
 
       if (repo.config.fetch_main_on_create !== false) {
         await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, "--", mainBranch]);
       }
+
+      const baseSha = await resolveCommitSha(repo.mainPath, baseRef, { verbose: _opts.verbose === true, dryRun: false });
 
       const localExists = await localBranchExists(repo.mainPath, args.branch, { verbose: false, dryRun: false });
       const remoteExists = await branchExistsOnRemote(repo.mainPath, args.branch, { verbose: false, dryRun: false }, resolvedRemote);
@@ -340,6 +361,14 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
       }
 
       await gitExec(gitArgs);
+      if (resolution.kind === "create-new") {
+        await recordStackEntry(repo.mainPath, args.branch, {
+          baseRef: args.base || mainBranch,
+          baseSha,
+          explicit: args.base !== undefined,
+          createdAt: new Date().toISOString(),
+        }, { verbose: _opts.verbose === true, dryRun: false });
+      }
 
       return {
         content: [{ type: "text", text: JSON.stringify({ path: wtPath }) }],
@@ -371,6 +400,11 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
         throw { isToolError: true, message: `Worktree for ${args.branch} is not registered` };
       }
       const wtPath = target.path;
+      const stackMetadata = await readStackMetadata(repo.mainPath, { verbose: _opts.verbose === true, dryRun: false });
+      const children = getStackChildren(stackMetadata, args.branch);
+      if (children.length > 0 && args.force !== true) {
+        throw { isToolError: true, message: `Branch has dependent worktrees: ${children.join(", ")}. Use force:true to override.` };
+      }
 
       if (!args.force && fs.existsSync(wtPath)) {
         const dirty = await getDirtyFiles(wtPath);
@@ -381,6 +415,7 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
 
       await gitExec(["-C", repo.mainPath, "worktree", "remove", args.force ? "--force" : "", wtPath].filter(Boolean));
       cleanupEmptyParents(repo.wtRoot, repo.mainPath, wtPath);
+      await removeStackEntry(repo.mainPath, args.branch, { verbose: _opts.verbose === true, dryRun: false });
 
       return {
         content: [{ type: "text", text: JSON.stringify({ removed: true }) }],
@@ -399,15 +434,43 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
 
       const mainBranch = await resolveMainBranch(repo, config);
       const resolvedRemote = await resolveBaseRemote(repo.mainPath, mainBranch);
+      if (args.onto !== undefined && typeof args.onto !== "string") {
+        throw { isSchemaError: true, message: "onto must be a string" };
+      }
+      if (typeof args.onto === "string" && !validateSafeBranchName(args.onto)) {
+        throw { isToolError: true, message: "unsafe base ref" };
+      }
+      const stackMetadata = await readStackMetadata(repo.mainPath, { verbose: _opts.verbose === true, dryRun: false });
+      const recorded = stackMetadata.branches[args.branch];
+      const baseRef = args.onto || (recorded?.explicit ? recorded.baseRef : `${resolvedRemote}/${mainBranch}`);
       
-      await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, "--", mainBranch]);
+      if (!args.onto && (!recorded || !recorded.explicit)) {
+        await gitExec(["-C", repo.mainPath, "fetch", resolvedRemote, "--", mainBranch]);
+      }
+      const baseSha = await resolveCommitSha(repo.mainPath, baseRef, { verbose: _opts.verbose === true, dryRun: false });
       
       try {
-        const rebaseOut = await gitExec(["-C", wtPath, "rebase", "--", `${resolvedRemote}/${mainBranch}`]);
+        const rebaseOut = await gitExec(["-C", wtPath, "rebase", "--", baseRef]);
         if (rebaseOut.includes("is up to date") || rebaseOut.includes("up-to-date")) {
+          if (recorded || args.onto) {
+            await recordStackEntry(repo.mainPath, args.branch, {
+              baseRef: args.onto || (recorded?.explicit ? baseRef : mainBranch),
+              baseSha,
+              explicit: args.onto ? true : recorded?.explicit ?? true,
+              createdAt: recorded?.createdAt || new Date().toISOString(),
+            }, { verbose: _opts.verbose === true, dryRun: false });
+          }
           return { content: [{ type: "text", text: JSON.stringify({ status: "up-to-date" }) }] };
         } else {
-          const count = await gitExec(["-C", wtPath, "rev-list", "--count", `${resolvedRemote}/${mainBranch}..HEAD`]).then(s => s.trim());
+          const count = await gitExec(["-C", wtPath, "rev-list", "--count", `${baseRef}..HEAD`]).then(s => s.trim());
+          if (recorded || args.onto) {
+            await recordStackEntry(repo.mainPath, args.branch, {
+              baseRef: args.onto || (recorded?.explicit ? baseRef : mainBranch),
+              baseSha,
+              explicit: args.onto ? true : recorded?.explicit ?? true,
+              createdAt: recorded?.createdAt || new Date().toISOString(),
+            }, { verbose: _opts.verbose === true, dryRun: false });
+          }
           return { content: [{ type: "text", text: JSON.stringify({ status: "rebased", commits: count }) }] };
         }
       } catch (err: any) {

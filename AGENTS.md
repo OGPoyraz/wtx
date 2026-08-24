@@ -21,13 +21,14 @@ src/
     remove.ts           wtx remove <branch> — safe removal with --force
     ls.ts               wtx ls — porcelain parsing, table output
     init.ts             wtx init <bash|zsh> — shell wrapper output
-    rebase.ts           wtx rebase <branch> — fetch + rebase
+    rebase.ts           wtx rebase <branch> — rebase onto recorded base
     pull.ts             wtx pull <pr-link> — fetch PR, create worktree
     fetch.ts            wtx fetch — fetch origin main
     sync.ts             wtx sync <branch> — re-copy env files + post_sync
     deps.ts             wtx deps — node_modules symlink/install management
     open.ts             wtx open <branch> — open worktree in IDE
     status.ts           wtx status <branch> — ahead/behind, dirty state
+    stack.ts            wtx stack <branch> — recorded branch ancestry
   lib/
     config.ts           Config load/save (atomic writes), tilde expansion
     git.ts              Git command wrapper with verbose/dry-run support
@@ -36,6 +37,7 @@ src/
     log.ts              Colored step output (✓ ⚠ ✗ ◌), repo headers
     deps.ts             Lockfile comparison, symlink detection, install/symlink switching
     worktree-setup.ts   Extracted sync_files + post_create block shared by create/pull
+    stack.ts            Local parent/base metadata for stacked branches
 share/
   wtx.sh                Shell wrapper for `wtx cd` (sourced via eval)
 skills/                 AI agent skill files (opencode, cursor, claude)
@@ -48,6 +50,7 @@ completions/            Bash/zsh tab completions
 - Config uses atomic writes (write to tmp, rename) to prevent corruption
 - `wtx create` uses three-way branch resolution: check remote → track if exists, fallback to local branch, or create new from base
 - `wtx remove` is safe by default — refuses dirty worktrees without `--force`, cleans up empty parent dirs
+- Stacked branches use explicit `--base` refs and local metadata; main remains the default base
 - Shell wrapper (`eval "$(wtx init zsh)"`) intercepts `wtx cd` to change directory in parent shell
 - Template variables `{main}`, `{wt}`, `{repo}`, `{branch}`, `{root}`, `{postfix}` are expanded in post_create/post_sync commands
 
