@@ -280,7 +280,7 @@ Lookups degrade gracefully: if `gh` is missing or unauthenticated you get a warn
 | `c` | Edit configuration |
 | `?` / `q` | Help / quit |
 
-Actions stream their output into the dashboard; destructive ones confirm first.
+Actions show inline progress — `creating worktree` next to the repo header, `deleting` / `rebasing` / `syncing` next to the branch — while the dashboard is busy. Input is locked until the operation (and its refresh) finishes; on failure a log modal opens with the captured output. Destructive ones confirm first.
 
 ---
 
