@@ -13,7 +13,7 @@ import type { WorktreeRow } from "../types.js";
 import { ActionLogModal } from "./ActionLogModal.js";
 import { InputModal } from "./InputModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
-import { matchesFilter, toggleSelection } from "../utils.js";
+import { matchesFilter, toggleSelection, buildRowCopyText, pickClipboardCmd } from "../utils.js";
 import { resolveAgentCommand, spawnAgentInWorktree } from "../../lib/agents.js";
 import { loadConfig } from "../../lib/config.js";
 
@@ -178,7 +178,11 @@ export function App({ opts }: AppProps) {
             setModal({ type: "none" });
 
             if (action === "confirm_remove") {
-              runSequentialActions("Remove", rows, (r) => ["remove", r.branch, "--repo", r.repoName]);
+              runSequentialActions("Remove", rows, (r) => {
+                const args = ["remove", r.branch, "--repo", r.repoName, "--yes"];
+                if (r.dirtyFiles.length > 0) args.push("--force");
+                return args;
+              });
             } else if (action === "confirm_rebase") {
               runSequentialActions("Rebase", rows, (r) => ["rebase", r.branch, "--repo", r.repoName]);
             } else {
@@ -235,7 +239,46 @@ export function App({ opts }: AppProps) {
         return;
       }
 
-      if (key.name === "down" || key.name === "j") {
+      if (key.name === "f") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        const uniqueRepos = new Map<string, WorktreeRow>();
+        for (const t of targets) {
+          if (!uniqueRepos.has(t.repoName)) {
+            uniqueRepos.set(t.repoName, t);
+          }
+        }
+        runSequentialActions("Fetch", Array.from(uniqueRepos.values()), (r) => ["fetch", "--repo", r.repoName]);
+        return;
+      } else if (key.name === "y") {
+        if (!selectedRow) return;
+        (async () => {
+          const text = buildRowCopyText(selectedRow);
+          const cmds = pickClipboardCmd(process.platform, process.env);
+          let success = false;
+          for (const cmd of cmds) {
+            try {
+              const proc = Bun.spawn(cmd, { stdin: "pipe" });
+              proc.stdin.write(text);
+              proc.stdin.end();
+              const exitCode = await proc.exited;
+              if (exitCode === 0) {
+                success = true;
+                break;
+              }
+            } catch (e) {
+              // try next
+            }
+          }
+          if (success) {
+            setActionMessage(`Copied ${selectedRow.branch}`);
+          } else {
+            setActionMessage("Clipboard unavailable (pbcopy/wl-copy/xclip not found)");
+          }
+          setTimeout(() => setActionMessage(undefined), 3000);
+        })();
+        return;
+      } else if (key.name === "down" || key.name === "j") {
         setSelectedIndex(prev => Math.min(prev + 1, maxIndex));
       } else if (key.name === "up" || key.name === "k") {
         setSelectedIndex(prev => Math.max(prev - 1, 0));
@@ -321,7 +364,19 @@ export function App({ opts }: AppProps) {
       {modal.type === "confirm_remove" && (
         <ConfirmModal 
           title={`Remove ${modal.rows.length} Worktree(s)`} 
-          message={`Are you sure you want to remove ${modal.rows.length === 1 ? modal.rows[0]?.branch : modal.rows.length + " worktrees"}?`} 
+          message={(() => {
+            const count = modal.rows.length;
+            const lines = [`Are you sure you want to remove ${count === 1 ? modal.rows[0]?.branch : count + " worktrees"}?`];
+            const dirty = modal.rows.filter(r => r.dirtyFiles.length > 0);
+            if (dirty.length > 0) {
+              lines.push("");
+              lines.push("WARNING: Uncommitted changes will be discarded for:");
+              dirty.forEach(r => {
+                lines.push(`  - ${r.branch} (${r.dirtyFiles.length} dirty file${r.dirtyFiles.length > 1 ? 's' : ''})`);
+              });
+            }
+            return lines.join("\n");
+          })()}
         />
       )}
       {modal.type === "confirm_rebase" && (

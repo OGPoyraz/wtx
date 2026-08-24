@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import type { ScrollBoxRenderable } from "@opentui/core";
 import type { RepoBlock } from "../hooks/useWorktrees.js";
 import type { WorktreeRow } from "../types.js";
 import { tokens, truncateBranch } from "../theme.js";
@@ -20,7 +22,7 @@ function statusBadge(row: WorktreeRow): { text: string; fg: string } {
   return { text: "clean", fg: tokens.dim };
 }
 
-function WorktreeItem({ row, isSelected, isMultiSelected }: { row: WorktreeRow; isSelected: boolean; isMultiSelected: boolean }) {
+function WorktreeItem({ row, isSelected, isMultiSelected, id }: { row: WorktreeRow; isSelected: boolean; isMultiSelected: boolean; id?: string }) {
   const badge = statusBadge(row);
   const primary = isSelected ? tokens.bright : tokens.fg;
 
@@ -55,6 +57,7 @@ function WorktreeItem({ row, isSelected, isMultiSelected }: { row: WorktreeRow; 
 
   return (
     <box
+      id={id}
       flexDirection="column"
       backgroundColor={isSelected ? tokens.selectionBg : undefined}
       style={{ paddingRight: 1 }}
@@ -74,10 +77,19 @@ function WorktreeItem({ row, isSelected, isMultiSelected }: { row: WorktreeRow; 
 }
 
 export function WorktreeTable({ blocks, selectedIndex, selection = new Set() }: WorktreeTableProps) {
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+
+  useEffect(() => {
+    if (scrollRef.current?.scrollChildIntoView) {
+      scrollRef.current.scrollChildIntoView("selected-row");
+    }
+  }, [selectedIndex]);
+
   let flatIndex = 0;
 
   return (
     <scrollbox
+      ref={scrollRef}
       id="worktree-table"
       flexGrow={2}
       height="100%"
@@ -102,7 +114,7 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set() }: 
             {block.rows.map((row) => {
               const isSelected = flatIndex === selectedIndex;
               flatIndex++;
-              return <WorktreeItem key={row.path} row={row} isSelected={isSelected} isMultiSelected={selection.has(row.path)} />;
+              return <WorktreeItem key={row.path} row={row} isSelected={isSelected} isMultiSelected={selection.has(row.path)} id={isSelected ? "selected-row" : undefined} />;
             })}
           </box>
         ))

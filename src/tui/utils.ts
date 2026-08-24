@@ -23,3 +23,58 @@ export function toggleSelection(current: Set<string>, path: string): Set<string>
   }
   return next;
 }
+
+export function computeScrollWindow(
+  selectedIndex: number,
+  currentStart: number,
+  visibleRows: number,
+  totalRows: number
+): { start: number; end: number } {
+  if (totalRows === 0) return { start: 0, end: 0 };
+  
+  let start = currentStart;
+  
+  const maxStart = Math.max(0, totalRows - visibleRows);
+  if (start > maxStart) {
+    start = maxStart;
+  }
+  
+  if (selectedIndex < start) {
+    start = selectedIndex;
+  } else if (selectedIndex >= start + visibleRows) {
+    start = selectedIndex - visibleRows + 1;
+  }
+  
+  const end = Math.min(start + visibleRows, totalRows);
+  return { start, end };
+}
+
+export function buildRowCopyText(row: WorktreeRow): string {
+  const parts = [
+    row.branch,
+    row.repoName,
+    row.path,
+    row.commitShort || "",
+    `dirty:${row.dirtyFiles.length}`,
+  ];
+  if (row.prNumber) {
+    parts.push(`pr:#${row.prNumber} ${row.prState || ""}`.trim());
+  }
+  return parts.join("\t");
+}
+
+export function pickClipboardCmd(platform: string, env: Record<string, string | undefined>): string[][] {
+  if (env.WTX_CLIPBOARD_CMD) {
+    return [env.WTX_CLIPBOARD_CMD.split(" ")];
+  }
+  if (platform === "darwin") return [["pbcopy"]];
+  if (platform === "win32") return [["clip.exe"]];
+  if (platform === "linux") {
+    return [
+      ["wl-copy"],
+      ["xclip", "-selection", "clipboard"],
+      ["xsel", "--clipboard", "--input"]
+    ];
+  }
+  return [];
+}

@@ -2,19 +2,31 @@ export interface ActionResult {
   exitCode: number;
 }
 
-export function getSpawnArgs(args: string[]): { cmd: string; args: string[] } {
-  const terminalIdx = process.argv.indexOf("terminal");
+export function resolveActionLauncher(
+  argv: string[],
+  args: string[],
+  opts: { whichWtx?: string | null; execPath: string }
+): { cmd: string; args: string[] } {
+  const isCompiledBinary = Boolean(argv[0]?.includes("$bunfs"));
+  if (isCompiledBinary) {
+    return { cmd: opts.whichWtx || opts.execPath, args };
+  }
+
+  const terminalIdx = argv.indexOf("terminal");
   if (terminalIdx > 0) {
-    const base = process.argv.slice(0, terminalIdx);
     return {
-      cmd: base[0]!,
-      args: [...base.slice(1), ...args],
+      cmd: argv[0]!,
+      args: [...argv.slice(1, terminalIdx), ...args],
     };
   }
-  return {
-    cmd: process.argv[0]!,
-    args,
-  };
+  return { cmd: argv[0]!, args };
+}
+
+export function getSpawnArgs(args: string[]): { cmd: string; args: string[] } {
+  return resolveActionLauncher(process.argv, args, {
+    whichWtx: Bun.which("wtx") || null,
+    execPath: process.execPath,
+  });
 }
 
 export async function runWtxAction(

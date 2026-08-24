@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { matchesFilter, toggleSelection } from "../src/tui/utils.js";
+import { resolveActionLauncher } from "../src/tui/actions.js";
+import { matchesFilter, toggleSelection, computeScrollWindow, buildRowCopyText, pickClipboardCmd } from "../src/tui/utils.js";
 import type { WorktreeRow } from "../src/tui/types.js";
 
 const mockRow: WorktreeRow = {
@@ -40,5 +41,67 @@ describe("TUI Interactions", () => {
     expect(sel.has("/tmp/a")).toBe(true);
     sel = toggleSelection(sel, "/tmp/a");
     expect(sel.has("/tmp/a")).toBe(false);
+  });
+
+  it("computeScrollWindow handles boundaries correctly", () => {
+    expect(computeScrollWindow(0, 5, 10, 20)).toEqual({ start: 0, end: 10 });
+    expect(computeScrollWindow(10, 0, 10, 20)).toEqual({ start: 1, end: 11 });
+    expect(computeScrollWindow(19, 5, 10, 20)).toEqual({ start: 10, end: 20 });
+    expect(computeScrollWindow(0, 0, 10, 0)).toEqual({ start: 0, end: 0 });
+    expect(computeScrollWindow(4, 8, 10, 5)).toEqual({ start: 0, end: 5 });
+  });
+
+  it("buildRowCopyText builds correct summary string", () => {
+    const text = buildRowCopyText(mockRow);
+    expect(text).toBe("feat/foo\twtx\t/tmp/wtx/feat/foo\ta1b2c3d\tdirty:0\tpr:#123 OPEN");
+    
+    const dirtyRow = { ...mockRow, dirtyFiles: ["a", "b"], prNumber: null };
+    expect(buildRowCopyText(dirtyRow)).toBe("feat/foo\twtx\t/tmp/wtx/feat/foo\ta1b2c3d\tdirty:2");
+  });
+
+  it("pickClipboardCmd respects platform and env overrides", () => {
+    expect(pickClipboardCmd("darwin", {})).toEqual([["pbcopy"]]);
+    expect(pickClipboardCmd("win32", {})).toEqual([["clip.exe"]]);
+    expect(pickClipboardCmd("linux", {})).toEqual([
+      ["wl-copy"],
+      ["xclip", "-selection", "clipboard"],
+      ["xsel", "--clipboard", "--input"]
+    ]);
+    
+    expect(pickClipboardCmd("linux", { WTX_CLIPBOARD_CMD: "my-copy --arg" })).toEqual([["my-copy", "--arg"]]);
+    expect(pickClipboardCmd("darwin", { WTX_CLIPBOARD_CMD: "xclip" })).toEqual([["xclip"]]);
+  });
+});
+
+describe("resolveActionLauncher", () => {
+  const args = ["open", "feat/x", "--repo", "r"];
+
+  it("uses PATH wtx inside compiled binaries ($bunfs virtual paths)", () => {
+    const res = resolveActionLauncher(
+      ["/$bunfs/root/wtx", "terminal"],
+      args,
+      { whichWtx: "/usr/local/bin/wtx", execPath: "/$bunfs/root/wtx" }
+    );
+    expect(res).toEqual({ cmd: "/usr/local/bin/wtx", args });
+  });
+
+  it("falls back to execPath when wtx is not on PATH in compiled mode", () => {
+    const res = resolveActionLauncher(
+      ["/$bunfs/root/wtx", "terminal"],
+      args,
+      { whichWtx: null, execPath: "/Users/x/Repos/wtx-wt/feat/next/dist/wtx" }
+    );
+    expect(res).toEqual({ cmd: "/Users/x/Repos/wtx-wt/feat/next/dist/wtx", args });
+  });
+
+  it("reconstructs bun dev invocation (bun + script before terminal)", () => {
+    const argv = ["/usr/bin/bun", "/repo/src/index.ts", "terminal"];
+    const res = resolveActionLauncher(argv, args, { whichWtx: null, execPath: "/usr/bin/bun" });
+    expect(res).toEqual({ cmd: "/usr/bin/bun", args: ["/repo/src/index.ts", ...args] });
+  });
+
+  it("falls back to argv0 with plain action args when terminal token absent", () => {
+    const res = resolveActionLauncher(["/node", "/lib/cli.mjs"], args, { whichWtx: null, execPath: "/node" });
+    expect(res).toEqual({ cmd: "/node", args });
   });
 });
