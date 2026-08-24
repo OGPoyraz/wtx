@@ -96,6 +96,7 @@ If origin already has a branch with that name owned by someone else, `wtx` warns
 | `terminal` | | | Interactive worktree dashboard (requires Bun) |
 | `mcp` | | | Run MCP server exposing worktree tools over stdio |
 | `cd` | `<repo> <branch>` | | cd into worktree (requires shell integration) |
+| `history` | | `--limit`, `--json`, `--source` | Show recent action history (`~/.local/state/wtx/history.jsonl`) |
 | `config init/show/set/add-repo/remove-repo` | | | Manage `~/.config/wtx/config.json` |
 | `skill list/show/path` | | | Agent skill files for opencode/cursor/claude |
 | `init` | `<bash\|zsh\|fish>` | | Output shell wrapper for eval |
@@ -274,6 +275,7 @@ Lookups degrade gracefully: if `gh` is missing or unauthenticated you get a warn
 | `n` | Create worktree |
 | `b` | Rebase selected |
 | `a` | Spawn coding agent in selected worktree |
+| `H` | Action history (recent actions across CLI and dashboard) |
 | `o` | Open in IDE |
 | `c` | Edit configuration |
 | `?` / `q` | Help / quit |
@@ -285,6 +287,10 @@ Actions stream their output into the dashboard; destructive ones confirm first.
 ## Scripting
 
 Machine-readable output where it matters: `wtx ls --json`, `wtx status <branch> --json`, `wtx deps <branch> --json`, `wtx prs --json`. Combine with `-q` to suppress progress lines, and preview anything destructive with `--dry-run` — including planned deletions and hook commands.
+
+### Action history
+
+Mutating commands (`create`, `remove`, `rebase`, `sync`, `pull`, ...) are recorded to `~/.local/state/wtx/history.jsonl` — whether you ran them from your shell or from inside `wtx terminal` (entries are tagged with their source). Inspect with `wtx history --limit 50 --json --source terminal`, or press `H` in the dashboard. The file rotates automatically at ~5 MB, keeping the newest entries.
 
 ---
 

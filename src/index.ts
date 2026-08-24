@@ -20,9 +20,12 @@ import { registerPrsCommand } from "./commands/prs.js";
 import { registerSkillCommand } from "./commands/skill.js";
 import { registerTerminalCommand } from "./commands/terminal.js";
 import { registerMcpCommand } from "./commands/mcp.js";
+import { registerHistoryCommand } from "./commands/history.js";
 import { loadConfig } from "./lib/config.js";
 import { getWorktreePath, resolveRepos } from "./lib/resolver.js";
 import { setQuiet } from "./lib/log.js";
+import { appendHistory } from "./lib/history.js";
+import type { HistoryEntry, HistorySource } from "./lib/history.js";
 import fs from "fs";
 
 const program = new Command();
@@ -35,11 +38,77 @@ program
   .option("--verbose", "Show git commands as they run", false)
   .option("--dry-run", "Show what would happen", false);
 
-program.hook("preAction", () => {
+const MUTATING_COMMANDS = new Set([
+  "create",
+  "pull",
+  "remove",
+  "prune",
+  "rebase",
+  "sync",
+  "fetch",
+  "open",
+  "exec",
+]);
+
+const MUTATING_CONFIG_SUBCOMMANDS = new Set(["set", "add-repo", "remove-repo"]);
+
+function shouldLogCommand(actionCmd: Command, opts: Record<string, unknown>): boolean {
+  const name = actionCmd.name();
+  if (MUTATING_COMMANDS.has(name)) {
+    if (name === "deps") return Boolean(opts.install || opts.symlink);
+    return true;
+  }
+  if (actionCmd.parent?.name() === "config" && MUTATING_CONFIG_SUBCOMMANDS.has(name)) {
+    return true;
+  }
+  return false;
+}
+
+function currentSource(): HistorySource {
+  return process.env.WTX_SOURCE === "terminal" ? "terminal" : "cli";
+}
+
+let pendingEntry: Omit<HistoryEntry, "durationMs" | "exit"> | null = null;
+let pendingStartedAt = 0;
+let exitFlushInstalled = false;
+
+function ensureExitFlush(): void {
+  if (exitFlushInstalled) return;
+  exitFlushInstalled = true;
+  process.on("exit", () => {
+    if (!pendingEntry) return;
+    appendHistory({ ...pendingEntry, durationMs: Date.now() - pendingStartedAt, exit: null });
+    pendingEntry = null;
+  });
+}
+
+function flushPending(exit: number | null): void {
+  if (!pendingEntry) return;
+  appendHistory({ ...pendingEntry, durationMs: Date.now() - pendingStartedAt, exit });
+  pendingEntry = null;
+}
+
+program.hook("preAction", (_thisCommand, actionCommand) => {
   const globalOpts = program.opts<GlobalOptions>();
   if (globalOpts.quiet) {
     setQuiet(true);
   }
+
+  const opts = actionCommand.opts() as Record<string, unknown>;
+  if (!shouldLogCommand(actionCommand, opts)) return;
+
+  ensureExitFlush();
+  pendingStartedAt = Date.now();
+  pendingEntry = {
+    ts: new Date().toISOString(),
+    source: currentSource(),
+    command: actionCommand.name(),
+    args: process.argv.slice(2),
+  };
+});
+
+program.hook("postAction", () => {
+  flushPending(0);
 });
 
 registerConfigCommand(program);
@@ -59,6 +128,7 @@ registerPrsCommand(program);
 registerSkillCommand(program);
 registerTerminalCommand(program);
 registerMcpCommand(program);
+registerHistoryCommand(program);
 
 program
   .command("_resolve-path <repo> <branch>", { hidden: true })
