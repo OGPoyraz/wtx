@@ -1,6 +1,7 @@
 import type { Config, RepoContext } from "../types.js";
 import { expandTilde } from "./config.js";
-import { gitExec } from "./git.js";
+import { gitExec, type Worktree } from "./git.js";
+import { safeResolve } from "./path-safety.js";
 import fs from "fs";
 import path from "path";
 import { stepWarning } from "./log.js";
@@ -93,6 +94,23 @@ export async function resolveMainBranch(repoCtx: RepoContext, config: Config): P
 
 export function getWorktreePath(repoCtx: RepoContext, branch: string): string {
   return `${repoCtx.wtRoot}/${branch}`;
+}
+
+export function findWorktreeForBranch(
+  worktrees: Worktree[],
+  branch: string,
+  mainPath: string,
+  expectedPath?: string
+): Worktree | undefined {
+  const resolvedMain = safeResolve(mainPath);
+  const linked = worktrees.filter((wt) => safeResolve(wt.path) !== resolvedMain);
+
+  const byBranch = linked.find((wt) => wt.branch === branch);
+  if (byBranch) return byBranch;
+
+  if (!expectedPath) return undefined;
+  const resolvedExpected = safeResolve(expectedPath);
+  return linked.find((wt) => safeResolve(wt.path) === resolvedExpected);
 }
 
 export function parseRepoFlag(repoFlag: string[] | undefined): string[] | undefined {
