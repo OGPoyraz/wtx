@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolveActionLauncher } from "../src/tui/actions.js";
-import { matchesFilter, toggleSelection, computeScrollWindow, buildRowCopyText, pickClipboardCmd } from "../src/tui/utils.js";
+import { matchesFilter, toggleSelection, computeScrollWindow } from "../src/tui/utils.js";
 import type { WorktreeRow } from "../src/tui/types.js";
 
 const mockRow: WorktreeRow = {
@@ -51,29 +51,23 @@ describe("TUI Interactions", () => {
     expect(computeScrollWindow(4, 8, 10, 5)).toEqual({ start: 0, end: 5 });
   });
 
-  it("buildRowCopyText builds correct summary string", () => {
-    const text = buildRowCopyText(mockRow);
-    expect(text).toBe("feat/foo\twtx\t/tmp/wtx/feat/foo\ta1b2c3d\tdirty:0\tpr:#123 OPEN");
-    
-    const dirtyRow = { ...mockRow, dirtyFiles: ["a", "b"], prNumber: null };
-    expect(buildRowCopyText(dirtyRow)).toBe("feat/foo\twtx\t/tmp/wtx/feat/foo\ta1b2c3d\tdirty:2");
-  });
 
-  it("pickClipboardCmd respects platform and env overrides", () => {
-    expect(pickClipboardCmd("darwin", {})).toEqual([["pbcopy"]]);
-    expect(pickClipboardCmd("win32", {})).toEqual([["clip.exe"]]);
-    expect(pickClipboardCmd("linux", {})).toEqual([
-      ["wl-copy"],
-      ["xclip", "-selection", "clipboard"],
-      ["xsel", "--clipboard", "--input"]
-    ]);
-    
-    expect(pickClipboardCmd("linux", { WTX_CLIPBOARD_CMD: "my-copy --arg" })).toEqual([["my-copy", "--arg"]]);
-    expect(pickClipboardCmd("darwin", { WTX_CLIPBOARD_CMD: "xclip" })).toEqual([["xclip"]]);
-  });
 });
 
 describe("resolveActionLauncher", () => {
+  it("prefers wtx from PATH over everything (compiled or not)", () => {
+    const res = resolveActionLauncher(
+      ["/$bunfs/root/wtx", "terminal"],
+      args,
+      { whichWtx: "/usr/local/bin/wtx", execPath: "/$bunfs/root/wtx" }
+    );
+    expect(res).toEqual({ cmd: "/usr/local/bin/wtx", args });
+    expect(resolveActionLauncher(
+      ["/usr/bin/bun", "/repo/src/index.ts", "terminal"],
+      args,
+      { whichWtx: "/usr/local/bin/wtx", execPath: "/usr/bin/bun" }
+    ).cmd).toBe("/usr/local/bin/wtx");
+  });
   const args = ["open", "feat/x", "--repo", "r"];
 
   it("uses PATH wtx inside compiled binaries ($bunfs virtual paths)", () => {

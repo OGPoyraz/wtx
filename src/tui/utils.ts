@@ -49,32 +49,4 @@ export function computeScrollWindow(
   return { start, end };
 }
 
-export function buildRowCopyText(row: WorktreeRow): string {
-  const parts = [
-    row.branch,
-    row.repoName,
-    row.path,
-    row.commitShort || "",
-    `dirty:${row.dirtyFiles.length}`,
-  ];
-  if (row.prNumber) {
-    parts.push(`pr:#${row.prNumber} ${row.prState || ""}`.trim());
-  }
-  return parts.join("\t");
-}
 
-export function pickClipboardCmd(platform: string, env: Record<string, string | undefined>): string[][] {
-  if (env.WTX_CLIPBOARD_CMD) {
-    return [env.WTX_CLIPBOARD_CMD.split(" ")];
-  }
-  if (platform === "darwin") return [["pbcopy"]];
-  if (platform === "win32") return [["clip.exe"]];
-  if (platform === "linux") {
-    return [
-      ["wl-copy"],
-      ["xclip", "-selection", "clipboard"],
-      ["xsel", "--clipboard", "--input"]
-    ];
-  }
-  return [];
-}

@@ -13,7 +13,7 @@ import type { WorktreeRow } from "../types.js";
 import { ActionLogModal } from "./ActionLogModal.js";
 import { InputModal } from "./InputModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
-import { matchesFilter, toggleSelection, buildRowCopyText, pickClipboardCmd } from "../utils.js";
+import { matchesFilter, toggleSelection } from "../utils.js";
 import { resolveAgentCommand, spawnAgentInWorktree } from "../../lib/agents.js";
 import { loadConfig } from "../../lib/config.js";
 
@@ -249,34 +249,6 @@ export function App({ opts }: AppProps) {
           }
         }
         runSequentialActions("Fetch", Array.from(uniqueRepos.values()), (r) => ["fetch", "--repo", r.repoName]);
-        return;
-      } else if (key.name === "y") {
-        if (!selectedRow) return;
-        (async () => {
-          const text = buildRowCopyText(selectedRow);
-          const cmds = pickClipboardCmd(process.platform, process.env);
-          let success = false;
-          for (const cmd of cmds) {
-            try {
-              const proc = Bun.spawn(cmd, { stdin: "pipe" });
-              proc.stdin.write(text);
-              proc.stdin.end();
-              const exitCode = await proc.exited;
-              if (exitCode === 0) {
-                success = true;
-                break;
-              }
-            } catch (e) {
-              // try next
-            }
-          }
-          if (success) {
-            setActionMessage(`Copied ${selectedRow.branch}`);
-          } else {
-            setActionMessage("Clipboard unavailable (pbcopy/wl-copy/xclip not found)");
-          }
-          setTimeout(() => setActionMessage(undefined), 3000);
-        })();
         return;
       } else if (key.name === "down" || key.name === "j") {
         setSelectedIndex(prev => Math.min(prev + 1, maxIndex));

@@ -16,7 +16,6 @@ export function HelpOverlay() {
       <text><span fg={tokens.accent}>o</span><span> - Open selected in IDE</span></text>
       <text><span fg={tokens.accent}>a</span><span> - Spawn agent in selected</span></text>
       <text><span fg={tokens.accent}>d</span><span> - Remove selected worktree</span></text>
-      <text><span fg={tokens.accent}>y</span><span> - Copy selected info to clipboard</span></text>
       <text><span fg={tokens.accent}>?</span><span> - Toggle help</span></text>
       <text><span fg={tokens.accent}>q/esc</span><span> - Quit</span></text>
       

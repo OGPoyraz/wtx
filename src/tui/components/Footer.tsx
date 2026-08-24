@@ -13,7 +13,7 @@ interface FooterProps {
 }
 
 export function Footer({ loading, lastRefreshed, errorCount, message, filter }: FooterProps) {
-  const hints = "c config · r refresh · f fetch · n create · b rebase · s sync · o IDE · d rm · y yank · ? help";
+  const hints = "c config · r refresh · f fetch · n create · b rebase · s sync · o IDE · d rm · ? help";
   
   return (
     <box

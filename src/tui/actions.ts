@@ -7,9 +7,17 @@ export function resolveActionLauncher(
   args: string[],
   opts: { whichWtx?: string | null; execPath: string }
 ): { cmd: string; args: string[] } {
-  const isCompiledBinary = Boolean(argv[0]?.includes("$bunfs"));
+  // The user typed `wtx terminal`, so `wtx` is on their PATH — prefer it.
+  // This sidesteps compiled-binary virtual paths ($bunfs) entirely.
+  if (opts.whichWtx) {
+    return { cmd: opts.whichWtx, args };
+  }
+
+  const isCompiledBinary =
+    argv.some((a) => typeof a === "string" && a.includes("$bunfs")) ||
+    opts.execPath.includes("$bunfs");
   if (isCompiledBinary) {
-    return { cmd: opts.whichWtx || opts.execPath, args };
+    return { cmd: opts.execPath, args };
   }
 
   const terminalIdx = argv.indexOf("terminal");
