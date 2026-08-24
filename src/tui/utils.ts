@@ -56,10 +56,14 @@ export function rowSort(a: WorktreeRow, b: WorktreeRow): number {
   return a.branch.localeCompare(b.branch);
 }
 
+export function sortBlocks(blocks: RepoBlock[]): RepoBlock[] {
+  return [...blocks].sort((a, b) => a.repoName.localeCompare(b.repoName));
+}
+
 export function mergeBlocks(prev: RepoBlock[], next: RepoBlock[], scope?: Set<string>): RepoBlock[] {
-  if (!scope) return next;
+  if (!scope) return sortBlocks(next);
   const kept = prev.filter(b => !scope.has(b.repoName));
-  return [...kept, ...next].sort((a, b) => a.repoName.localeCompare(b.repoName));
+  return sortBlocks([...kept, ...next]);
 }
 
 export function mergeWarnings(prev: DataWarning[], next: DataWarning[], scope?: Set<string>): DataWarning[] {

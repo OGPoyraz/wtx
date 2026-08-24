@@ -13,19 +13,31 @@ function formatShortTime(iso: string): string {
 
 export function HistoryEntryLine({ entry }: { entry: HistoryEntry }) {
   const args = entry.args.join(" ");
+  const duration =
+    entry.durationMs !== null && entry.durationMs !== undefined ? ` ${entry.durationMs}ms` : "";
   const prefix = `${formatShortTime(entry.ts)}  ${entry.source.padEnd(8)}  ${args}`;
 
   if (entry.exit === null || entry.exit === undefined) {
-    return <text fg={tokens.dim}>◌ {prefix}</text>;
+    return (
+      <text>
+        <span fg={tokens.dim}>◌ {prefix}</span>
+        {duration && <span fg={tokens.dim}>{duration}</span>}
+      </text>
+    );
   }
   if (entry.exit === 0) {
-    return <text fg={tokens.success}>✓ {prefix}</text>;
+    return (
+      <text>
+        <span fg={tokens.success}>✓ {prefix}</span>
+        {duration && <span fg={tokens.dim}>{duration}</span>}
+      </text>
+    );
   }
   return (
     <text>
       <span fg={tokens.error}>✗ </span>
       <span>{prefix}</span>
-      <span fg={tokens.dim}> (exit {entry.exit})</span>
+      <span fg={tokens.dim}> (exit {entry.exit}{duration})</span>
     </text>
   );
 }
@@ -34,12 +46,12 @@ export function HistoryOverlay() {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
 
   useEffect(() => {
-    setEntries(readRecentHistory(200));
+    setEntries(readRecentHistory(500));
   }, []);
 
   return (
-    <Overlay title="Action History" borderColor={tokens.border}>
-      <box flexGrow={1} flexDirection="column" style={{ minHeight: 10, maxHeight: 22 }}>
+    <Overlay title="Action History" borderColor={tokens.border} width={110}>
+      <box flexGrow={1} flexDirection="column" style={{ minHeight: 30, maxHeight: 46 }}>
         {entries.length === 0 ? (
           <text fg={tokens.dim}>No actions recorded yet.</text>
         ) : (

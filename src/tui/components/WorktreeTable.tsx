@@ -125,14 +125,18 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
               <box style={{ marginTop: flatIndex === 0 ? 0 : 1 }}>
                 <text>
                   <span fg={tokens.bright}>{block.repoName}</span>
-                  <span fg={tokens.dim}>{` · ${block.rows.filter(r => !r.isPendingCreate).length}`}</span>
-                  {repoIndicator && (
+                  {block.rows.length > 0 && (
+                    <span fg={tokens.dim}>{` · ${block.rows.filter(r => !r.isPendingCreate).length}`}</span>
+                  )}
+                  {repoIndicator ? (
                     <span fg={repoIndicator.running ? tokens.accent : tokens.dim}>
                       {repoIndicator.running
                         ? `  ${frame} ${repoIndicator.verb}…`
                         : `  ◌ ${repoIndicator.verb}`}
                     </span>
-                  )}
+                  ) : block.rows.length === 0 ? (
+                    <span fg={tokens.accent}>{`  ${frame} refreshing…`}</span>
+                  ) : null}
                 </text>
               </box>
 

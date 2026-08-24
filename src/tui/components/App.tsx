@@ -10,12 +10,14 @@ import { HelpOverlay } from "./HelpOverlay.js";
 import { ConfirmModal } from "./ConfirmModal.js";
 import { runWtxAction } from "../actions.js";
 import { validateSafeBranchName } from "../../lib/git.js";
-import type { WorktreeRow } from "../types.js";
+import type { WorktreeRow, RepoBlock } from "../types.js";
 import { ActionLogModal } from "./ActionLogModal.js";
 import { HistoryOverlay } from "./HistoryOverlay.js";
 import { InputModal } from "./InputModal.js";
+import { ChoiceModal } from "./ChoiceModal.js";
+import type { ChoiceOption } from "./ChoiceModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
-import { matchesFilter, toggleSelection, withCreatePlaceholders } from "../utils.js";
+import { matchesFilter, toggleSelection, withCreatePlaceholders, sortBlocks } from "../utils.js";
 import { resolveAgentCommand, spawnAgentInWorktree } from "../../lib/agents.js";
 import { loadConfig } from "../../lib/config.js";
 import { appendHistory } from "../../lib/history.js";
@@ -32,9 +34,10 @@ type ModalState =
   | { type: "confirm_remove"; rows: WorktreeRow[] }
   | { type: "confirm_rebase"; rows: WorktreeRow[] }
   | { type: "confirm_sync"; rows: WorktreeRow[] }
+  | { type: "confirm_rename"; row: WorktreeRow; to: string }
   | { type: "error"; message: string };
 
-type BusyKind = "create" | "remove" | "rebase" | "sync" | "fetch" | "open";
+type BusyKind = "create" | "remove" | "rebase" | "sync" | "fetch" | "open" | "install" | "pull" | "rename";
 
 const VERBS: Record<BusyKind, string> = {
   create: "creating worktree",
@@ -43,9 +46,30 @@ const VERBS: Record<BusyKind, string> = {
   sync: "syncing",
   fetch: "fetching",
   open: "opening",
+  install: "installing deps",
+  pull: "pulling",
+  rename: "renaming",
 };
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const DEPS_CHOICES: ChoiceOption[] = [
+  { value: "auto", label: "Auto (default)", desc: "Safe-link when manifests match main, real install otherwise" },
+  { value: "install", label: "Install", desc: "Real install in the worktree (uses the repo's install_script when configured)" },
+  { value: "symlink", label: "Symlink", desc: "Share main checkout's node_modules via symlink" },
+];
+
+function getWorktreePathFor(repoName: string, branch: string): string {
+  try {
+    const config = loadConfig();
+    const root = config.root.startsWith("~")
+      ? config.root.replace(/^~/, process.env.HOME ?? "")
+      : config.root;
+    return `${root}/${repoName}${config.postfix}/${branch}`;
+  } catch {
+    return "";
+  }
+}
 
 interface PendingOp {
   id: number;
@@ -67,7 +91,7 @@ interface FailedAction {
 
 export function App({ opts }: AppProps) {
   const renderer = useRenderer();
-  const { blocks, loading, refreshing, error, warnings, lastRefreshed, refresh } = useWorktrees(opts);
+  const { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, refresh } = useWorktrees(opts);
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -80,11 +104,30 @@ export function App({ opts }: AppProps) {
 
   const [createModal, setCreateModal] = useState(false);
   const [createError, setCreateError] = useState<string | undefined>();
+  const [createDepsChoice, setCreateDepsChoice] = useState<{ branch: string; repoName: string } | null>(null);
+  const [renameModal, setRenameModal] = useState(false);
+  const [renameError, setRenameError] = useState<string | undefined>();
   const [configOpen, setConfigOpen] = useState(false);
+  const [refreshScopes, setRefreshScopes] = useState<string[]>([]);
 
   const [filterText, setFilterText] = useState("");
   const [isFiltering, setIsFiltering] = useState(false);
   const [selection, setSelection] = useState<Set<string>>(new Set());
+
+  const doRefresh = useCallback(
+    async (scope?: string[]) => {
+      const targets = scope ?? [
+        ...new Set([...blocks.map(b => b.repoName), ...pendingRepos]),
+      ];
+      setRefreshScopes(targets);
+      try {
+        await refresh(scope);
+      } finally {
+        setRefreshScopes([]);
+      }
+    },
+    [blocks, pendingRepos, refresh]
+  );
 
   useEffect(() => {
     if (error) {
@@ -110,17 +153,27 @@ export function App({ opts }: AppProps) {
     () =>
       blocks
         .map(b => ({ ...b, rows: b.rows.filter(r => matchesFilter(r, filterText)) }))
-        .filter(b => b.rows.length > 0),
-    [blocks, filterText]
+        .filter(b => b.rows.length > 0 || pendingRepos.includes(b.repoName)),
+    [blocks, filterText, pendingRepos]
   );
+
+  const pendingBlocks = useMemo<RepoBlock[]>(() => {
+    const existing = new Set(baseFiltered.map(b => b.repoName));
+    return pendingRepos
+      .filter(name => !existing.has(name) && matchesFilter({ repoName: name, branch: "" } as WorktreeRow, filterText))
+      .map(repoName => ({ repoName, rows: [] }));
+  }, [baseFiltered, pendingRepos, filterText]);
 
   const displayBlocks = useMemo(
     () =>
-      withCreatePlaceholders(
-        baseFiltered,
-        ops.filter(o => o.branch !== undefined).map(o => ({ repoName: o.repoNames[0]!, branch: o.branch! }))
-      ),
-    [baseFiltered, ops]
+      sortBlocks([
+        ...withCreatePlaceholders(
+          baseFiltered,
+          ops.filter(o => o.branch !== undefined).map(o => ({ repoName: o.repoNames[0]!, branch: o.branch! }))
+        ),
+        ...pendingBlocks,
+      ]),
+    [baseFiltered, ops, pendingBlocks]
   );
 
   const flatRows = useMemo(
@@ -149,8 +202,11 @@ export function App({ opts }: AppProps) {
         for (const rn of o.repoNames) rv.set(rn, indicator);
       }
     }
+    for (const rn of refreshScopes) {
+      if (!rv.has(rn)) rv.set(rn, { verb: "refreshing", running: true });
+    }
     return { repoVerbs: rv, rowVerbs: nv };
-  }, [ops]);
+  }, [ops, refreshScopes]);
 
   const runningOps = ops.filter(o => o.status === "running");
   const latestOp = runningOps[runningOps.length - 1];
@@ -190,7 +246,7 @@ export function App({ opts }: AppProps) {
     }
 
     if (exitCode === 0) {
-      if (refreshScope) await refresh(refreshScope);
+      if (refreshScope) await doRefresh(refreshScope);
       setOps(prev => prev.filter(o => o.id !== op.id));
     } else {
       setOps(prev => prev.filter(o => o.id !== op.id));
@@ -248,7 +304,7 @@ export function App({ opts }: AppProps) {
     );
   };
 
-  const startCreate = (branch: string, repoName: string) => {
+  const startCreate = (branch: string, repoName: string, deps?: string) => {
     const op: PendingOp = {
       id: nextOpId.current++,
       kind: "create",
@@ -260,7 +316,9 @@ export function App({ opts }: AppProps) {
       lines: [],
     };
     setOps(prev => [...prev, op]);
-    void executeOp(op, ["create", branch, "--repo", repoName], [repoName]);
+    const args = ["create", branch, "--repo", repoName];
+    if (deps && deps !== "auto") args.push("--deps", deps);
+    void executeOp(op, args, [repoName]);
   };
 
   useKeyboard(
@@ -291,6 +349,16 @@ export function App({ opts }: AppProps) {
         return;
       }
 
+      if (createDepsChoice) return;
+
+      if (renameModal) {
+        if (key.name === "escape") {
+          setRenameModal(false);
+          setRenameError(undefined);
+        }
+        return;
+      }
+
       // Modal handling
       if (modal.type !== "none") {
         if (modal.type === "error" || modal.type === "help" || modal.type === "history") {
@@ -307,10 +375,11 @@ export function App({ opts }: AppProps) {
         if (
           modal.type === "confirm_remove" ||
           modal.type === "confirm_rebase" ||
-          modal.type === "confirm_sync"
+          modal.type === "confirm_sync" ||
+          modal.type === "confirm_rename"
         ) {
           if (key.name === "y") {
-            const rows = modal.rows;
+            const rows = "rows" in modal ? modal.rows : [];
             const action = modal.type;
             setModal({ type: "none" });
 
@@ -322,8 +391,23 @@ export function App({ opts }: AppProps) {
               });
             } else if (action === "confirm_rebase") {
               startBatchActions("rebase", rows, (r) => ["rebase", r.branch, "--repo", r.repoName]);
-            } else {
+            } else if (action === "confirm_sync") {
               startBatchActions("sync", rows, (r) => ["sync", r.branch, "--repo", r.repoName]);
+            } else if (action === "confirm_rename") {
+              const { row, to } = modal;
+              const op: PendingOp = {
+                id: nextOpId.current++,
+                kind: "rename",
+                repoNames: [row.repoName],
+                rowPath: row.path,
+                branch: row.branch,
+                label: `${row.branch} → ${to}`,
+                title: `Rename ${row.branch} → ${to}`,
+                status: "queued",
+                lines: [],
+              };
+              setOps(prev => [...prev, op]);
+              void executeOp(op, ["rename", row.branch, to, "--repo", row.repoName], [row.repoName]);
             }
             return;
           }
@@ -367,7 +451,7 @@ export function App({ opts }: AppProps) {
       }
 
       if (key.name === "r" && !key.shift) {
-        void refresh();
+        void doRefresh();
         return;
       }
 
@@ -389,6 +473,55 @@ export function App({ opts }: AppProps) {
         if (!selectedRow) return;
         setCreateModal(true);
         setCreateError(undefined);
+        return;
+      }
+
+      if (key.name === "p") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        startBatchActions("pull", targets, (r) => ["pull-branch", r.branch, "--repo", r.repoName]);
+        return;
+      }
+
+      if (key.name === "i") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.some(r => r.isMainCheckout)) {
+          flash("Cannot install deps on main checkout");
+          return;
+        }
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        startBatchActions("install", targets, (r) => ["deps", r.branch, "--repo", r.repoName, "--install"]);
+        return;
+      }
+
+      if (key.name === "m") {
+        const target = selectedRow;
+        if (!target) return;
+        if (target.isMainCheckout) {
+          flash("Cannot rename main checkout");
+          return;
+        }
+        if (!target.branch || target.branch === "(detached)") {
+          flash("Cannot rename detached worktree");
+          return;
+        }
+        const conflict = findConflict([target]);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        setRenameModal(true);
+        setRenameError(undefined);
         return;
       }
 
@@ -610,15 +743,70 @@ export function App({ opts }: AppProps) {
             }
             setCreateModal(false);
             setCreateError(undefined);
-            startCreate(branch, repoName);
+            setCreateDepsChoice({ branch, repoName });
           }}
+        />
+      )}
+
+      {createDepsChoice && (
+        <ChoiceModal
+          title={`Dependencies for ${createDepsChoice.branch}`}
+          options={DEPS_CHOICES}
+          onSubmit={(choice) => {
+            const { branch, repoName } = createDepsChoice;
+            setCreateDepsChoice(null);
+            startCreate(branch, repoName, choice);
+          }}
+          onCancel={() => setCreateDepsChoice(null)}
+        />
+      )}
+
+      {renameModal && selectedRow && (
+        <InputModal
+          title={`Rename branch ${selectedRow.branch}`}
+          placeholder={`New branch name (${selectedRow.branch})`}
+          errorMessage={renameError}
+          onSubmit={(value) => {
+            const target = selectedRow;
+            const to = value.trim();
+            if (!to) {
+              setRenameModal(false);
+              return;
+            }
+            if (to === target.branch) {
+              setRenameModal(false);
+              return;
+            }
+            if (!validateSafeBranchName(to)) {
+              setRenameError("Invalid branch name");
+              return;
+            }
+            setRenameModal(false);
+            setRenameError(undefined);
+            setModal({ type: "confirm_rename", row: target, to });
+          }}
+        />
+      )}
+
+      {modal.type === "confirm_rename" && (
+        <ConfirmModal
+          title="Rename Worktree"
+          message={[
+            `${modal.row.branch} → ${modal.to}`,
+            "",
+            `Branch will be renamed and the checkout moved to:`,
+            getWorktreePathFor(modal.row.repoName, modal.to),
+            "",
+            "The old directory will be removed.",
+            "Proceed?",
+          ].join("\n")}
         />
       )}
 
       {configOpen && (
         <ConfigOverlay
           onClose={() => setConfigOpen(false)}
-          onSaved={() => refresh()}
+          onSaved={() => void doRefresh()}
           onError={(msg) => setModal({ type: "error", message: msg })}
         />
       )}

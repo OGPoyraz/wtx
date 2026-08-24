@@ -14,8 +14,24 @@ interface FooterProps {
   };
 }
 
+const HINTS: [string, string][] = [
+  ["c", "config"],
+  ["n", "create"],
+  ["f", "fetch"],
+  ["?", "help"],
+  ["H", "history"],
+  ["o", "ide"],
+  ["i", "install"],
+  ["p", "pull"],
+  ["b", "rebase"],
+  ["r", "refresh"],
+  ["d", "remove"],
+  ["m", "rename"],
+  ["s", "sync"],
+];
+
 export function Footer({ loading, lastRefreshed, errorCount, message, busyText, spinnerFrame, filter }: FooterProps) {
-  const hints = "c config · r refresh · f fetch · n create · b rebase · s sync · o IDE · d rm · H hist · ? help";
+  const hints = HINTS.map(([key, action]) => `${key} ${action}`).join(" · ");
   const frame = spinnerFrame ?? "◌";
   
   return (

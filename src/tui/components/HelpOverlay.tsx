@@ -1,25 +1,41 @@
 import { Overlay } from "./Overlay.js";
 import { tokens } from "../theme.js";
 
+const HELP_ENTRIES: [string, string][] = [
+  ["↑/↓, k/j", "Navigate list"],
+  ["/", "Filter list"],
+  ["Space", "Multi-select"],
+  ["c", "Open configuration"],
+  ["n", "Create new worktree (pick dependency strategy)"],
+  ["f", "Fetch main for selected repo(s)"],
+  ["p", "Pull latest changes for selected branch(es)"],
+  ["b", "Rebase selected onto main"],
+  ["s", "Sync selected (env files + hooks)"],
+  ["i", "Install dependencies in selected worktree(s)"],
+  ["m", "Rename selected worktree (branch + directory)"],
+  ["o", "Open selected in IDE"],
+  ["a", "Spawn agent in selected"],
+  ["d", "Remove selected worktree(s)"],
+  ["r", "Refresh data"],
+  ["H", "Action history"],
+  ["?", "Toggle help"],
+  ["q/esc", "Quit"],
+];
+
 export function HelpOverlay() {
   return (
     <Overlay title="Help" borderColor={tokens.border}>
-      <text><span fg={tokens.accent}>↑/↓, k/j</span><span> - Navigate list</span></text>
-      <text><span fg={tokens.accent}>/</span><span> - Filter list</span></text>
-      <text><span fg={tokens.accent}>Space</span><span> - Multi-select</span></text>
-      <text><span fg={tokens.accent}>c</span><span> - Open configuration</span></text>
-      <text><span fg={tokens.accent}>r</span><span> - Refresh data</span></text>
-      <text><span fg={tokens.accent}>f</span><span> - Fetch main for selected repo</span></text>
-      <text><span fg={tokens.accent}>n</span><span> - Create new worktree</span></text>
-      <text><span fg={tokens.accent}>b</span><span> - Rebase selected onto main</span></text>
-      <text><span fg={tokens.accent}>s</span><span> - Sync selected</span></text>
-      <text><span fg={tokens.accent}>o</span><span> - Open selected in IDE</span></text>
-      <text><span fg={tokens.accent}>a</span><span> - Spawn agent in selected</span></text>
-      <text><span fg={tokens.accent}>d</span><span> - Remove selected worktree</span></text>
-      <text><span fg={tokens.accent}>H</span><span> - Action history</span></text>
-      <text><span fg={tokens.accent}>?</span><span> - Toggle help</span></text>
-      <text><span fg={tokens.accent}>q/esc</span><span> - Quit</span></text>
-      
+      <box flexDirection="column" style={{ maxHeight: 40 }}>
+        <scrollbox flexGrow={1}>
+          {HELP_ENTRIES.map(([key, desc]) => (
+            <text key={key}>
+              <span fg={tokens.accent}>{key.padEnd(10)}</span>
+              <span> - </span>
+              <span>{desc}</span>
+            </text>
+          ))}
+        </scrollbox>
+      </box>
       <text style={{ marginTop: 1, fg: tokens.dim }}>Press any key to close</text>
     </Overlay>
   );

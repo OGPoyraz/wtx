@@ -4,10 +4,11 @@ import { tokens } from "../theme.js";
 export interface OverlayProps {
   title?: string;
   borderColor?: string;
+  width?: number;
   children: ReactNode;
 }
 
-export function Overlay({ title, borderColor = tokens.border, children }: OverlayProps) {
+export function Overlay({ title, borderColor = tokens.border, width = 64, children }: OverlayProps) {
   return (
     <box
       id="overlay-scrim"
@@ -24,7 +25,7 @@ export function Overlay({ title, borderColor = tokens.border, children }: Overla
     >
       <box
         id="overlay-panel"
-        width={64}
+        width={width}
         border={true}
         borderColor={borderColor}
         title={title}
