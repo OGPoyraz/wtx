@@ -242,13 +242,12 @@ export function App({ opts }: AppProps) {
       if (key.name === "f") {
         const targets = getSelectedRows();
         if (targets.length === 0) return;
-        const uniqueRepos = new Map<string, WorktreeRow>();
-        for (const t of targets) {
-          if (!uniqueRepos.has(t.repoName)) {
-            uniqueRepos.set(t.repoName, t);
-          }
-        }
-        runSequentialActions("Fetch", Array.from(uniqueRepos.values()), (r) => ["fetch", "--repo", r.repoName]);
+        const repoNames = [...new Set(targets.map((t) => t.repoName))];
+        const title = repoNames.length === 1
+          ? `Fetch ${targets[0]!.branch}`
+          : `Fetch ${repoNames.length} repos`;
+        startAction(title, ["fetch", "--repo", repoNames.join(",")])
+          .then(() => setSelection(new Set()));
         return;
       } else if (key.name === "down" || key.name === "j") {
         setSelectedIndex(prev => Math.min(prev + 1, maxIndex));
