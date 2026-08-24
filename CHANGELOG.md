@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Install dependencies in the main checkout: `wtx deps --install` without a branch runs the detected package manager (or the repo's `install_script`) inside the main checkout, and the dashboard install action (`i`) now works on main rows — handy for refreshing main's `node_modules` after pulling new packages so worktrees can keep safe-linking against it
+
 ## [0.7.0] - 2026-08-24
 
 ### Added

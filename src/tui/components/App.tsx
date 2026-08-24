@@ -491,16 +491,16 @@ export function App({ opts }: AppProps) {
       if (key.name === "i") {
         const targets = getSelectedRows();
         if (targets.length === 0) return;
-        if (targets.some(r => r.isMainCheckout)) {
-          flash("Cannot install deps on main checkout");
-          return;
-        }
         const conflict = findConflict(targets);
         if (conflict) {
           flash(conflict);
           return;
         }
-        startBatchActions("install", targets, (r) => ["deps", r.branch, "--repo", r.repoName, "--install"]);
+        startBatchActions("install", targets, (r) =>
+          r.isMainCheckout
+            ? ["deps", "--repo", r.repoName, "--install"]
+            : ["deps", r.branch, "--repo", r.repoName, "--install"]
+        );
         return;
       }
 

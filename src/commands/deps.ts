@@ -46,11 +46,23 @@ export function registerDepsCommand(program: Command) {
         if (!options.json) repoHeader(repo.name);
 
         if (!branch) {
-          const state = detectDepsState(repo.mainPath, repo.mainPath);
-          if (options.json) {
-            jsonResults[repo.name] = { main: state };
+          if (options.install) {
+            const ok = await switchToInstall(repo.mainPath, globalOpts);
+            if (!ok) process.exitCode = 1;
+            if (options.json) {
+              jsonResults[repo.name] = detectDepsState(repo.mainPath, repo.mainPath);
+            }
+          } else if (options.symlink) {
+            if (!options.json) {
+              stepWarning("Symlink strategy requires a worktree", "usage: wtx deps <branch> --symlink");
+            }
           } else {
-            info(`  Main repo package manager: ${state.packageManager ?? "none detected"}`);
+            const state = detectDepsState(repo.mainPath, repo.mainPath);
+            if (options.json) {
+              jsonResults[repo.name] = { main: state };
+            } else {
+              info(`  Main repo package manager: ${state.packageManager ?? "none detected"}`);
+            }
           }
           continue;
         }
