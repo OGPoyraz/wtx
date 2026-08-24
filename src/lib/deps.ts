@@ -1,9 +1,11 @@
 import type { GlobalOptions } from "../types.js";
 import { resolveAdapter, detectCommonLinkageState } from "./deps/engine.js";
 import type { DepsStrategy, LinkageState } from "./deps/types.js";
-import { verbose } from "./log.js";
+import { verbose, stepProgress, stepSuccess, stepWarning } from "./log.js";
 import { loadConfig } from "./config.js";
 import { resolveRepos } from "./resolver.js";
+import { expandTemplate } from "./template.js";
+import { execa } from "execa";
 
 export interface DepsState {
   strategy:
@@ -89,49 +91,100 @@ export async function autoInstallDeps(wtPath: string, mainPath: string, opts: Gl
   });
 }
 
-export async function switchToInstall(wtPath: string, opts: GlobalOptions): Promise<void> {
-  let mainPath = wtPath;
-  let manager: string | undefined;
+interface RepoDepsContext {
+  name: string;
+  root: string;
+  postfix: string;
+  mainPath: string;
+  manager?: string;
+  installScript: string | null;
+}
+
+function findRepoDepsContext(wtPath: string): RepoDepsContext {
   try {
     const config = loadConfig();
     const repos = resolveRepos(config, []);
-    const repo = repos.find(r => wtPath.startsWith(r.wtRoot));
+    const repo = repos.find(r => wtPath === r.wtRoot || wtPath.startsWith(r.wtRoot + "/"));
     if (repo) {
-      mainPath = repo.mainPath;
-      if (repo.config.deps && repo.config.deps.manager !== "auto") {
-        manager = repo.config.deps.manager;
-      }
+      return {
+        name: repo.name,
+        root: config.root,
+        postfix: config.postfix,
+        mainPath: repo.mainPath,
+        manager: repo.config.deps?.manager !== "auto" ? repo.config.deps.manager : undefined,
+        installScript: repo.config.install_script ?? null,
+      };
     }
   } catch {}
+  return { name: "", root: "", postfix: "", mainPath: wtPath, installScript: null };
+}
 
-  const adapter = resolveAdapter(wtPath, manager) ?? resolveAdapter(mainPath, manager) ?? resolveAdapter(wtPath, "npm");
-  if (!adapter) return;
+export async function runInstallScript(
+  script: string,
+  wtPath: string,
+  ctx: RepoDepsContext,
+  opts: GlobalOptions
+): Promise<boolean> {
+  const branch = wtPath.split("/").pop() ?? "";
+  const expanded = expandTemplate(script, {
+    root: ctx.root,
+    repo: ctx.name,
+    branch,
+    main: ctx.mainPath,
+    wt: wtPath,
+    postfix: ctx.postfix,
+    port: 0,
+  });
+
+  stepProgress(`Running install script: ${expanded}...`);
+  if (opts.dryRun) {
+    verbose("[dry-run] skipped install script", opts.verbose);
+    return true;
+  }
+
+  try {
+    const result = await execa(expanded, { shell: true, cwd: wtPath, reject: false });
+    if (result.exitCode === 0) {
+      stepSuccess("Install script succeeded", expanded);
+      return true;
+    }
+    stepWarning("Install script failed", result.stderr || result.message || `exit code ${result.exitCode}`);
+    return false;
+  } catch (err: any) {
+    stepWarning("Install script failed", err.message);
+    return false;
+  }
+}
+
+export async function switchToInstall(wtPath: string, opts: GlobalOptions): Promise<boolean> {
+  const ctx = findRepoDepsContext(wtPath);
+
+  if (ctx.installScript) {
+    return runInstallScript(ctx.installScript, wtPath, ctx, opts);
+  }
+
+  const adapter = resolveAdapter(wtPath, ctx.manager) ?? resolveAdapter(ctx.mainPath, ctx.manager) ?? resolveAdapter(wtPath, "npm");
+  if (!adapter) return false;
 
   await adapter.sync({
     wtPath,
-    mainPath,
+    mainPath: ctx.mainPath,
     dryRun: opts.dryRun,
     strategy: "install",
   });
+  return true;
 }
 
 export async function switchToSymlink(wtPath: string, mainPath: string, opts: GlobalOptions): Promise<void> {
-  let manager: string | undefined;
-  try {
-    const config = loadConfig();
-    const repos = resolveRepos(config, []);
-    const repo = repos.find(r => wtPath.startsWith(r.wtRoot));
-    if (repo && repo.config.deps && repo.config.deps.manager !== "auto") {
-      manager = repo.config.deps.manager;
-    }
-  } catch {}
+  const ctx = findRepoDepsContext(wtPath);
+  const resolvedMain = ctx.name ? ctx.mainPath : mainPath;
 
-  const adapter = resolveAdapter(wtPath, manager) ?? resolveAdapter(mainPath, manager) ?? resolveAdapter(wtPath, "npm");
+  const adapter = resolveAdapter(wtPath, ctx.manager) ?? resolveAdapter(resolvedMain, ctx.manager) ?? resolveAdapter(wtPath, "npm");
   if (!adapter) return;
 
   await adapter.sync({
     wtPath,
-    mainPath,
+    mainPath: resolvedMain,
     dryRun: opts.dryRun,
     strategy: "symlink",
   });

@@ -81,6 +81,18 @@ export function DetailPane({ selectedRow }: DetailPaneProps) {
           )}
         </box>
       )}
+
+      <box flexDirection="column" style={{ marginTop: 1 }}>
+        <text fg={tokens.dim}>Actions:</text>
+        {!isMainCheckout && (
+          <>
+            <text fg={tokens.dim}>  i install deps ({depsStrategy})</text>
+            <text fg={tokens.dim}>  m rename worktree</text>
+          </>
+        )}
+        <text fg={tokens.dim}>  p pull branch</text>
+        <text fg={tokens.dim}>  b rebase · s sync · o open in IDE · d remove</text>
+      </box>
     </scrollbox>
   );
 }

@@ -27,21 +27,43 @@ export const PortsConfigSchema = z.object({
 
 export type PortsConfig = z.infer<typeof PortsConfigSchema>;
 
-export const RepoConfigSchema = z.object({
-  main_branch: z.string().trim().superRefine((val, ctx) => {
-    if (val !== "auto" && val.length === 0) {
-      ctx.addIssue({ code: "custom", message: "must not be empty when not 'auto'" });
+const LEGACY_REPO_KEYS: Record<string, string> = {
+  pr: "check_prs",
+  forge: "forge_provider",
+  pr_repo: "pr_lookup_repo",
+};
+
+function migrateLegacyRepoKeys(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null) return raw;
+  const obj = { ...(raw as Record<string, unknown>) };
+  for (const [legacy, current] of Object.entries(LEGACY_REPO_KEYS)) {
+    if (legacy in obj && !(current in obj)) {
+      obj[current] = obj[legacy];
     }
-  }).default("auto"),
-  fetch_main_on_create: z.boolean().default(true),
-  sync_files: z.array(z.string()).optional(),
-  post_create: z.array(z.string()).optional(),
-  post_sync: z.array(z.string()).optional(),
-  pr: z.boolean().default(true),
-  forge: z.enum(["auto", "github"]).default("auto"),
-  pr_repo: z.string().trim().min(1, { message: "must not be empty if provided" }).nullable().default(null),
-  deps: DepsConfigSchema.default({ manager: "auto", strategy: "auto" }),
-});
+    delete obj[legacy];
+  }
+  return obj;
+}
+
+export const RepoConfigSchema = z.preprocess(
+  migrateLegacyRepoKeys,
+  z.object({
+    main_branch: z.string().trim().superRefine((val, ctx) => {
+      if (val !== "auto" && val.length === 0) {
+        ctx.addIssue({ code: "custom", message: "must not be empty when not 'auto'" });
+      }
+    }).default("auto"),
+    fetch_main_on_create: z.boolean().default(true),
+    sync_files: z.array(z.string()).optional(),
+    post_create: z.array(z.string()).optional(),
+    post_sync: z.array(z.string()).optional(),
+    install_script: z.string().trim().min(1, { message: "must not be empty if provided" }).nullable().default(null),
+    check_prs: z.boolean().default(true),
+    forge_provider: z.enum(["auto", "github"]).default("auto"),
+    pr_lookup_repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, { message: "must use 'owner/repo' format" }).nullable().default(null),
+    deps: DepsConfigSchema.default({ manager: "auto", strategy: "auto" }),
+  })
+);
 
 export const ConfigSchema = z.object({
   version: z.literal(1),

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { resolveActionLauncher } from "../src/tui/actions.js";
-import { matchesFilter, toggleSelection, computeScrollWindow } from "../src/tui/utils.js";
-import type { WorktreeRow } from "../src/tui/types.js";
+import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort } from "../src/tui/utils.js";
+import type { WorktreeRow, RepoBlock } from "../src/tui/types.js";
 
 const mockRow: WorktreeRow = {
   repoName: "wtx",
@@ -51,6 +51,47 @@ describe("TUI Interactions", () => {
     expect(computeScrollWindow(4, 8, 10, 5)).toEqual({ start: 0, end: 5 });
   });
 
+});
+
+function block(name: string, branches: string[]): RepoBlock {
+  return {
+    repoName: name,
+    rows: branches.map((branch, i) => ({
+      ...mockRow,
+      repoName: name,
+      branch,
+      path: `/tmp/${name}/${i}`,
+    })),
+  };
+}
+
+describe("TUI repo ordering", () => {
+  it("mergeBlocks sorts repos alphabetically without scope (full refresh)", () => {
+    const merged = mergeBlocks([], [block("zeta", ["a"]), block("alpha", ["b"]), block("Mid", ["c"])]);
+    expect(merged.map(b => b.repoName)).toEqual(["alpha", "Mid", "zeta"]);
+  });
+
+  it("mergeBlocks keeps alphabetical order across scoped refreshes regardless of arrival order", () => {
+    const initial = mergeBlocks([], [block("alpha", ["a"]), block("beta", ["b"]), block("gamma", ["g"])]);
+    const refreshed = mergeBlocks(initial, [block("beta", ["b2"])], new Set(["beta"]));
+    expect(refreshed.map(b => b.repoName)).toEqual(["alpha", "beta", "gamma"]);
+
+    const refreshedAgain = mergeBlocks(initial, [block("alpha", ["a2"])], new Set(["alpha"]));
+    expect(refreshedAgain.map(b => b.repoName)).toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  it("sortBlocks sorts a mixed list alphabetically", () => {
+    const sorted = sortBlocks([block("zebra", []), block("apple", []), block("Banana", [])]);
+    expect(sorted.map(b => b.repoName)).toEqual(["apple", "Banana", "zebra"]);
+  });
+
+  it("rowSort keeps main checkout first then sorts branches alphabetically", () => {
+    const main: WorktreeRow = { ...mockRow, branch: "main", isMainCheckout: true };
+    const z: WorktreeRow = { ...mockRow, branch: "z-branch" };
+    const a: WorktreeRow = { ...mockRow, branch: "a-branch" };
+    const sorted = [z, main, a].sort(rowSort);
+    expect(sorted.map(r => r.branch)).toEqual(["main", "a-branch", "z-branch"]);
+  });
 
 });
 

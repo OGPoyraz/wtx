@@ -80,9 +80,11 @@ If origin already has a branch with that name owned by someone else, `wtx` warns
 
 | Command | Args | Flags | Description |
 |---|---|---|---|
-| `create` | `<branch>` | `--repo`, `--base`, `--open`, `--ide`, `--track`, `--local`, `--agent <name>`, `--prompt <text>` | Create worktree(s), sync files, prepare deps, optionally spawn an agent |
+| `create` | `<branch>` | `--repo`, `--base`, `--open`, `--ide`, `--track`, `--local`, `--agent <name>`, `--prompt <text>`, `--deps <strategy>` | Create worktree(s), sync files, prepare deps, optionally spawn an agent |
 | `pull` | `<pr-link>` | `--repo` | Fetch a GitHub PR and create its worktree |
+| `pull-branch` | `[branch]` | `--repo` | Fast-forward pull a worktree's branch (auto-detects repo from cwd) |
 | `remove` | `<branch>` | `--repo`, `--force`, `--yes` | Remove worktree(s), clean empty dirs |
+| `rename` | `<old-branch> <new-branch>` | `--repo` | Rename the branch and move the checkout to the matching new directory |
 | `prune` | | `--repo`, `--force`, `--yes` | Remove worktrees whose PR has merged |
 | `open` | `<branch>` | `--repo`, `--ide` | Open worktree in IDE |
 | `rebase` | `<branch>` | `--repo` | Fetch base remote main, rebase worktree onto it |
@@ -139,6 +141,12 @@ Config lives at `~/.config/wtx/config.json`.
     },
     "my-go-service": {
       "main_branch": "main"
+    },
+    "forked-lib": {
+      "check_prs": true,
+      "forge_provider": "github",
+      "pr_lookup_repo": "upstream-owner/lib",
+      "install_script": "pnpm install --frozen-lockfile"
     }
   }
 }
@@ -159,10 +167,22 @@ Config lives at `~/.config/wtx/config.json`.
 | `repos.<name>.fetch_main_on_create` | `true` | Fetch before creating so branches start fresh |
 | `repos.<name>.sync_files` | `[]` | Files copied from main checkout on create and sync |
 | `repos.<name>.post_create` / `post_sync` | `[]` | Hook commands; failures fail the command with a rerun hint |
+| `repos.<name>.install_script` | `null` | Command run inside a worktree for `deps --install` and `create --deps install` (`{wt}`, `{branch}`, `{main}` expanded); when unset, the detected package manager performs a real install |
 | `repos.<name>.deps.manager` | `"auto"` | Force a manager: `npm` `bun` `pnpm` `yarn` `go` `python` `cargo` |
 | `repos.<name>.deps.strategy` | `"auto"` | `auto` `link` `symlink` `install` `off` — see below |
-| `repos.<name>.pr` | `true` | Skip PR lookups for this repo |
-| `repos.<name>.forge` / `pr_repo` | `"auto"` / `null` | GitHub Enterprise and fork workflows |
+| `repos.<name>.check_prs` | `true` | Set `false` to skip all PR lookups for this repo's branches (no `gh` calls) |
+| `repos.<name>.forge_provider` | `"auto"` | `"auto"` enables GitHub only when the origin remote is github.com; `"github"` forces GitHub even for other hosts (GitHub Enterprise) |
+| `repos.<name>.pr_lookup_repo` | `null` | `owner/repo` override for where PRs are looked up — use when origin points at a fork or mirror |
+
+#### PR lookup keys explained
+
+PR visibility (`wtx prs`, the TUI badges, ownership tags, `prune`) is read-only via the `gh` CLI. Three per-repo keys tune it:
+
+- **`check_prs`** — master switch. `false` disables every `gh` query for this repo; everything else keeps working.
+- **`forge_provider`** — which forge hosts the project. `"auto"` only activates GitHub when your origin remote is `github.com`; set `"github"` to force it for GitHub Enterprise or custom domains.
+- **`pr_lookup_repo`** — where to look PRs up, as `owner/repo`. Normally derived from origin; override when origin points at your fork but PRs live in the upstream repo.
+
+Legacy configs using `pr`, `forge`, and `pr_repo` keep working — they are migrated automatically on load and rewritten in place on the next config save.
 
 ### Template variables
 
@@ -193,6 +213,8 @@ Hooks also receive `WTX_PORT` as an environment variable, as does `wtx exec`. Po
 | `symlink` | Legacy whole-directory symlink (⚠ installs inside the worktree mutate main's `node_modules`) |
 | `install` | Always a real install in the worktree |
 | `off` | Leave dependencies alone |
+
+Per-repo `install_script` overrides the install command entirely — useful for non-standard setups (`pnpm install --frozen-lockfile`, bootstrap scripts, codegen steps). It runs inside the worktree with the same `{wt}` / `{branch}` / `{main}` template expansion as hooks.
 
 ### Safe linking (the `auto` default)
 
@@ -259,7 +281,7 @@ wtx pull https://github.com/OGPoyraz/wtx/pull/11   # PR → worktree in one comm
 wtx prune                                          # remove worktrees whose PR merged
 ```
 
-Lookups degrade gracefully: if `gh` is missing or unauthenticated you get a warning and everything else keeps working. Fork workflows are covered by `forge` / `pr_repo`.
+Lookups degrade gracefully: if `gh` is missing or unauthenticated you get a warning and everything else keeps working. Fork workflows are covered by `check_prs` / `forge_provider` / `pr_lookup_repo`.
 
 ---
 
@@ -272,7 +294,10 @@ Lookups degrade gracefully: if `gh` is missing or unauthenticated you get a warn
 | `/` | Fuzzy-filter entries by branch, repo, PR, owner |
 | `Space` | Multi-select for batch operations |
 | `R` / `D` / `s` | Batch rebase / remove / sync selection |
-| `n` | Create worktree |
+| `p` | Pull latest changes for selected branch(es) |
+| `i` | Install dependencies in selected worktree(s) |
+| `n` | Create worktree — pick a dependency strategy (auto / install / symlink) |
+| `m` | Rename worktree (branch + directory move) |
 | `b` | Rebase selected |
 | `a` | Spawn coding agent in selected worktree |
 | `H` | Action history (recent actions across CLI and dashboard) |
@@ -280,7 +305,9 @@ Lookups degrade gracefully: if `gh` is missing or unauthenticated you get a warn
 | `c` | Edit configuration |
 | `?` / `q` | Help / quit |
 
-Actions run in the background — navigation never locks. Progress shows inline: `fetching` next to the repo header, `deleting` / `rebasing` / `syncing` next to the branch (dimmed while busy), and a new worktree appears immediately as a `(creating)` row. One operation runs per repo at a time; conflicting actions are rejected with a toast until it finishes. On failure a log modal opens with the captured output; press any key to dismiss. Destructive ones confirm first.
+Actions run in the background — navigation never locks. Progress shows inline: `fetching`, `pulling`, `installing deps`, `renaming`, etc. next to the repo or branch being worked on, and a new worktree appears immediately as a `(creating)` row. Repositories render alphabetically and stay sorted across create/delete operations. While data loads, repos appear immediately with a `refreshing…` indicator. One operation runs per repo at a time; conflicting actions are rejected with a toast until it finishes. On failure a log modal opens with the captured output; press any key to dismiss. Destructive ones confirm first.
+
+If a rebase hits conflicts, the worktree is restored: the in-progress rebase is aborted automatically, the branch stays on its pre-rebase commits, and a "Rebase failed — manual merge needed" log explains what happened.
 
 ---
 

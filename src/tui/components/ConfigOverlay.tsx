@@ -95,9 +95,10 @@ export function ConfigOverlay({ onClose, onSaved, onError }: ConfigOverlayProps)
     detailRows.push({ type: "repo_field", key: "sync_files", label: "sync_files", desc: "Files to sync (comma separated)", valueType: "string[]" });
     detailRows.push({ type: "repo_field", key: "post_create", label: "post_create", desc: "Run after create (comma separated)", valueType: "string[]" });
     detailRows.push({ type: "repo_field", key: "post_sync", label: "post_sync", desc: "Run after sync (comma separated)", valueType: "string[]" });
-    detailRows.push({ type: "repo_field", key: "pr", label: "pr", desc: "Create PRs by default", valueType: "boolean" });
-    detailRows.push({ type: "repo_field", key: "forge", label: "forge", desc: "Forge integration", valueType: "'auto'|'github'" });
-    detailRows.push({ type: "repo_field", key: "pr_repo", label: "pr_repo", desc: "Explicit PR repo override", valueType: "string | null" });
+    detailRows.push({ type: "repo_field", key: "install_script", label: "install_script", desc: "Install command run in worktrees on deps install", valueType: "string | null" });
+    detailRows.push({ type: "repo_field", key: "check_prs", label: "check_prs", desc: "Look up PR status for this repo's branches", valueType: "boolean" });
+    detailRows.push({ type: "repo_field", key: "forge_provider", label: "forge_provider", desc: "'auto' detects github.com remotes, 'github' forces GitHub (e.g. GHE)", valueType: "'auto'|'github'" });
+    detailRows.push({ type: "repo_field", key: "pr_lookup_repo", label: "pr_lookup_repo", desc: "owner/repo override for PR lookups (fork workflows)", valueType: "string | null" });
     detailRows.push({ type: "remove_repo" });
   }
 
@@ -217,12 +218,12 @@ export function ConfigOverlay({ onClose, onSaved, onError }: ConfigOverlayProps)
         const repoName = (viewState as Extract<ViewState, {type: "repo"}>).name;
         const repoConf = config.repos[repoName] as RepoConfig;
         if (!repoConf) return;
-        if (row.key === "pr") {
-          const newConf = { ...config, repos: { ...config.repos, [repoName]: { ...repoConf, pr: !repoConf.pr } as RepoConfig } };
+        if (row.key === "check_prs") {
+          const newConf = { ...config, repos: { ...config.repos, [repoName]: { ...repoConf, check_prs: !repoConf.check_prs } as RepoConfig } };
           performSave(newConf);
-        } else if (row.key === "forge") {
-          const nextForge = repoConf.forge === "auto" ? "github" : "auto";
-          const newConf = { ...config, repos: { ...config.repos, [repoName]: { ...repoConf, forge: nextForge } as RepoConfig } };
+        } else if (row.key === "forge_provider") {
+          const nextForge = repoConf.forge_provider === "auto" ? "github" : "auto";
+          const newConf = { ...config, repos: { ...config.repos, [repoName]: { ...repoConf, forge_provider: nextForge } as RepoConfig } };
           performSave(newConf);
         } else {
           let val = repoConf[row.key];
@@ -264,7 +265,7 @@ export function ConfigOverlay({ onClose, onSaved, onError }: ConfigOverlayProps)
         ...config,
         repos: {
           ...config.repos,
-          [name]: { main_branch: "auto", pr: true, forge: "auto", pr_repo: null } as RepoConfig
+          [name]: { main_branch: "auto", install_script: null, check_prs: true, forge_provider: "auto", pr_lookup_repo: null } as RepoConfig
         }
       };
       performSave(newConf);
@@ -298,7 +299,7 @@ export function ConfigOverlay({ onClose, onSaved, onError }: ConfigOverlayProps)
       let finalVal: any = value.trim();
       if (key === "sync_files" || key === "post_create" || key === "post_sync") {
         finalVal = value.split(",").map(v => v.trim()).filter(Boolean);
-      } else if (key === "pr_repo") {
+      } else if (key === "pr_lookup_repo" || key === "install_script") {
         if (finalVal === "") finalVal = null;
       }
       

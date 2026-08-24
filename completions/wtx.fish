@@ -41,7 +41,7 @@ complete -c wtx -l dry-run -d "Show what would happen"
 complete -c wtx -s h -l help -d "Display help for command"
 
 # Subcommands
-set -l commands config create remove prune open rebase fetch sync deps ls cd status prs pull init skill terminal mcp exec
+set -l commands config create remove prune open rebase fetch sync deps ls cd status prs pull pull-branch init skill terminal mcp exec rename
 
 # Setup completions for commands
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "config" -d "Manage configuration"
@@ -51,6 +51,8 @@ complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "prune" -d "Re
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "open" -d "Open worktree in IDE"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "rebase" -d "Fetch and rebase vs main"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "pull" -d "Fetch a PR and create its worktree"
+complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "pull-branch" -d "Fast-forward pull a worktree branch"
+complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "rename" -d "Rename branch and move worktree directory"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "fetch" -d "Fetch origin main"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "sync" -d "Re-copy sync files and run post_sync"
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "deps" -d "Manage node_modules strategy"
@@ -65,14 +67,15 @@ complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "mcp" -d "Run 
 complete -c wtx -n "not __fish_seen_subcommand_from $commands" -a "exec" -d "Execute commands across worktrees"
 
 # Dynamically complete branch arguments
-complete -c wtx -n "__fish_seen_subcommand_from create open rebase sync deps status remove" -a "(_wtx_get_branches)"
+complete -c wtx -n "__fish_seen_subcommand_from create open rebase sync deps status remove rename pull-branch" -a "(_wtx_get_branches)"
 
 # Flags
-complete -c wtx -n "__fish_seen_subcommand_from create remove prune open rebase fetch sync deps ls status prs pull" -s r -l repo -xa "(_wtx_get_repos)" -d "Target specific repo(s)"
+complete -c wtx -n "__fish_seen_subcommand_from create remove prune open rebase fetch sync deps ls status prs pull pull-branch rename" -s r -l repo -xa "(_wtx_get_repos)" -d "Target specific repo(s)"
 
 # create flags
 complete -c wtx -n "__fish_seen_subcommand_from create" -l base -xa "main master develop dev" -d "Base ref"
 complete -c wtx -n "__fish_seen_subcommand_from create" -s o -l open -d "Open worktree in IDE after creation"
+complete -c wtx -n "__fish_seen_subcommand_from create" -l deps -xa "auto link symlink install off" -d "Dependency strategy"
 complete -c wtx -n "__fish_seen_subcommand_from create open" -l ide -xa "cursor code vscode code-insiders vscodium idea webstorm zed vim nvim emacs" -d "IDE to open with"
 complete -c wtx -n "__fish_seen_subcommand_from create" -l track -d "Track remote branch even if it belongs to someone else"
 complete -c wtx -n "__fish_seen_subcommand_from create" -l agent -d "AI agent to delegate work to"

@@ -46,9 +46,10 @@ describe("runPostCreateSetup", () => {
         fetch_main_on_create: true,
         sync_files,
         post_create,
-        pr: true,
-        forge: "auto",
-        pr_repo: null,
+        install_script: null,
+        check_prs: true,
+        forge_provider: "auto",
+        pr_lookup_repo: null,
       },
     };
 

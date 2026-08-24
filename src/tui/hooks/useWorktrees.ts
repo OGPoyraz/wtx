@@ -1,9 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchWorktreeData } from "../data.js";
 import type { DataWarning } from "../data.js";
+import { loadConfig } from "../../lib/config.js";
 import type { GlobalOptions } from "../../types.js";
 import type { RepoBlock, WorktreeRow } from "../types.js";
 import { mergeBlocks, mergeWarnings, rowSort } from "../utils.js";
+
+function initialPendingRepos(): string[] {
+  try {
+    const config = loadConfig();
+    return Object.keys(config.repos).sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
 
 export function useWorktrees(opts: GlobalOptions) {
   const [blocks, setBlocks] = useState<RepoBlock[]>([]);
@@ -12,6 +22,7 @@ export function useWorktrees(opts: GlobalOptions) {
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<DataWarning[]>([]);
   const [lastRefreshed, setLastRefreshed] = useState<string>("");
+  const [pendingRepos, setPendingRepos] = useState<string[]>(initialPendingRepos);
   const seqRef = useRef(0);
 
   const refresh = useCallback(async (scope?: string[]) => {
@@ -38,6 +49,7 @@ export function useWorktrees(opts: GlobalOptions) {
         rows.sort(rowSort);
         newBlocks.push({ repoName, rows });
       }
+      newBlocks.sort((a, b) => a.repoName.localeCompare(b.repoName));
 
       const scopeSet = scope ? new Set(scope) : undefined;
       setBlocks(prev => mergeBlocks(prev, newBlocks, scopeSet));
@@ -49,6 +61,7 @@ export function useWorktrees(opts: GlobalOptions) {
       if (seq === seqRef.current) {
         setLoading(false);
         setRefreshing(false);
+        if (!scope) setPendingRepos([]);
       }
     }
   }, [opts]);
@@ -57,5 +70,5 @@ export function useWorktrees(opts: GlobalOptions) {
     refresh();
   }, [refresh]);
 
-  return { blocks, loading, refreshing, error, warnings, lastRefreshed, refresh };
+  return { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, refresh };
 }
