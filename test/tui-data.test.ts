@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Semaphore } from "../src/tui/data.js";
+import { Semaphore } from "../src/lib/semaphore.js";
 
 describe("TUI Data pure helpers", () => {
   it("Semaphore restricts concurrency", async () => {
