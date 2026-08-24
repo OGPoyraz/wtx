@@ -5,6 +5,8 @@ interface FooterProps {
   lastRefreshed: string;
   errorCount: number;
   message?: string;
+  busyText?: string;
+  spinnerFrame?: string;
   filter?: {
     term: string;
     matches: number;
@@ -12,8 +14,9 @@ interface FooterProps {
   };
 }
 
-export function Footer({ loading, lastRefreshed, errorCount, message, filter }: FooterProps) {
+export function Footer({ loading, lastRefreshed, errorCount, message, busyText, spinnerFrame, filter }: FooterProps) {
   const hints = "c config · r refresh · f fetch · n create · b rebase · s sync · o IDE · d rm · H hist · ? help";
+  const frame = spinnerFrame ?? "◌";
   
   return (
     <box
@@ -27,7 +30,11 @@ export function Footer({ loading, lastRefreshed, errorCount, message, filter }: 
       justifyContent="space-between"
       alignItems="center"
     >
-      <text fg={tokens.dim}>{hints}</text>
+      {busyText ? (
+        <text fg={tokens.accent}>{`${frame} ${busyText}`}</text>
+      ) : (
+        <text fg={tokens.dim}>{hints}</text>
+      )}
       
       <box flexDirection="row" gap={2}>
         {message ? (
@@ -43,7 +50,7 @@ export function Footer({ loading, lastRefreshed, errorCount, message, filter }: 
         ) : null}
         
         <text fg={tokens.dim}>
-          {loading ? "Refreshing..." : `Updated ${lastRefreshed}`}
+          {loading ? `${frame} Refreshing…` : `Updated ${lastRefreshed}`}
         </text>
       </box>
     </box>
