@@ -62,7 +62,10 @@ export function Footer({ loading, lastRefreshed, errorCount, message, busyText, 
         ) : null}
 
         {errorCount > 0 ? (
-          <text fg={tokens.error}>{errorCount} error{errorCount !== 1 ? 's' : ''}</text>
+          <text>
+            <span fg={tokens.error}>{`${errorCount} error${errorCount !== 1 ? "s" : ""}`}</span>
+            <span fg={tokens.dim}> · e view</span>
+          </text>
         ) : null}
         
         <text fg={tokens.dim}>
