@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `sync_files` entries now support whole directories: an entry like `build/` (or `build`) is copied recursively into the worktree — nested files and subfolders included — instead of failing with `EISDIR`; applies to `wtx create`, `wtx pull`, and `wtx sync`
+- Dashboard config editor inputs are pre-filled with the current value (global keys, per-repo fields like `sync_files`, and the rename action) so editing no longer requires retyping existing values
+
 ## [0.8.1] - 2026-08-25
 
 ### Added

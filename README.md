@@ -169,7 +169,7 @@ Config lives at `~/.config/wtx/config.json`.
 | `agents.<name>.command` | – | Shell command template for `--agent`; `{wt}`, `{branch}`, `{repo}` expanded |
 | `repos.<name>.main_branch` | `"auto"` | Auto-detects via `git symbolic-ref` |
 | `repos.<name>.fetch_main_on_create` | `true` | Fetch before creating so branches start fresh |
-| `repos.<name>.sync_files` | `[]` | Files copied from main checkout on create and sync |
+| `repos.<name>.sync_files` | `[]` | Files or folders copied from main checkout on create and sync — directories are copied recursively (`build/`) |
 | `repos.<name>.post_create` / `post_sync` | `[]` | Hook commands; failures fail the command with a rerun hint |
 | `repos.<name>.install_script` | `null` | Command run inside a worktree (or the main checkout via `wtx deps --install`) for dependency installs (`{wt}`, `{branch}`, `{main}` expanded); when unset, the detected package manager performs a real install |
 | `repos.<name>.deps.manager` | `"auto"` | Force a manager: `npm` `bun` `pnpm` `yarn` `go` `python` `cargo` |
