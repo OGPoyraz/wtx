@@ -58,3 +58,8 @@ export function verbose(message: string, isVerbose: boolean): void {
 export function indented(message: string): void {
   console.log(`    ${message}`);
 }
+
+export function terminalLink(url: string, text = url, stream: NodeJS.WriteStream = process.stdout): string {
+  if (!stream.isTTY) return text;
+  return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
+}
