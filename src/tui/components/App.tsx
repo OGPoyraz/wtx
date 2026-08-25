@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useKeyboard, useRenderer } from "@opentui/react";
+import { useKeyboard, useRenderer, useSelectionHandler } from "@opentui/react";
 import type { GlobalOptions } from "../../types.js";
 import { useWorktrees } from "../hooks/useWorktrees.js";
 import { WorktreeTable } from "./WorktreeTable.js";
@@ -145,6 +145,23 @@ export function App({ opts }: AppProps) {
     setActionMessage(message);
     messageTimer.current = setTimeout(() => setActionMessage(undefined), ms);
   }, []);
+
+  // Terminals intercept Cmd+C before it reaches the app; copy when drag selection completes.
+  const copySelectedText = useCallback(
+    (warnOnEmpty: boolean) => {
+      const text = renderer.getSelection()?.getSelectedText() ?? "";
+      if (!text) {
+        if (warnOnEmpty) flash("Nothing selected to copy");
+        return;
+      }
+      void copyTextToClipboard(renderer, text).then((ok) =>
+        flash(ok ? `Copied ${text.length} character${text.length !== 1 ? "s" : ""}` : "Copy failed")
+      );
+    },
+    [renderer, flash]
+  );
+
+  useSelectionHandler(() => copySelectedText(false));
 
   const busyRepos = useMemo(() => new Set(ops.flatMap(o => o.repoNames)), [ops]);
   const busyRowPaths = useMemo(
@@ -434,14 +451,7 @@ export function App({ opts }: AppProps) {
       }
 
       if ((key.super || key.meta || (key.ctrl && key.shift)) && key.name === "c") {
-        const text = renderer.getSelection()?.getSelectedText() ?? "";
-        if (!text) {
-          flash("Nothing selected to copy");
-          return;
-        }
-        void copyTextToClipboard(renderer, text).then((ok) =>
-          flash(ok ? `Copied ${text.length} character${text.length !== 1 ? "s" : ""}` : "Copy failed")
-        );
+        copySelectedText(true);
         return;
       }
 
@@ -816,7 +826,8 @@ export function App({ opts }: AppProps) {
       {renameModal && selectedRow && (
         <InputModal
           title={`Rename branch ${selectedRow.branch}`}
-          placeholder={`New branch name (${selectedRow.branch})`}
+          initialValue={selectedRow.branch}
+          placeholder="New branch name"
           errorMessage={renameError}
           onSubmit={(value) => {
             const target = selectedRow;

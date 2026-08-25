@@ -10,6 +10,19 @@ export interface HookResult { command: string; ok: boolean; exitCode: number | n
 
 export interface SetupResult { copiedFiles: string[]; hooks: HookResult[] }
 
+export function syncEntry(mainPath: string, wtPath: string, entry: string): boolean {
+  const src = path.join(mainPath, entry);
+  const dest = path.join(wtPath, entry);
+  if (!fs.existsSync(src)) return false;
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  if (fs.statSync(src).isDirectory()) {
+    fs.cpSync(src, dest, { recursive: true });
+  } else {
+    fs.copyFileSync(src, dest);
+  }
+  return true;
+}
+
 export async function runPostCreateSetup(params: {
   config: Config;
   repo: RepoContext;
@@ -23,15 +36,10 @@ export async function runPostCreateSetup(params: {
 
   if (repo.config.sync_files && repo.config.sync_files.length > 0) {
     for (const file of repo.config.sync_files) {
-      const src = path.join(repo.mainPath, file);
-      const dest = path.join(wtPath, file);
-
-      if (fs.existsSync(src)) {
-        if (!globalOpts.dryRun) {
-          fs.mkdirSync(path.dirname(dest), { recursive: true });
-          fs.copyFileSync(src, dest);
-          copiedFiles.push(file);
-        }
+      if (!globalOpts.dryRun && syncEntry(repo.mainPath, wtPath, file)) {
+        copiedFiles.push(file);
+      }
+      if (fs.existsSync(path.join(repo.mainPath, file))) {
         stepSuccess(`Synced ${file}`);
       } else {
         stepWarning(`Could not sync ${file}`, "file not found in main checkout");
