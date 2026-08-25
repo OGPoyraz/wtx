@@ -75,6 +75,32 @@ export function sortBlocks(blocks: RepoBlock[]): RepoBlock[] {
   return [...blocks].sort((a, b) => a.repoName.localeCompare(b.repoName));
 }
 
+export function wrapText(text: string, width: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split("\n")) {
+    let current = "";
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      if (!current) {
+        current = word;
+      } else if (current.length + 1 + word.length <= width) {
+        current += ` ${word}`;
+      } else {
+        lines.push(current);
+        current = word;
+      }
+    }
+    lines.push(current);
+  }
+  return lines;
+}
+
+export function isTapWithoutDrag(
+  down: { x: number; y: number },
+  up: { x: number; y: number }
+): boolean {
+  return Math.abs(up.x - down.x) <= 1 && Math.abs(up.y - down.y) <= 1;
+}
+
 export function mergeBlocks(prev: RepoBlock[], next: RepoBlock[], scope?: Set<string>): RepoBlock[] {
   if (!scope) return sortBlocks(next);
   const kept = prev.filter(b => !scope.has(b.repoName));
