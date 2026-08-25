@@ -7,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-25
+
+### Added
+
+- Copy selected text from the dashboard by completing a mouse drag-selection: the selection is copied automatically via OSC 52 with system clipboard fallbacks (`pbcopy`, `wl-copy`, `xclip`/`xsel`, `clip`), so copying works even though macOS terminals intercept `cmd+c`; `ctrl+shift+c` remains as a manual fallback and the help overlay documents the behavior
+- Config editor inputs in the dashboard are pre-filled with the current value, so editing a field no longer requires retyping it (rename action included)
+
 ### Fixed
 
 - `sync_files` entries now support whole directories: an entry like `build/` (or `build`) is copied recursively into the worktree — nested files and subfolders included — instead of failing with `EISDIR`; applies to `wtx create`, `wtx pull`, and `wtx sync`
-- Dashboard config editor inputs are pre-filled with the current value (global keys, per-repo fields like `sync_files`, and the rename action) so editing no longer requires retyping existing values
 
 ## [0.8.1] - 2026-08-25
 
@@ -210,7 +216,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/OGPoyraz/wtx/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/OGPoyraz/wtx/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/OGPoyraz/wtx/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/OGPoyraz/wtx/compare/v0.6.1...v0.7.0
