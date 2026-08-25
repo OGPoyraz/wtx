@@ -20,6 +20,7 @@ import {
 } from "../lib/resolver.js";
 import { expandTemplate, type TemplateVars } from "../lib/template.js";
 import { getWorktreePort } from "../lib/ports.js";
+import { syncEntry } from "../lib/worktree-setup.js";
 
 interface SyncOptions {
   repo?: string[];
@@ -51,12 +52,9 @@ export function registerSyncCommand(program: Command) {
         try {
           if (repo.config.sync_files) {
             for (const file of repo.config.sync_files) {
-              const src = path.join(repo.mainPath, file);
-              const dest = path.join(wtPath, file);
-              if (fs.existsSync(src)) {
+              if (fs.existsSync(path.join(repo.mainPath, file))) {
                 if (!opts.dryRun) {
-                  fs.mkdirSync(path.dirname(dest), { recursive: true });
-                  fs.copyFileSync(src, dest);
+                  syncEntry(repo.mainPath, wtPath, file);
                 }
                 stepSuccess(`Synced ${file}`);
               }
