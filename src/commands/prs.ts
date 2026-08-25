@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import type { Config, GlobalOptions } from "../types.js";
 import { loadConfig } from "../lib/config.js";
-import { repoHeader, stepWarning, summary, summaryWarning, info } from "../lib/log.js";
+import { repoHeader, stepWarning, summary, summaryWarning, info, terminalLink } from "../lib/log.js";
 import { getWorktreeList } from "../lib/git.js";
 import { resolveRepos, parseRepoFlag, warnIfNoRepos } from "../lib/resolver.js";
 import { resolveForge } from "../lib/forge/index.js";
@@ -157,7 +157,7 @@ function renderTable(rows: PrRow[]): void {
           : "";
 
       info(
-        `  #${row.prNumber}  ${paddedBranch} ${renderDisplayState(row.prDisplay)}${baseSuffix}${detailSuffix}${authorTag}  ${formatRelativeTime(row.updatedAt)}  ${chalk.dim(row.url)}`
+        `  #${row.prNumber}  ${paddedBranch} ${renderDisplayState(row.prDisplay)}${baseSuffix}${detailSuffix}${authorTag}  ${formatRelativeTime(row.updatedAt)}  ${chalk.dim(terminalLink(row.url))}`
       );
     }
   }
