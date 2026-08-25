@@ -826,7 +826,8 @@ export function App({ opts }: AppProps) {
       {renameModal && selectedRow && (
         <InputModal
           title={`Rename branch ${selectedRow.branch}`}
-          placeholder={`New branch name (${selectedRow.branch})`}
+          initialValue={selectedRow.branch}
+          placeholder="New branch name"
           errorMessage={renameError}
           onSubmit={(value) => {
             const target = selectedRow;
