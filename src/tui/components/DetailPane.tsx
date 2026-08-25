@@ -1,12 +1,18 @@
 
 import type { WorktreeRow } from "../types.js";
 import { tokens } from "../theme.js";
+import { useTapHandler } from "../hooks/use-tap.js";
+import { openInBrowser } from "../platform.js";
 
 interface DetailPaneProps {
   selectedRow: WorktreeRow | null;
 }
 
 export function DetailPane({ selectedRow }: DetailPaneProps) {
+  const prTap = useTapHandler(() => {
+    if (selectedRow?.prUrl) void openInBrowser(selectedRow.prUrl);
+  });
+
   if (!selectedRow) {
     return (
       <box
@@ -72,7 +78,15 @@ export function DetailPane({ selectedRow }: DetailPaneProps) {
         <>
           <text style={{ marginTop: 1 }}><span fg={tokens.accent}>PR #{prNumber}:</span><span fg={tokens.dim}> {prState}</span></text>
           {prChecks && <text><span fg={tokens.dim}>Checks:</span><span fg={tokens.fg}> {prChecks}</span></text>}
-          {prUrl && <text><span fg={tokens.dim}>URL:</span><span fg={tokens.fg}>    {prUrl}</span></text>}
+          {prUrl && (
+            <box {...prTap}>
+              <text selectable={false}>
+                <span fg={tokens.dim}>URL:</span>
+                <span fg={tokens.accent}>{` ${prUrl}`}</span>
+                <span fg={tokens.dim}> ↗ click</span>
+              </text>
+            </box>
+          )}
         </>
       )}
 
