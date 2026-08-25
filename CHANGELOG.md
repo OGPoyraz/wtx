@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-25
+
+### Added
+
+- Clickable PR URLs in CLI output: `wtx ls` and `wtx prs` render PR URLs as OSC 8 terminal hyperlinks — supported terminals make them clickable, non-TTY output falls back to the plain URL
+- Open pull requests from the dashboard on click: clicking a PR number (`#42`) in the worktree list or the URL row in the detail pane opens it in the browser; taps are drag-aware so text selection doesn't trigger a click, and PR info now renders inline with an ↗ affordance
+- Copy selected text from the dashboard (`cmd+c` / `ctrl+shift+c`): copies the current selection via OSC 52 with system clipboard fallbacks (`pbcopy`, `wl-copy`, `xclip`/`xsel`, `clip`) so copy also works over SSH and in terminals that ignore OSC 52
+- Viewable data warnings in the dashboard: press `e` (offered in the footer when warnings exist) to open a scrollable warnings overlay listing per-repo data warnings
+
 ## [0.8.0] - 2026-08-25
 
 ### Added
@@ -196,7 +205,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/OGPoyraz/wtx/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/OGPoyraz/wtx/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/OGPoyraz/wtx/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/OGPoyraz/wtx/compare/v0.6.0...v0.6.1
