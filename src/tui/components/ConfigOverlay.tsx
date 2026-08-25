@@ -417,7 +417,8 @@ export function ConfigOverlay({ onClose, onSaved, onError }: ConfigOverlayProps)
       {editState.type === "input" && (
         <InputModal
           title={editState.title}
-          placeholder={editState.currentValue || "Enter value..."}
+          initialValue={editState.currentValue}
+          placeholder="Enter value..."
           errorMessage={editState.error}
           onSubmit={handleInputSubmit}
         />

@@ -5,18 +5,20 @@ import { tokens } from "../theme.js";
 export interface InputModalProps {
   title: string;
   placeholder?: string;
+  initialValue?: string;
   errorMessage?: string;
   onSubmit: (value: string) => void;
 }
 
-export function InputModal({ title, placeholder, errorMessage, onSubmit }: InputModalProps) {
-  const [value, setValue] = useState("");
+export function InputModal({ title, placeholder, initialValue, errorMessage, onSubmit }: InputModalProps) {
+  const [value, setValue] = useState(initialValue ?? "");
 
   return (
     <Overlay title={title} borderColor={tokens.accent}>
       <box flexDirection="column">
         <input
           focused={true}
+          value={initialValue ?? ""}
           placeholder={placeholder}
           onInput={(val: string) => setValue(val)}
           onSubmit={() => onSubmit(value)}
