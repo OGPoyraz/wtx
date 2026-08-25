@@ -3,6 +3,8 @@ import type { ScrollBoxRenderable } from "@opentui/core";
 import type { RepoBlock } from "../types.js";
 import type { WorktreeRow } from "../types.js";
 import { tokens, truncateBranch } from "../theme.js";
+import { useTapHandler } from "../hooks/use-tap.js";
+import { openInBrowser } from "../platform.js";
 
 export interface VerbIndicator {
   verb: string;
@@ -31,6 +33,10 @@ function statusBadge(row: WorktreeRow): { text: string; fg: string } {
 }
 
 function WorktreeItem({ row, isSelected, isMultiSelected, indicator, frame, id }: { row: WorktreeRow; isSelected: boolean; isMultiSelected: boolean; indicator?: VerbIndicator; frame: string; id?: string }) {
+  const prTap = useTapHandler(() => {
+    if (row.prUrl) void openInBrowser(row.prUrl);
+  });
+
   const badge = indicator
     ? indicator.running
       ? { text: `${frame} ${indicator.verb}…`, fg: tokens.accent }
@@ -47,16 +53,6 @@ function WorktreeItem({ row, isSelected, isMultiSelected, indicator, frame, id }
       ? ` · ↑${row.ahead} ↓${row.behind}`
       : "";
 
-  const prSegment = row.prNumber
-    ? [
-        `· #${row.prNumber}`,
-        row.prState ?? "",
-        row.prChecks ? `(${row.prChecks})` : "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-    : "";
-
   const ownerSegment = row.owner ? ` · by ${row.owner}` : "";
   const baseSegment = row.base ? ` · base ${row.base}` : "";
   const rebaseSegment =
@@ -68,7 +64,6 @@ function WorktreeItem({ row, isSelected, isMultiSelected, indicator, frame, id }
   const secondary = [
     `${secondaryIndent}${row.commitShort}`,
     divergence,
-    prSegment,
     ownerSegment,
     baseSegment,
   ]
@@ -90,8 +85,17 @@ function WorktreeItem({ row, isSelected, isMultiSelected, indicator, frame, id }
         <span fg={primary}>{truncateBranch(row.branch)}</span>
         <span fg={badge.fg}>{`  ${badge.text}`}</span>
       </text>
-      <text>
+      <text {...(row.prUrl ? prTap : {})}>
         <span fg={tokens.dim}>{secondary}</span>
+        {row.prNumber !== null && (
+          <>
+            <span fg={tokens.dim}>{secondary ? " · " : ""}</span>
+            <span fg={tokens.accent}>{`#${row.prNumber}`}</span>
+            {row.prState && <span fg={tokens.dim}>{` ${row.prState}`}</span>}
+            {row.prChecks && <span fg={tokens.dim}>{` (${row.prChecks})`}</span>}
+            {row.prUrl && <span fg={tokens.dim}> ↗</span>}
+          </>
+        )}
         {baseChangedSegment && <span fg={tokens.warning}>{baseChangedSegment}</span>}
         {rebaseSegment && <span fg={tokens.error}>{rebaseSegment}</span>}
       </text>
