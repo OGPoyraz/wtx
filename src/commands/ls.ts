@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import type { GlobalOptions } from "../types.js";
 import { loadConfig } from "../lib/config.js";
-import { repoHeader, indented, stepWarning, info, error } from "../lib/log.js";
+import { repoHeader, indented, stepWarning, info, error, terminalLink } from "../lib/log.js";
 import { getWorktreeList, getDirtyFiles } from "../lib/git.js";
 import { resolveRepos, parseRepoFlag , warnIfNoRepos } from "../lib/resolver.js";
 import { resolveForge } from "../lib/forge/index.js";
@@ -193,7 +193,7 @@ export function registerLsCommand(program: Command) {
               const prInfo = prMap?.get(branch);
               if (prInfo) {
                 const display = derivePrDisplay(prInfo);
-                prSegment = `  #${prInfo.number} ${renderDisplayState(display)}  ${chalk.dim(prInfo.url)}`;
+                prSegment = `  #${prInfo.number} ${renderDisplayState(display)}  ${chalk.dim(terminalLink(prInfo.url))}`;
               }
 
               let ownerSuffix = "";
