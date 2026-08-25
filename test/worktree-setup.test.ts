@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { runPostCreateSetup } from "../src/lib/worktree-setup.js";
+import { runPostCreateSetup, syncEntry } from "../src/lib/worktree-setup.js";
 import type { Config, RepoContext, GlobalOptions } from "../src/types.js";
 
 describe("runPostCreateSetup", () => {
@@ -81,6 +81,43 @@ describe("runPostCreateSetup", () => {
     expect(fs.existsSync(path.join(wtPath, "config.json"))).toBe(true);
     expect(fs.existsSync(path.join(wtPath, "nested/deep/file.txt"))).toBe(true);
     expect(fs.readFileSync(path.join(wtPath, "nested/deep/file.txt"), "utf8")).toBe("hello");
+  });
+
+  it("copies directories recursively including nested content", async () => {
+    const sync_files = [".js.env", "build/"];
+    fs.writeFileSync(path.join(mainPath, ".js.env"), "KEY=value");
+    fs.mkdirSync(path.join(mainPath, "build/assets"), { recursive: true });
+    fs.writeFileSync(path.join(mainPath, "build/index.js"), "console.log(1)");
+    fs.writeFileSync(path.join(mainPath, "build/assets/logo.svg"), "<svg/>");
+
+    const params = createParams(sync_files);
+    const result = await runPostCreateSetup(params);
+
+    expect(result.copiedFiles).toEqual(sync_files);
+    expect(fs.readFileSync(path.join(wtPath, ".js.env"), "utf8")).toBe("KEY=value");
+    expect(fs.statSync(path.join(wtPath, "build")).isDirectory()).toBe(true);
+    expect(fs.readFileSync(path.join(wtPath, "build/index.js"), "utf8")).toBe("console.log(1)");
+    expect(fs.readFileSync(path.join(wtPath, "build/assets/logo.svg"), "utf8")).toBe("<svg/>");
+  });
+
+  it("copies directories without trailing slash and overwrites on resync", () => {
+    fs.mkdirSync(path.join(mainPath, "build/nested"), { recursive: true });
+    fs.writeFileSync(path.join(mainPath, "build/out.txt"), "v2");
+
+    expect(syncEntry(mainPath, wtPath, "build")).toBe(true);
+    expect(fs.readFileSync(path.join(wtPath, "build/out.txt"), "utf8")).toBe("v2");
+
+    fs.writeFileSync(path.join(mainPath, "build/out.txt"), "v3");
+    expect(syncEntry(mainPath, wtPath, "build")).toBe(true);
+    expect(fs.readFileSync(path.join(wtPath, "build/out.txt"), "utf8")).toBe("v3");
+    expect(fs.statSync(path.join(wtPath, "build/nested")).isDirectory()).toBe(true);
+  });
+
+  it("returns false for missing entries without creating anything", () => {
+    expect(syncEntry(mainPath, wtPath, "nope.txt")).toBe(false);
+    expect(syncEntry(mainPath, wtPath, "nope-dir/")).toBe(false);
+    expect(fs.existsSync(path.join(wtPath, "nope.txt"))).toBe(false);
+    expect(fs.existsSync(path.join(wtPath, "nope-dir"))).toBe(false);
   });
 
   it("returns empty arrays on dry-run without copying or running hooks", async () => {
