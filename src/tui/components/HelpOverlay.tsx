@@ -16,8 +16,11 @@ const HELP_ENTRIES: [string, string][] = [
   ["o", "Open selected in IDE"],
   ["a", "Spawn agent in selected"],
   ["d", "Remove selected worktree(s)"],
+  ["e", "View data warnings (when count > 0)"],
   ["r", "Refresh data"],
   ["H", "Action history"],
+  ["cmd+c / ctrl+shift+c", "Copy selected text to clipboard"],
+  ["click PR #/URL", "Open pull request in browser"],
   ["?", "Toggle help"],
   ["q/esc", "Quit"],
 ];

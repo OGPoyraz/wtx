@@ -17,7 +17,9 @@ import { InputModal } from "./InputModal.js";
 import { ChoiceModal } from "./ChoiceModal.js";
 import type { ChoiceOption } from "./ChoiceModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
+import { WarningsOverlay } from "./WarningsOverlay.js";
 import { matchesFilter, toggleSelection, withCreatePlaceholders, sortBlocks } from "../utils.js";
+import { copyTextToClipboard } from "../platform.js";
 import { resolveAgentCommand, spawnAgentInWorktree } from "../../lib/agents.js";
 import { loadConfig } from "../../lib/config.js";
 import { appendHistory } from "../../lib/history.js";
@@ -31,6 +33,7 @@ type ModalState =
   | { type: "none" }
   | { type: "help" }
   | { type: "history" }
+  | { type: "warnings" }
   | { type: "confirm_remove"; rows: WorktreeRow[] }
   | { type: "confirm_rebase"; rows: WorktreeRow[] }
   | { type: "confirm_sync"; rows: WorktreeRow[] }
@@ -372,7 +375,7 @@ export function App({ opts }: AppProps) {
 
       // Modal handling
       if (modal.type !== "none") {
-        if (modal.type === "error" || modal.type === "help" || modal.type === "history") {
+        if (modal.type === "error" || modal.type === "help" || modal.type === "history" || modal.type === "warnings") {
           // any key closes
           setModal({ type: "none" });
           if (modal.type === "error" && error) {
@@ -430,6 +433,18 @@ export function App({ opts }: AppProps) {
         }
       }
 
+      if ((key.super || key.meta || (key.ctrl && key.shift)) && key.name === "c") {
+        const text = renderer.getSelection()?.getSelectedText() ?? "";
+        if (!text) {
+          flash("Nothing selected to copy");
+          return;
+        }
+        void copyTextToClipboard(renderer, text).then((ok) =>
+          flash(ok ? `Copied ${text.length} character${text.length !== 1 ? "s" : ""}` : "Copy failed")
+        );
+        return;
+      }
+
       if (key.name === "q" || key.name === "escape" || (key.name === "c" && key.ctrl)) {
         if (key.name === "escape" && selection.size > 0) {
           setSelection(new Set());
@@ -477,6 +492,11 @@ export function App({ opts }: AppProps) {
         } else {
           setModal({ type: "history" });
         }
+        return;
+      }
+
+      if (key.name === "e" && warnings.length > 0) {
+        setModal({ type: "warnings" });
         return;
       }
 
@@ -695,6 +715,7 @@ export function App({ opts }: AppProps) {
 
       {modal.type === "help" && <HelpOverlay />}
       {modal.type === "history" && <HistoryOverlay />}
+      {modal.type === "warnings" && <WarningsOverlay warnings={warnings} />}
       {modal.type === "error" && (
         <ConfirmModal
           title="Error"
