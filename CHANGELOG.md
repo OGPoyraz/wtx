@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Renaming a worktree now verifies that all uncommitted changes moved with the checkout and reports the count (`wtx rename`, dashboard rename action); any entries that fail to carry surface as a loud error instead of disappearing silently
+- After a rename, configured `sync_files` missing from the worktree are re-synced from the main checkout; locally modified, untracked, or ignored sync files are kept as-is instead of being overwritten
+- Dashboard rename confirmation no longer claims "The old directory will be removed" — it states accurately that uncommitted changes and synced files move with the checkout
+
 ## [0.8.2] - 2026-08-25
 
 ### Added
