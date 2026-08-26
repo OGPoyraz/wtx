@@ -73,6 +73,20 @@ export function registerRenameCommand(program: Command) {
         }
         stepSuccess("Renamed", `${outcome.oldPath} → ${outcome.newPath}`);
 
+        if (outcome.dirtyFiles.length > 0) {
+          stepSuccess("Carried uncommitted files", `${outcome.dirtyFiles.length} entr${outcome.dirtyFiles.length === 1 ? "y" : "ies"} moved with the checkout`);
+        }
+        if (outcome.lostDirtyFiles.length > 0) {
+          stepError("Uncommitted changes missing after rename", outcome.lostDirtyFiles.join(", "));
+        }
+
+        if (outcome.resyncedFiles.length > 0) {
+          stepSuccess("Synced files", outcome.resyncedFiles.join(", "));
+        }
+        for (const entry of outcome.keptLocalSyncFiles) {
+          indented(`Kept local version of ${entry} — it has uncommitted edits`);
+        }
+
         if (outcome.upstream) {
           indented(`Upstream still tracks '${outcome.upstream}' — after pushing run: git push -u origin ${newBranch}`);
         }
