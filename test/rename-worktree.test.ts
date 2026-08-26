@@ -38,14 +38,17 @@ beforeAll(() => {
   git(mainPath, `worktree add -b feat/old ${path.join(wtRoot, "feat/old")} main`);
 
   fs.writeFileSync(path.join(wtRoot, "feat/old", "b.txt"), "worktree file");
+  fs.writeFileSync(path.join(wtRoot, "feat/old", "a.txt"), "tracked modified");
+  fs.writeFileSync(path.join(wtRoot, "feat/old", "c.txt"), "staged work");
+  git(path.join(wtRoot, "feat/old"), "add c.txt");
 });
 
 afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-function repoCtx(): RepoContext {
-  return { name: "myrepo", mainPath, wtRoot, config: {} as RepoContext["config"] };
+function repoCtx(config: Partial<RepoContext["config"]> = {}): RepoContext {
+  return { name: "myrepo", mainPath, wtRoot, config: config as RepoContext["config"] };
 }
 
 describe("renameWorktree", () => {
@@ -72,6 +75,11 @@ describe("renameWorktree", () => {
 
     expect(fs.existsSync(path.join(newPath, "b.txt"))).toBe(true);
     expect(fs.existsSync(path.join(newPath, ".git"))).toBe(true);
+    expect(outcome.dirtyFiles.some((l) => l.includes("b.txt"))).toBe(true);
+    expect(outcome.dirtyFiles.some((l) => l.includes("a.txt"))).toBe(true);
+    expect(outcome.dirtyFiles.some((l) => l.includes("c.txt"))).toBe(true);
+    expect(outcome.lostDirtyFiles).toEqual([]);
+    expect(fs.readFileSync(path.join(newPath, "a.txt"), "utf8")).toBe("tracked modified");
     void outcome;
   });
 
@@ -109,5 +117,106 @@ describe("renameWorktree", () => {
 
     const branches = git(mainPath, "branch --list");
     expect(branches).not.toContain("feat/next");
+  });
+});
+
+describe("renameWorktree sync files", () => {
+  it("re-syncs clean tracked sync files from main after the move", async () => {
+    const wtPath = path.join(wtRoot, "sync/clean");
+    git(mainPath, `worktree add -b sync/clean ${wtPath} main`);
+    fs.writeFileSync(path.join(wtPath, "shared.env"), "v1");
+    git(wtPath, "add shared.env");
+    git(wtPath, "commit -q -m env");
+
+    fs.writeFileSync(path.join(mainPath, "shared.env"), "v2-from-main");
+
+    const outcome = await renameWorktree({
+      repo: repoCtx({ sync_files: ["shared.env"] }),
+      oldBranch: "sync/clean",
+      newBranch: "sync/clean2",
+      opts,
+    });
+
+    expect(fs.readFileSync(path.join(wtRoot, "sync/clean2/shared.env"), "utf8")).toBe("v2-from-main");
+    expect(outcome.resyncedFiles).toContain("shared.env");
+    expect(outcome.keptLocalSyncFiles).not.toContain("shared.env");
+  });
+
+  it("keeps locally modified sync files instead of overwriting them", async () => {
+    const wtPath = path.join(wtRoot, "sync/dirty");
+    git(mainPath, `worktree add -b sync/dirty ${wtPath} main`);
+    fs.writeFileSync(path.join(wtPath, "local.env"), "base");
+    git(wtPath, "add local.env");
+    git(wtPath, "commit -q -m env");
+
+    fs.writeFileSync(path.join(mainPath, "local.env"), "from-main");
+    fs.writeFileSync(path.join(wtPath, "local.env"), "local edit");
+
+    const outcome = await renameWorktree({
+      repo: repoCtx({ sync_files: ["local.env"] }),
+      oldBranch: "sync/dirty",
+      newBranch: "sync/dirty2",
+      opts,
+    });
+
+    expect(fs.readFileSync(path.join(wtRoot, "sync/dirty2/local.env"), "utf8")).toBe("local edit");
+    expect(outcome.keptLocalSyncFiles).toContain("local.env");
+    expect(outcome.resyncedFiles).not.toContain("local.env");
+  });
+
+  it("keeps untracked sync files rather than clobbering them", async () => {
+    const wtPath = path.join(wtRoot, "sync/untracked");
+    git(mainPath, `worktree add -b sync/untracked ${wtPath} main`);
+
+    fs.writeFileSync(path.join(mainPath, "u.env"), "main-secret");
+    fs.writeFileSync(path.join(wtPath, "u.env"), "worktree-secret");
+
+    const outcome = await renameWorktree({
+      repo: repoCtx({ sync_files: ["u.env"] }),
+      oldBranch: "sync/untracked",
+      newBranch: "sync/untracked2",
+      opts,
+    });
+
+    expect(fs.readFileSync(path.join(wtRoot, "sync/untracked2/u.env"), "utf8")).toBe("worktree-secret");
+    expect(outcome.keptLocalSyncFiles).toContain("u.env");
+  });
+
+  it("keeps ignored sync files rather than clobbering them", async () => {
+    const wtPath = path.join(wtRoot, "sync/ignored");
+    git(mainPath, `worktree add -b sync/ignored ${wtPath} main`);
+    fs.writeFileSync(path.join(wtPath, ".gitignore"), ".env\n");
+    git(wtPath, "add .gitignore");
+    git(wtPath, "commit -q -m ignore-env");
+
+    fs.writeFileSync(path.join(mainPath, "secret.env"), "main-secret");
+    fs.writeFileSync(path.join(wtPath, "secret.env"), "worktree-secret");
+
+    const outcome = await renameWorktree({
+      repo: repoCtx({ sync_files: ["secret.env"] }),
+      oldBranch: "sync/ignored",
+      newBranch: "sync/ignored2",
+      opts,
+    });
+
+    expect(fs.readFileSync(path.join(wtRoot, "sync/ignored2/secret.env"), "utf8")).toBe("worktree-secret");
+    expect(outcome.keptLocalSyncFiles).toContain("secret.env");
+  });
+
+  it("copies sync files that are missing from the worktree", async () => {
+    const wtPath = path.join(wtRoot, "sync/missing");
+    git(mainPath, `worktree add -b sync/missing ${wtPath} main`);
+
+    fs.writeFileSync(path.join(mainPath, "fresh.env"), "fresh-content");
+
+    const outcome = await renameWorktree({
+      repo: repoCtx({ sync_files: ["fresh.env"] }),
+      oldBranch: "sync/missing",
+      newBranch: "sync/missing2",
+      opts,
+    });
+
+    expect(fs.readFileSync(path.join(wtRoot, "sync/missing2/fresh.env"), "utf8")).toBe("fresh-content");
+    expect(outcome.resyncedFiles).toContain("fresh.env");
   });
 });

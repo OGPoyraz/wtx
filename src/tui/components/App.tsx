@@ -860,7 +860,7 @@ export function App({ opts }: AppProps) {
             `Branch will be renamed and the checkout moved to:`,
             getWorktreePathFor(modal.row.repoName, modal.to),
             "",
-            "The old directory will be removed.",
+            "Uncommitted changes and synced files move with it.",
             "Proceed?",
           ].join("\n")}
         />

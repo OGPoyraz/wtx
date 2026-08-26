@@ -4,6 +4,7 @@ import type { GlobalOptions, RepoContext } from "../types.js";
 import { gitExec, getWorktreeList, localBranchExists } from "./git.js";
 import { findWorktreeForBranch, getWorktreePath } from "./resolver.js";
 import { cleanupEmptyParents } from "./path-safety.js";
+import { syncEntry } from "./worktree-setup.js";
 
 export interface RenameOutcome {
   oldBranch: string;
@@ -12,6 +13,10 @@ export interface RenameOutcome {
   newPath: string;
   upstream: string | null;
   cleanedDirs: string[];
+  dirtyFiles: string[];
+  lostDirtyFiles: string[];
+  resyncedFiles: string[];
+  keptLocalSyncFiles: string[];
 }
 
 async function getUpstream(wtPath: string): Promise<string | null> {
@@ -20,6 +25,29 @@ async function getUpstream(wtPath: string): Promise<string | null> {
     return out.trim() || null;
   } catch {
     return null;
+  }
+}
+
+async function getDirtyEntries(wtPath: string): Promise<string[]> {
+  try {
+    const out = await gitExec(["-C", wtPath, "status", "--porcelain"], {});
+    return out.split("\n").map((line) => line.trimEnd()).filter((line) => line.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function touchesEntry(porcelainLine: string, entry: string): boolean {
+  const entryPath = porcelainLine.slice(3);
+  return entryPath === entry || entryPath.startsWith(`${entry}/`);
+}
+
+async function isTrackedInWorktree(wtPath: string, entry: string): Promise<boolean> {
+  try {
+    await gitExec(["-C", wtPath, "ls-files", "--error-unmatch", "--", entry], {});
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -63,6 +91,7 @@ export async function renameWorktree(params: {
 
   const planned = await planRename(repo, oldBranch, newBranch, opts);
   const cleanedDirs: string[] = [];
+  const dirtyBefore = await getDirtyEntries(planned.worktreePath);
 
   if (opts.dryRun) {
     return {
@@ -72,6 +101,10 @@ export async function renameWorktree(params: {
       newPath: planned.newPath,
       upstream: planned.upstream,
       cleanedDirs,
+      dirtyFiles: dirtyBefore,
+      lostDirtyFiles: [],
+      resyncedFiles: [],
+      keptLocalSyncFiles: [],
     };
   }
 
@@ -95,6 +128,33 @@ export async function renameWorktree(params: {
     cleanedDirs.push(dir);
   }
 
+  const dirtyAfter = await getDirtyEntries(planned.newPath);
+  const lostDirtyFiles = dirtyBefore.filter((line) => !dirtyAfter.includes(line));
+
+  const resyncedFiles: string[] = [];
+  const keptLocalSyncFiles: string[] = [];
+  for (const entry of repo.config.sync_files ?? []) {
+    if (!fs.existsSync(path.join(repo.mainPath, entry))) continue;
+
+    const destPath = path.join(planned.newPath, entry);
+    if (!fs.existsSync(destPath)) {
+      if (syncEntry(repo.mainPath, planned.newPath, entry)) {
+        resyncedFiles.push(entry);
+      }
+      continue;
+    }
+
+    const tracked = await isTrackedInWorktree(planned.newPath, entry);
+    if (tracked && !dirtyAfter.some((line) => touchesEntry(line, entry))) {
+      if (syncEntry(repo.mainPath, planned.newPath, entry)) {
+        resyncedFiles.push(entry);
+      }
+      continue;
+    }
+
+    keptLocalSyncFiles.push(entry);
+  }
+
   return {
     oldBranch,
     newBranch,
@@ -102,5 +162,9 @@ export async function renameWorktree(params: {
     newPath: planned.newPath,
     upstream: planned.upstream,
     cleanedDirs,
+    dirtyFiles: dirtyAfter,
+    lostDirtyFiles,
+    resyncedFiles,
+    keptLocalSyncFiles,
   };
 }
