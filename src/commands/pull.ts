@@ -29,6 +29,7 @@ import { recordStackEntry } from "../lib/stack.js";
 
 interface PullOptions {
   repo?: string[];
+  force?: boolean;
 }
 
 export function registerPullCommand(program: Command) {
@@ -36,6 +37,7 @@ export function registerPullCommand(program: Command) {
     .command("pull <link>")
     .description("Fetch a forge PR and create its worktree")
     .option("-r, --repo <repos...>", "Target specific repo")
+    .option("-f, --force", "Override existing local branch/worktree if it exists")
     .action(async (link: string, options: PullOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
@@ -174,16 +176,60 @@ export function registerPullCommand(program: Command) {
 
         const wtPath = getWorktreePath(target, branch);
         const worktrees = await getWorktreeList(target.mainPath);
+        const existingWorktree = worktrees.find((w) => w.path === wtPath || w.branch === branch);
         const localBranchFound = await localBranchExists(target.mainPath, branch, globalOpts);
-        const dirExists = worktrees.some((w) => w.path === wtPath || w.branch === branch);
+        const dirExists = Boolean(existingWorktree) || fs.existsSync(wtPath);
 
         if (localBranchFound || dirExists) {
-          stepWarning(
-            `Branch '${branch}' already exists`,
-            dirExists ? wtPath : "local branch exists"
-          );
-          summaryWarning(`Nothing pulled — branch '${branch}' already exists`);
-          return;
+          if (options.force) {
+            stepWarning(
+              `Branch '${branch}' already exists — --force: will override`,
+              dirExists ? wtPath : "local branch exists"
+            );
+          } else {
+            stepWarning(
+              `Branch '${branch}' already exists`,
+              dirExists ? wtPath : "local branch exists"
+            );
+            summaryWarning(`Nothing pulled — branch '${branch}' already exists`);
+            return;
+          }
+        }
+
+        if (options.force && (localBranchFound || dirExists)) {
+          if (existingWorktree) {
+            try {
+              await gitExec(
+                ["-C", target.mainPath, "worktree", "remove", "--force", existingWorktree.path],
+                { verbose: globalOpts.verbose, dryRun: globalOpts.dryRun }
+              );
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              if (!message.includes("not a working tree")) {
+                stepWarning("Worktree removal failed", message.split("\n")[0] ?? message);
+              }
+            }
+          }
+
+          if (!globalOpts.dryRun && fs.existsSync(wtPath)) {
+            fs.rmSync(wtPath, { recursive: true, force: true });
+          }
+
+          if (localBranchFound) {
+            try {
+              await gitExec(
+                ["-C", target.mainPath, "branch", "-D", branch],
+                { verbose: globalOpts.verbose, dryRun: globalOpts.dryRun }
+              );
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              if (!message.includes("branch not found") && !message.includes("not found")) {
+                stepWarning("Branch deletion failed", message.split("\n")[0] ?? message);
+              }
+            }
+          }
+
+          stepSuccess("Existing branch/worktree removed", branch);
         }
 
         const mainBranch = await resolveMainBranch(target, config);
@@ -232,8 +278,9 @@ export function registerPullCommand(program: Command) {
         }
 
         try {
+          const createBranchFlag = options.force ? "-B" : "-b";
           await gitExec(
-            ["-C", target.mainPath, "worktree", "add", "-b", branch, wtPath, "FETCH_HEAD"],
+            ["-C", target.mainPath, "worktree", "add", createBranchFlag, branch, wtPath, "FETCH_HEAD"],
             { verbose: globalOpts.verbose, dryRun: globalOpts.dryRun }
           );
         } catch (err: any) {

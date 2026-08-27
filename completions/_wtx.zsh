@@ -137,6 +137,7 @@ _wtx() {
           _arguments \
             ':pr-link:' \
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
+            {-f,--force}'[Override existing local branch/worktree]' \
             {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
