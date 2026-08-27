@@ -65,9 +65,11 @@ export function useWorktrees(opts: GlobalOptions) {
     }
   }, [opts]);
 
+  const clearWarnings = useCallback(() => setWarnings([]), []);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  return { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, refresh };
+  return { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, refresh, clearWarnings };
 }

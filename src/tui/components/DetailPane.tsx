@@ -22,6 +22,8 @@ export function DetailPane({ selectedRow }: DetailPaneProps) {
         height="100%"
         border={true}
         borderColor={tokens.border}
+        focusedBorderColor={tokens.border}
+        focusable={false}
         title="Details"
         padding={1}
         justifyContent="center"
@@ -50,6 +52,8 @@ export function DetailPane({ selectedRow }: DetailPaneProps) {
       height="100%"
       border={true}
       borderColor={tokens.border}
+      focusedBorderColor={tokens.border}
+      focusable={false}
       title="Details"
       padding={1}
       focused={false}
