@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-08-27
+
+### Fixed
+
+- `wtx remove` now handles worktrees containing initialized submodules (e.g. `metamask-mobile` `ios/branch-ios-sdk`) — `git worktree remove` without `--force` fails with “working trees containing submodules cannot be moved or removed”; the CLI now detects this and retries with `--force`, so `wtx remove --yes` (as called by the TUI) succeeds without requiring `Shift+P` force override
+
 ## [0.8.4] - 2026-08-27
 
 ### Added
@@ -238,7 +244,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.4...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.5...HEAD
+[0.8.5]: https://github.com/OGPoyraz/wtx/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/OGPoyraz/wtx/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/OGPoyraz/wtx/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/OGPoyraz/wtx/compare/v0.8.1...v0.8.2
