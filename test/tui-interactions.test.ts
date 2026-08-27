@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolveActionLauncher } from "../src/tui/actions.js";
-import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort, sortRowsHierarchically } from "../src/tui/utils.js";
+import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort, sortRowsHierarchically, clampSplitRatio, MIN_PANE_COLS } from "../src/tui/utils.js";
 import type { WorktreeRow, RepoBlock } from "../src/tui/types.js";
 
 const mockRow: WorktreeRow = {
@@ -161,5 +161,21 @@ describe("resolveActionLauncher", () => {
   it("falls back to argv0 with plain action args when terminal token absent", () => {
     const res = resolveActionLauncher(["/node", "/lib/cli.mjs"], args, { whichWtx: null, execPath: "/node" });
     expect(res).toEqual({ cmd: "/node", args });
+  });
+});
+
+describe("clampSplitRatio", () => {
+  it("clamps to min/max based on MIN_PANE_COLS", () => {
+    expect(clampSplitRatio(100, 0.05)).toBe(MIN_PANE_COLS / 100);
+    expect(clampSplitRatio(100, 0.95)).toBe((100 - MIN_PANE_COLS - 3) / 100);
+    expect(clampSplitRatio(100, 0.6)).toBe(0.6);
+  });
+  it("returns 0.5 for tiny widths", () => {
+    expect(clampSplitRatio(30, 0.9)).toBe(0.5);
+    expect(clampSplitRatio(43, 0.1)).toBe(0.5);
+  });
+  it("keeps ratio within bounds for various widths", () => {
+    expect(clampSplitRatio(80, 0.6)).toBeGreaterThanOrEqual(MIN_PANE_COLS / 80);
+    expect(clampSplitRatio(80, 0.6)).toBeLessThanOrEqual((80 - MIN_PANE_COLS - 3) / 80);
   });
 });

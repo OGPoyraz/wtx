@@ -101,6 +101,16 @@ export function isTapWithoutDrag(
   return Math.abs(up.x - down.x) <= 1 && Math.abs(up.y - down.y) <= 1;
 }
 
+export const MIN_PANE_COLS = 20;
+export const DIVIDER_WIDTH = 3;
+
+export function clampSplitRatio(totalWidth: number, ratio: number, dividerWidth = DIVIDER_WIDTH): number {
+  if (totalWidth <= MIN_PANE_COLS * 2 + dividerWidth) return 0.5;
+  const minRatio = MIN_PANE_COLS / totalWidth;
+  const maxRatio = (totalWidth - MIN_PANE_COLS - dividerWidth) / totalWidth;
+  return Math.max(minRatio, Math.min(maxRatio, ratio));
+}
+
 export function mergeBlocks(prev: RepoBlock[], next: RepoBlock[], scope?: Set<string>): RepoBlock[] {
   if (!scope) return sortBlocks(next);
   const kept = prev.filter(b => !scope.has(b.repoName));

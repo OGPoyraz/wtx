@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { existsSync } from "node:fs";
-import { useKeyboard, useRenderer, useSelectionHandler } from "@opentui/react";
+import { useKeyboard, useRenderer, useSelectionHandler, useTerminalDimensions } from "@opentui/react";
 import type { GlobalOptions } from "../../types.js";
 import { useWorktrees } from "../hooks/useWorktrees.js";
 import { WorktreeTable } from "./WorktreeTable.js";
 import type { VerbIndicator } from "./WorktreeTable.js";
 import { DetailPane } from "./DetailPane.js";
 import { Footer } from "./Footer.js";
+import { Divider } from "./Divider.js";
 import { HelpOverlay } from "./HelpOverlay.js";
 import { ConfirmModal } from "./ConfirmModal.js";
 import { runWtxAction } from "../actions.js";
@@ -19,7 +20,7 @@ import { ChoiceModal } from "./ChoiceModal.js";
 import type { ChoiceOption } from "./ChoiceModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
 import { WarningsOverlay } from "./WarningsOverlay.js";
-import { matchesFilter, toggleSelection, withCreatePlaceholders, sortBlocks } from "../utils.js";
+import { matchesFilter, toggleSelection, withCreatePlaceholders, sortBlocks, clampSplitRatio, DIVIDER_WIDTH } from "../utils.js";
 import { copyTextToClipboard } from "../platform.js";
 import { resolveAgentCommand, spawnAgentInWorktree } from "../../lib/agents.js";
 import { loadConfig } from "../../lib/config.js";
@@ -123,6 +124,15 @@ export function App({ opts }: AppProps) {
   const [isFiltering, setIsFiltering] = useState(false);
   const [selection, setSelection] = useState<Set<string>>(new Set());
 
+  const [splitRatio, setSplitRatio] = useState(0.6);
+  const [isResizing, setIsResizing] = useState(false);
+  const { width: termWidth } = useTerminalDimensions();
+  const totalWidth = termWidth || renderer.width || 80;
+
+  useEffect(() => {
+    if (termWidth) setSplitRatio((prev) => clampSplitRatio(termWidth, prev));
+  }, [termWidth]);
+
   const doRefresh = useCallback(
     async (scope?: string[]) => {
       const targets = scope ?? [
@@ -153,6 +163,10 @@ export function App({ opts }: AppProps) {
   // Terminals intercept Cmd+C before it reaches the app; copy when drag selection completes.
   const copySelectedText = useCallback(
     (warnOnEmpty: boolean) => {
+      if (isResizing) {
+        renderer.clearSelection();
+        return;
+      }
       const text = renderer.getSelection()?.getSelectedText() ?? "";
       if (!text) {
         if (warnOnEmpty) flash("Nothing selected to copy");
@@ -162,7 +176,7 @@ export function App({ opts }: AppProps) {
         flash(ok ? `Copied ${text.length} character${text.length !== 1 ? "s" : ""}` : "Copy failed")
       );
     },
-    [renderer, flash]
+    [renderer, flash, isResizing]
   );
 
   useSelectionHandler(() => copySelectedText(false));
@@ -363,6 +377,156 @@ export function App({ opts }: AppProps) {
     if (force) args.push("--force");
     void executeOp(op, args, [repoName]);
   };
+
+  const handleHintClick = useCallback(
+    (key: string) => {
+      if (key === "c") {
+        setConfigOpen(true);
+        return;
+      }
+      if (key === "?") {
+        setModal({ type: "help" });
+        return;
+      }
+      if (key === "H") {
+        setModal({ type: "history" });
+        return;
+      }
+      if (key === "r") {
+        void doRefresh();
+        return;
+      }
+      if (key === "e" && warnings.length > 0) {
+        setModal({ type: "warnings" });
+        return;
+      }
+      if (key === "n") {
+        if (!selectedRow) return;
+        setCreateModal(true);
+        setCreateError(undefined);
+        return;
+      }
+      if (key === "m") {
+        const target = selectedRow;
+        if (!target || target.isMainCheckout || !target.branch || target.branch === "(detached)") {
+          if (target?.isMainCheckout) flash("Cannot rename main checkout");
+          else if (target && (!target.branch || target.branch === "(detached)")) flash("Cannot rename detached worktree");
+          return;
+        }
+        const conflict = findConflict([target]);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        setRenameModal(true);
+        setRenameError(undefined);
+        return;
+      }
+      if (key === "f") {
+        const targets = getSelectedRows();
+        if (targets.length > 0) startFetch(targets);
+        return;
+      }
+      if (key === "o") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.length > 1) {
+          flash("Cannot open multiple worktrees");
+          return;
+        }
+        const target = targets[0]!;
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        const op: PendingOp = {
+          id: nextOpId.current++,
+          kind: "open",
+          repoNames: [target.repoName],
+          rowPath: target.path,
+          label: target.branch,
+          title: `Open ${target.branch}`,
+          status: "queued",
+          lines: [],
+        };
+        setOps((prev) => [...prev, op]);
+        void executeOp(op, ["open", target.branch, "--repo", target.repoName], null);
+        return;
+      }
+      if (key === "i") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        startBatchActions("install", targets, (r) =>
+          r.isMainCheckout ? ["deps", "--repo", r.repoName, "--install"] : ["deps", r.branch, "--repo", r.repoName, "--install"]
+        );
+        return;
+      }
+      if (key === "p") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        startBatchActions("pull", targets, (r) => ["pull-branch", r.branch, "--repo", r.repoName]);
+        return;
+      }
+      if (key === "b") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.some((r) => r.isMainCheckout)) {
+          flash("Cannot rebase main checkout");
+          return;
+        }
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        setModal({ type: "confirm_rebase", rows: targets });
+        return;
+      }
+      if (key === "d") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.some((r) => r.isMainCheckout)) {
+          flash("Cannot remove main checkout");
+          return;
+        }
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        setModal({ type: "confirm_remove", rows: targets });
+        return;
+      }
+      if (key === "s") {
+        const targets = getSelectedRows();
+        if (targets.length === 0) return;
+        if (targets.some((r) => r.isMainCheckout)) {
+          flash("Cannot sync main checkout");
+          return;
+        }
+        const conflict = findConflict(targets);
+        if (conflict) {
+          flash(conflict);
+          return;
+        }
+        setModal({ type: "confirm_sync", rows: targets });
+        return;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedRow, selection, warnings, busyRepos, busyRowPaths, doRefresh, flash, blocks]
+  );
 
   useKeyboard(
     (key) => {
@@ -736,18 +900,29 @@ export function App({ opts }: AppProps) {
     }
   );
 
+  const rawLeft = Math.floor(totalWidth * splitRatio);
+  const leftCols = Math.max(20, Math.min(totalWidth - 20 - DIVIDER_WIDTH, rawLeft));
+  const rightCols = Math.max(20, totalWidth - leftCols - DIVIDER_WIDTH);
+
   return (
     <box flexDirection="column" width="100%" height="100%">
       <box flexDirection="row" width="100%" flexGrow={1}>
-        <WorktreeTable
-          blocks={displayBlocks}
-          selectedIndex={selectedIndex}
-          selection={selection}
-          frame={spinnerFrame}
-          repoVerbs={repoVerbs}
-          rowVerbs={rowVerbs}
-        />
-        <DetailPane selectedRow={selectedRow} />
+        <box width={leftCols} height="100%" flexDirection="column">
+          <WorktreeTable
+            blocks={displayBlocks}
+            selectedIndex={selectedIndex}
+            selection={selection}
+            frame={spinnerFrame}
+            repoVerbs={repoVerbs}
+            rowVerbs={rowVerbs}
+            onRowClick={(idx) => setSelectedIndex(idx)}
+            onToggleSelect={(path) => setSelection((prev) => toggleSelection(prev, path))}
+          />
+        </box>
+        <Divider splitRatio={splitRatio} totalWidth={totalWidth} onChange={setSplitRatio} onDraggingChange={setIsResizing} />
+        <box width={rightCols} height="100%" flexDirection="column">
+          <DetailPane selectedRow={selectedRow} />
+        </box>
       </box>
       {isFiltering && (
         <box flexDirection="row" paddingX={1} border={true} borderColor="magenta">
@@ -767,6 +942,8 @@ export function App({ opts }: AppProps) {
         }
         spinnerFrame={spinnerFrame}
         filter={filterText ? { term: filterText, matches: flatRows.length, total: totalRows } : undefined}
+        onHintClick={handleHintClick}
+        onErrorClick={() => setModal({ type: "warnings" })}
       />
 
       {modal.type === "help" && <HelpOverlay />}
@@ -776,6 +953,20 @@ export function App({ opts }: AppProps) {
         <ConfirmModal
           title="Error"
           message={modal.message}
+          onConfirm={() => {
+            setModal({ type: "none" });
+            if (error) {
+              renderer.destroy();
+              process.exit(1);
+            }
+          }}
+          onCancel={() => {
+            setModal({ type: "none" });
+            if (error) {
+              renderer.destroy();
+              process.exit(1);
+            }
+          }}
         />
       )}
       {modal.type === "confirm_remove" && (
@@ -794,18 +985,41 @@ export function App({ opts }: AppProps) {
             }
             return lines.join("\n");
           })()}
+          onConfirm={() => {
+            const rows = modal.rows;
+            setModal({ type: "none" });
+            startBatchActions("remove", rows, (r) => {
+              const args = ["remove", r.branch, "--repo", r.repoName, "--yes"];
+              const needsForce = r.dirtyFiles.length > 0 || !existsSync(r.path);
+              if (needsForce) args.push("--force");
+              return args;
+            });
+          }}
+          onCancel={() => setModal({ type: "none" })}
         />
       )}
       {modal.type === "confirm_rebase" && (
         <ConfirmModal
           title={`Rebase ${modal.rows.length} Worktree(s)`}
           message={`Are you sure you want to fetch and rebase ${modal.rows.length === 1 ? modal.rows[0]?.branch : modal.rows.length + " worktrees"}?`}
+          onConfirm={() => {
+            const rows = modal.rows;
+            setModal({ type: "none" });
+            startBatchActions("rebase", rows, (r) => ["rebase", r.branch, "--repo", r.repoName]);
+          }}
+          onCancel={() => setModal({ type: "none" })}
         />
       )}
       {modal.type === "confirm_sync" && (
         <ConfirmModal
           title={`Sync ${modal.rows.length} Worktree(s)`}
           message={`Are you sure you want to sync ${modal.rows.length === 1 ? modal.rows[0]?.branch : modal.rows.length + " worktrees"}?`}
+          onConfirm={() => {
+            const rows = modal.rows;
+            setModal({ type: "none" });
+            startBatchActions("sync", rows, (r) => ["sync", r.branch, "--repo", r.repoName]);
+          }}
+          onCancel={() => setModal({ type: "none" })}
         />
       )}
       {createModal && (
@@ -956,6 +1170,24 @@ export function App({ opts }: AppProps) {
             "Uncommitted changes and synced files move with it.",
             "Proceed?",
           ].join("\n")}
+          onConfirm={() => {
+            const { row, to } = modal;
+            setModal({ type: "none" });
+            const op: PendingOp = {
+              id: nextOpId.current++,
+              kind: "rename",
+              repoNames: [row.repoName],
+              rowPath: row.path,
+              branch: row.branch,
+              label: `${row.branch} → ${to}`,
+              title: `Rename ${row.branch} → ${to}`,
+              status: "queued",
+              lines: [],
+            };
+            setOps((prev) => [...prev, op]);
+            void executeOp(op, ["rename", row.branch, to, "--repo", row.repoName], [row.repoName]);
+          }}
+          onCancel={() => setModal({ type: "none" })}
         />
       )}
 
