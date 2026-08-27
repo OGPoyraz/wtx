@@ -29,15 +29,19 @@ const HELP_ENTRIES: [string, string][] = [
 
 export function HelpOverlay() {
   return (
-    <Overlay title="Help" borderColor={tokens.border}>
-      <box flexDirection="column" style={{ maxHeight: 40 }}>
+    <Overlay title="Help" borderColor={tokens.border} width={84}>
+      <box flexDirection="column" style={{ maxHeight: 36 }}>
         <scrollbox flexGrow={1}>
           {HELP_ENTRIES.map(([key, desc]) => (
-            <text key={key}>
-              <span fg={tokens.accent}>{key.padEnd(10)}</span>
-              <span> - </span>
-              <span>{desc}</span>
-            </text>
+            <box key={key} flexDirection="row" gap={1}>
+              <box width={18} flexShrink={0}>
+                <text fg={tokens.accent}>{key}</text>
+              </box>
+              <text fg={tokens.dim}>-</text>
+              <box flexGrow={1}>
+                <text fg={tokens.fg}>{desc}</text>
+              </box>
+            </box>
           ))}
         </scrollbox>
       </box>

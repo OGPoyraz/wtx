@@ -96,7 +96,7 @@ interface FailedAction {
 
 export function App({ opts }: AppProps) {
   const renderer = useRenderer();
-  const { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, refresh } = useWorktrees(opts);
+  const { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, refresh, clearWarnings } = useWorktrees(opts);
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -586,7 +586,20 @@ export function App({ opts }: AppProps) {
 
       // Modal handling
       if (modal.type !== "none") {
-        if (modal.type === "error" || modal.type === "help" || modal.type === "history" || modal.type === "warnings") {
+        if (modal.type === "warnings") {
+          if (key.name === "a") {
+            clearWarnings();
+            setModal({ type: "none" });
+            return;
+          }
+          if (key.name === "escape" || key.name === "q" || key.name === "enter" || key.name === "return") {
+            setModal({ type: "none" });
+            return;
+          }
+          setModal({ type: "none" });
+          return;
+        }
+        if (modal.type === "error" || modal.type === "help" || modal.type === "history") {
           // any key closes
           setModal({ type: "none" });
           if (modal.type === "error" && error) {
@@ -948,7 +961,16 @@ export function App({ opts }: AppProps) {
 
       {modal.type === "help" && <HelpOverlay />}
       {modal.type === "history" && <HistoryOverlay />}
-      {modal.type === "warnings" && <WarningsOverlay warnings={warnings} />}
+      {modal.type === "warnings" && (
+        <WarningsOverlay
+          warnings={warnings}
+          onAcknowledge={() => {
+            clearWarnings();
+            setModal({ type: "none" });
+          }}
+          onClose={() => setModal({ type: "none" })}
+        />
+      )}
       {modal.type === "error" && (
         <ConfirmModal
           title="Error"
