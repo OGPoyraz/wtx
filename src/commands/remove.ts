@@ -44,6 +44,8 @@ function isMissingWorktreePathError(message: string): boolean {
 function isRecoverableWorktreeRemoveError(message: string): boolean {
   return message.includes("not a working tree")
     || message.includes("already removed")
+    || message.includes("submodule")
+    || message.includes("containing submodules")
     || isMissingWorktreePathError(message);
 }
 
@@ -252,7 +254,29 @@ export function registerRemoveCommand(program: Command) {
             stepSuccess("Worktree removed", wtPath);
           } catch (err: unknown) {
             const msg = errorMessage(err);
-            if (isRecoverableWorktreeRemoveError(msg)) {
+            const isSubmodule = msg.includes("submodule") || msg.includes("containing submodules");
+            if (isSubmodule && !options.force && !args.includes("--force")) {
+              stepWarning("Worktree contains submodules — retrying with --force", msg.split("\n")[0] ?? msg);
+              try {
+                await gitExec(["-C", repo.mainPath, "worktree", "remove", "--force", wtPath], globalOpts);
+                stepSuccess("Worktree removed", wtPath);
+              } catch (forceErr: unknown) {
+                const forceMsg = errorMessage(forceErr);
+                if (isRecoverableWorktreeRemoveError(forceMsg)) {
+                  stepWarning("Worktree already removed or invalid", forceMsg);
+                  try {
+                    await gitExec(["-C", repo.mainPath, "worktree", "prune"], globalOpts);
+                  } catch (pruneErr: unknown) {
+                    stepWarning("Worktree prune failed", errorMessage(pruneErr));
+                  }
+                  removeExistingPath(wtPath, globalOpts);
+                  await removeLocalBranchBestEffort(repo.mainPath, branch, globalOpts);
+                  stepSuccess("Worktree removed", wtPath);
+                } else {
+                  throw forceErr;
+                }
+              }
+            } else if (isRecoverableWorktreeRemoveError(msg)) {
               stepWarning("Worktree already removed or invalid", msg);
               try {
                 await gitExec(["-C", repo.mainPath, "worktree", "prune"], globalOpts);
