@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useKeyboard } from "@opentui/react";
 import { Overlay } from "./Overlay.js";
 import { tokens } from "../theme.js";
+import { useTapHandler } from "../hooks/use-tap.js";
 
 export interface ChoiceOption<T extends string = string> {
   value: T;
@@ -15,6 +16,18 @@ export interface ChoiceModalProps<T extends string = string> {
   initialIndex?: number;
   onSubmit: (value: T) => void;
   onCancel: () => void;
+}
+
+function ChoiceOptionRow<T extends string>({ option, index, isSelected, onSelect }: { option: ChoiceOption<T>; index: number; isSelected: boolean; onSelect: (v: T) => void }) {
+  const tap = useTapHandler(() => onSelect(option.value));
+  return (
+    <box flexDirection="column" backgroundColor={isSelected ? tokens.selectionBg : undefined} {...tap}>
+      <text>
+        <span fg={isSelected ? tokens.bright : tokens.fg}>{`${index + 1}. ${option.label}`}</span>
+      </text>
+      {option.desc && <text fg={tokens.dim}>{`   ${option.desc}`}</text>}
+    </box>
+  );
 }
 
 export function ChoiceModal<T extends string = string>({ title, options, initialIndex = 0, onSubmit, onCancel }: ChoiceModalProps<T>) {
@@ -49,17 +62,10 @@ export function ChoiceModal<T extends string = string>({ title, options, initial
     <Overlay title={title} borderColor={tokens.accent}>
       <box flexDirection="column">
         {options.map((option, i) => (
-          <box key={option.value} flexDirection="column" backgroundColor={i === index ? tokens.selectionBg : undefined}>
-            <text>
-              <span fg={i === index ? tokens.bright : tokens.fg}>{`${i + 1}. ${option.label}`}</span>
-            </text>
-            {option.desc && (
-              <text fg={tokens.dim}>{`   ${option.desc}`}</text>
-            )}
-          </box>
+          <ChoiceOptionRow key={option.value} option={option} index={i} isSelected={i === index} onSelect={onSubmit} />
         ))}
         <text fg={tokens.dim} style={{ marginTop: 1 }}>
-          ↑/↓ to choose · Enter to confirm · 1-{options.length} quick pick · Esc to cancel
+          ↑/↓ to choose · Enter to confirm · 1-{options.length} quick pick · Esc to cancel · click to select
         </text>
       </box>
     </Overlay>
