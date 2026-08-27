@@ -97,7 +97,7 @@ _wtx_completions() {
       fetch)   flags="--repo -q --quiet --verbose --dry-run --help" ;;
       sync)    flags="--repo -q --quiet --verbose --dry-run --help" ;;
       deps)    flags="-r --repo --install --symlink --json -q --quiet --verbose --dry-run --help" ;;
-      pull)    flags="-r --repo -q --quiet --verbose --dry-run --help" ;;
+      pull)    flags="-r --repo -f --force -q --quiet --verbose --dry-run --help" ;;
       ls)      flags="-r --repo --pr --json -q --quiet --verbose --dry-run --help" ;;
       status)  flags="-r --repo --base --json -q --quiet --verbose --dry-run --help" ;;
       stack)   flags="-r --repo --json -q --quiet --verbose --dry-run --help" ;;
