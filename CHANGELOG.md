@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-08-27
+
+### Added
+
+- TUI: pointer-aware worktree table — click row to select, click gutter `✓` to toggle multi-select, tighten PR link hit-area to `#N ↗` only, footer hints and choice/confirm modals are now clickable, wheel scroll on table without changing selection
+- TUI: resizable Worktrees/Details panes — draggable divider between panes (3-col hit zone, clamped 20 cols min each side, clears selection while dragging)
+
 ## [0.8.6] - 2026-08-27
 
 ### Fixed
@@ -250,7 +257,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.6...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.7...HEAD
+[0.8.7]: https://github.com/OGPoyraz/wtx/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/OGPoyraz/wtx/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/OGPoyraz/wtx/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/OGPoyraz/wtx/compare/v0.8.3...v0.8.4
