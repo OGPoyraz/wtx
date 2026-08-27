@@ -5,7 +5,10 @@ import type { GlobalOptions } from "../../types.js";
 import { useWorktrees } from "../hooks/useWorktrees.js";
 import { WorktreeTable } from "./WorktreeTable.js";
 import type { VerbIndicator } from "./WorktreeTable.js";
-import { DetailPane } from "./DetailPane.js";
+import { TabPane } from "../tabs/TabPane.js";
+import type { TabDef } from "../tabs/types.js";
+import { DetailsContent } from "./DetailsTab.js";
+import { TerminalView } from "./TerminalView.js";
 import { Footer } from "./Footer.js";
 import { Divider } from "./Divider.js";
 import { HelpOverlay } from "./HelpOverlay.js";
@@ -24,6 +27,7 @@ import { matchesFilter, toggleSelection, withCreatePlaceholders, sortBlocks, cla
 import { copyTextToClipboard } from "../platform.js";
 import { loadConfig } from "../../lib/config.js";
 import { useSpinnerFrame } from "../hooks/useSpinnerFrame.js";
+import { MAX_TERMINAL_SESSIONS, useTerminalSessions } from "../hooks/useTerminalSessions.js";
 
 export interface AppProps {
   opts: GlobalOptions;
@@ -133,12 +137,16 @@ export function App({ opts }: AppProps) {
     return 3 / 10;
   });
   const [isResizing, setIsResizing] = useState(false);
-  const { width: termWidth } = useTerminalDimensions();
-  const totalWidth = termWidth || renderer.width || 80;
+  const terminalSessions = useTerminalSessions();
+  const [activeTabByWorktree, setActiveTabByWorktree] = useState<Map<string, string>>(() => new Map());
+  const [terminalFocused, setTerminalFocused] = useState(false);
+  const { width: termW, height: termH } = useTerminalDimensions();
+  const totalWidth = termW || renderer.width || 80;
+  const totalHeight = termH || (renderer as any).height || 24;
 
   useEffect(() => {
-    if (termWidth) setSplitRatio((prev) => clampSplitRatio(termWidth, prev));
-  }, [termWidth]);
+    if (termW) setSplitRatio((prev) => clampSplitRatio(termW, prev));
+  }, [termW]);
 
   const doRefresh = useCallback(
     async (scope?: string[]) => {
@@ -237,6 +245,133 @@ export function App({ opts }: AppProps) {
   }, [maxIndex, selectedIndex]);
 
   const selectedRow = flatRows[selectedIndex] ?? null;
+
+  const worktreeKey = selectedRow ? terminalSessions.getKey(selectedRow.repoName, selectedRow.branch, selectedRow.path) : "";
+  const sessionsForSelected = selectedRow ? terminalSessions.getSessions(selectedRow.repoName, selectedRow.branch, selectedRow.path) : [];
+  const activeTabId = worktreeKey ? (activeTabByWorktree.get(worktreeKey) ?? "details") : "details";
+
+  useEffect(() => {
+    if (worktreeKey && !activeTabByWorktree.has(worktreeKey)) {
+      setActiveTabByWorktree((prev) => {
+        if (prev.has(worktreeKey)) return prev;
+        const next = new Map(prev);
+        next.set(worktreeKey, "details");
+        return next;
+      });
+    }
+  }, [worktreeKey, activeTabByWorktree]);
+
+  useEffect(() => {
+    if (sessionsForSelected.length === 0 && activeTabId !== "details") {
+      setActiveTabByWorktree((prev) => {
+        const next = new Map(prev);
+        next.set(worktreeKey, "details");
+        return next;
+      });
+      setTerminalFocused(false);
+    } else if (sessionsForSelected.length > 0) {
+      const exists = sessionsForSelected.some((s) => s.id === activeTabId) || activeTabId === "details";
+      if (!exists) {
+        setActiveTabByWorktree((prev) => {
+          const next = new Map(prev);
+          next.set(worktreeKey, sessionsForSelected[0]!.id);
+          return next;
+        });
+      }
+    }
+  }, [sessionsForSelected, activeTabId, worktreeKey]);
+
+  const handleSelectTab = useCallback(
+    (id: string) => {
+      if (!worktreeKey) return;
+      setActiveTabByWorktree((prev) => {
+        const next = new Map(prev);
+        next.set(worktreeKey, id);
+        return next;
+      });
+      const isSession = sessionsForSelected.some((s) => s.id === id);
+      setTerminalFocused(isSession);
+    },
+    [worktreeKey, sessionsForSelected]
+  );
+
+  const handleAddSession = useCallback(() => {
+    if (!selectedRow) {
+      flash("No worktree selected");
+      return;
+    }
+    const rawLeftTmp = Math.floor(totalWidth * splitRatio);
+    const leftColsTmp = Math.max(20, Math.min(totalWidth - 20 - DIVIDER_WIDTH, rawLeftTmp));
+    const rightColsTmp = Math.max(20, totalWidth - leftColsTmp - DIVIDER_WIDTH);
+    const cols = Math.max(20, rightColsTmp - 4);
+    const rows = Math.max(10, totalHeight - 10);
+    const { session, error } = terminalSessions.createSession(selectedRow.repoName, selectedRow.branch, selectedRow.path, { cols, rows });
+    if (error || !session) {
+      flash(error ?? "Failed to create session");
+      return;
+    }
+    const key = terminalSessions.getKey(selectedRow.repoName, selectedRow.branch, selectedRow.path);
+    setActiveTabByWorktree((prev) => {
+      const next = new Map(prev);
+      next.set(key, session.id);
+      return next;
+    });
+    setTerminalFocused(true);
+    flash(`Session ${session.label} created`, 2000);
+  }, [selectedRow, terminalSessions, flash, totalWidth, splitRatio, totalHeight]);
+
+  const handleCloseSession = useCallback(
+    (id: string) => {
+      if (!selectedRow) return;
+      terminalSessions.removeSession(selectedRow.repoName, selectedRow.branch, selectedRow.path, id);
+      const key = terminalSessions.getKey(selectedRow.repoName, selectedRow.branch, selectedRow.path);
+      setActiveTabByWorktree((prev) => {
+        const next = new Map(prev);
+        const current = next.get(key);
+        if (current === id) next.set(key, "details");
+        return next;
+      });
+      setTerminalFocused(false);
+      flash("Session closed", 2000);
+    },
+    [selectedRow, terminalSessions, flash]
+  );
+
+  useEffect(() => {
+    const existingKeys = new Set(blocks.flatMap((b) => b.rows.map((r) => terminalSessions.getKey(r.repoName, r.branch, r.path))));
+    for (const key of terminalSessions.sessionsByKey.keys()) {
+      if (!existingKeys.has(key)) terminalSessions.pruneKey(key);
+    }
+  }, [blocks, terminalSessions]);
+
+  const tabsForSelected: TabDef[] = useMemo(() => {
+    const base: TabDef[] = [
+      {
+        id: "details",
+        label: "Details",
+        render: ({ worktree }) => <DetailsContent selectedRow={worktree} />,
+      },
+    ];
+    for (const s of sessionsForSelected) {
+      base.push({
+        id: s.id,
+        label: s.label,
+        closable: true,
+        render: () => (
+          <TerminalView
+            session={s}
+            focused={terminalFocused && activeTabId === s.id}
+            onFocus={() => setTerminalFocused(true)}
+            onSend={(data) => terminalSessions.sendInput(s.repoName, s.branch, s.worktreePath, s.id, data)}
+            onResize={(cols, rows) => terminalSessions.resizeSession(s.repoName, s.branch, s.worktreePath, s.id, cols, rows)}
+            registerListener={terminalSessions.registerListener}
+            unregisterListener={terminalSessions.unregisterListener}
+          />
+        ),
+      });
+    }
+    return base;
+  }, [sessionsForSelected, terminalFocused, activeTabId, terminalSessions]);
 
   const { repoVerbs, rowVerbs } = useMemo(() => {
     const rv = new Map<string, VerbIndicator>();
@@ -530,13 +665,74 @@ export function App({ opts }: AppProps) {
         setModal({ type: "confirm_sync", rows: targets });
         return;
       }
+      if (key === "t") {
+        if (!selectedRow) return;
+        const sessions = terminalSessions.getSessions(selectedRow.repoName, selectedRow.branch, selectedRow.path);
+        if (sessions.length >= MAX_TERMINAL_SESSIONS) {
+          flash(`Max ${MAX_TERMINAL_SESSIONS} sessions per worktree`);
+          return;
+        }
+        handleAddSession();
+        return;
+      }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedRow, selection, warnings, busyRepos, busyRowPaths, doRefresh, flash, blocks]
+    [selectedRow, selection, warnings, busyRepos, busyRowPaths, doRefresh, flash, blocks, terminalSessions]
   );
 
   useKeyboard(
     (key) => {
+      if (terminalFocused) {
+        if (key.ctrl && key.name === "g") {
+          setTerminalFocused(false);
+          return;
+        }
+        const activeSession = sessionsForSelected.find((s) => s.id === activeTabId);
+        if (activeSession) {
+          let data: string | null = null;
+          const seq = (key as unknown as { sequence?: string }).sequence;
+          const raw = (key as unknown as { raw?: string }).raw;
+          if (key.ctrl && key.name && key.name.length === 1) {
+            const code = key.name.charCodeAt(0) - 96;
+            if (code >= 1 && code <= 26) data = String.fromCharCode(code);
+            else if (seq) data = seq;
+            else if (raw) data = raw;
+          } else if (seq) {
+            data = seq;
+          } else if (raw) {
+            data = raw;
+          } else if (key.name === "return" || key.name === "enter") {
+            data = "\r";
+          } else if (key.name === "backspace") {
+            data = "\x7f";
+          } else if (key.name === "tab") {
+            data = "\t";
+          } else if (key.name === "escape") {
+            data = "\x1b";
+          } else if (key.name && key.name.length === 1) {
+            data = key.name;
+          }
+          if (data !== null) {
+            terminalSessions.sendInput(activeSession.repoName, activeSession.branch, activeSession.worktreePath, activeSession.id, data);
+          }
+        }
+        return;
+      }
+      if (key.ctrl && key.name === "g") {
+        if (sessionsForSelected.length > 0) {
+          const targetId = activeTabId !== "details" ? activeTabId : sessionsForSelected[0]!.id;
+          if (worktreeKey) {
+            setActiveTabByWorktree((prev) => {
+              const next = new Map(prev);
+              next.set(worktreeKey, targetId);
+              return next;
+            });
+          }
+          setTerminalFocused(true);
+          return;
+        }
+      }
+
       if (isFiltering) {
         if (key.name === "escape") {
           setIsFiltering(false);
@@ -878,17 +1074,47 @@ export function App({ opts }: AppProps) {
         setModal({ type: "confirm_sync", rows: targets });
         return;
       }
+
+      if (key.name === "t") {
+        if (!selectedRow) {
+          flash("No worktree selected");
+          return;
+        }
+        const sessions = terminalSessions.getSessions(selectedRow.repoName, selectedRow.branch, selectedRow.path);
+        if (sessions.length >= MAX_TERMINAL_SESSIONS) {
+          flash(`Max ${MAX_TERMINAL_SESSIONS} sessions per worktree`);
+          return;
+        }
+        handleAddSession();
+        return;
+      }
     }
   );
 
   const rawLeft = Math.floor(totalWidth * splitRatio);
   const leftCols = Math.max(20, Math.min(totalWidth - 20 - DIVIDER_WIDTH, rawLeft));
   const rightCols = Math.max(20, totalWidth - leftCols - DIVIDER_WIDTH);
+  const paneCols = Math.max(20, rightCols - 4);
+  const paneRows = Math.max(10, totalHeight - 10);
+
+  useEffect(() => {
+    for (const sessions of terminalSessions.sessionsByKey.values()) {
+      for (const s of sessions) {
+        if (s.usePty && s.terminal && (s.cols !== paneCols || s.rows !== paneRows)) {
+          terminalSessions.resizeSession(s.repoName, s.branch, s.worktreePath, s.id, paneCols, paneRows);
+        }
+      }
+    }
+  }, [paneCols, paneRows, terminalSessions]);
+
+  useEffect(() => {
+    setTerminalFocused(false);
+  }, [selectedIndex]);
 
   return (
     <box flexDirection="column" width="100%" height="100%">
       <box flexDirection="row" width="100%" flexGrow={1}>
-        <box width={leftCols} height="100%" flexDirection="column">
+        <box width={leftCols} height="100%" flexDirection="column" onMouseDown={() => setTerminalFocused(false)}>
           <WorktreeTable
             blocks={displayBlocks}
             selectedIndex={selectedIndex}
@@ -896,13 +1122,25 @@ export function App({ opts }: AppProps) {
             frame={spinnerFrame}
             repoVerbs={repoVerbs}
             rowVerbs={rowVerbs}
-            onRowClick={(idx) => setSelectedIndex(idx)}
+            onRowClick={(idx) => {
+              setTerminalFocused(false);
+              setSelectedIndex(idx);
+            }}
             onToggleSelect={(path) => setSelection((prev) => toggleSelection(prev, path))}
           />
         </box>
         <Divider splitRatio={splitRatio} totalWidth={totalWidth} onChange={setSplitRatio} onDraggingChange={setIsResizing} />
         <box width={rightCols} height="100%" flexDirection="column">
-          <DetailPane selectedRow={selectedRow} />
+          <TabPane
+            selectedRow={selectedRow}
+            tabs={tabsForSelected}
+            activeId={activeTabId}
+            focused={terminalFocused && tabsForSelected.some((t) => t.id === activeTabId && t.id !== "details")}
+            canAdd={sessionsForSelected.length < MAX_TERMINAL_SESSIONS}
+            onSelect={handleSelectTab}
+            onAdd={handleAddSession}
+            onClose={handleCloseSession}
+          />
         </box>
       </box>
       {isFiltering && (
