@@ -1,5 +1,5 @@
 
-import { createCliRenderer, TextTableRenderable } from "@opentui/core";
+import { createCliRenderer, TextTableRenderable, EmbeddedTerminalRenderable } from "@opentui/core";
 import { createRoot, extend } from "@opentui/react";
 import type { GlobalOptions } from "../types.js";
 import { App } from "./components/App.js";
@@ -7,10 +7,17 @@ import { App } from "./components/App.js";
 declare module "@opentui/react" {
   interface OpenTUIComponents {
     "text-table": typeof TextTableRenderable;
+    "embedded-terminal": typeof EmbeddedTerminalRenderable;
   }
 }
 
-extend({ "text-table": TextTableRenderable });
+declare module "@opentui/core" {
+  interface EmbeddedTerminalOptions {
+    focused?: boolean;
+  }
+}
+
+extend({ "text-table": TextTableRenderable, "embedded-terminal": EmbeddedTerminalRenderable });
 
 export async function runTerminal(opts: GlobalOptions): Promise<void> {
   const renderer = await createCliRenderer({
@@ -27,4 +34,3 @@ export async function runTerminal(opts: GlobalOptions): Promise<void> {
     process.exit(1);
   }
 }
-
