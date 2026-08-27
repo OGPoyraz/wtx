@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-08-27
+
+### Fixed
+
+- `wtx terminal` now auto-relaunches via Bun when invoked from Node or the compiled binary — `wtx terminal` works transparently when Bun is installed instead of requiring `bunx --bun wtx terminal`
+
 ## [0.8.5] - 2026-08-27
 
 ### Fixed
@@ -244,7 +250,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.5...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.6...HEAD
+[0.8.6]: https://github.com/OGPoyraz/wtx/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/OGPoyraz/wtx/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/OGPoyraz/wtx/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/OGPoyraz/wtx/compare/v0.8.2...v0.8.3
