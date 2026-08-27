@@ -18,19 +18,8 @@ interface FooterProps {
 }
 
 const HINTS: [string, string][] = [
-  ["c", "config"],
   ["n", "create"],
-  ["f", "fetch"],
-  ["?", "help"],
-  ["H", "history"],
-  ["o", "ide"],
-  ["i", "install"],
-  ["p", "pull"],
-  ["b", "rebase"],
-  ["r", "refresh"],
   ["d", "remove"],
-  ["m", "rename"],
-  ["s", "sync"],
 ];
 
 function HintItem({ hintKey, label, isFirst, onClick }: { hintKey: string; label: string; isFirst: boolean; onClick?: (key: string) => void }) {
@@ -82,7 +71,7 @@ export function Footer({ loading, lastRefreshed, errorCount, message, busyText, 
         </box>
       )}
       
-      <box flexDirection="row" gap={2}>
+      <box flexDirection="row" gap={2} alignItems="center">
         {message ? (
           <text fg={tokens.warning}>{message}</text>
         ) : null}
@@ -92,6 +81,7 @@ export function Footer({ loading, lastRefreshed, errorCount, message, busyText, 
         ) : null}
 
         {errorCount > 0 ? <ErrorBadge count={errorCount} onClick={onErrorClick} /> : null}
+        <HintItem hintKey="?" label="help" isFirst={errorCount === 0} onClick={onHintClick} />
         
         <text fg={tokens.dim}>
           {loading ? `${frame} Refreshing…` : `Updated ${lastRefreshed}`}
