@@ -18,6 +18,8 @@ interface WorktreeTableProps {
   frame: string;
   repoVerbs: Map<string, VerbIndicator>;
   rowVerbs: Map<string, VerbIndicator>;
+  onRowClick?: (index: number) => void;
+  onToggleSelect?: (path: string) => void;
 }
 
 const SECONDARY_INDENT = "      ";
@@ -32,9 +34,34 @@ function statusBadge(row: WorktreeRow): { text: string; fg: string } {
   return { text: "clean", fg: tokens.dim };
 }
 
-function WorktreeItem({ row, isSelected, isMultiSelected, indicator, frame, id }: { row: WorktreeRow; isSelected: boolean; isMultiSelected: boolean; indicator?: VerbIndicator; frame: string; id?: string }) {
+function WorktreeItem({
+  row,
+  isSelected,
+  isMultiSelected,
+  indicator,
+  frame,
+  id,
+  onRowClick,
+  onToggleSelect,
+}: {
+  row: WorktreeRow;
+  isSelected: boolean;
+  isMultiSelected: boolean;
+  indicator?: VerbIndicator;
+  frame: string;
+  id?: string;
+  onRowClick?: () => void;
+  onToggleSelect?: () => void;
+}) {
   const prTap = useTapHandler(() => {
     if (row.prUrl) void openInBrowser(row.prUrl);
+  });
+  const rowTap = useTapHandler(() => {
+    onRowClick?.();
+  });
+  const gutterTap = useTapHandler((e) => {
+    e.stopPropagation();
+    onToggleSelect?.();
   });
 
   const badge = indicator
@@ -71,39 +98,54 @@ function WorktreeItem({ row, isSelected, isMultiSelected, indicator, frame, id }
     .join(" ")
     .trimEnd();
 
+  const isClickable = !row.isPendingCreate && !indicator;
+
   return (
     <box
       id={id}
       flexDirection="column"
       backgroundColor={isSelected ? tokens.selectionBg : undefined}
       style={{ paddingRight: 1 }}
+      {...(isClickable && onRowClick ? rowTap : {})}
     >
-      <text>
-        <span fg={primary}>{isSelected ? "▸ " : "  "}</span>
-        <span fg={tokens.accent}>{isMultiSelected ? "✓ " : "  "}</span>
-        <span fg={tokens.dim}>{hierarchyPrefix}</span>
-        <span fg={primary}>{truncateBranch(row.branch)}</span>
-        <span fg={badge.fg}>{`  ${badge.text}`}</span>
-      </text>
-      <text {...(row.prUrl ? prTap : {})}>
-        <span fg={tokens.dim}>{secondary}</span>
+      <box flexDirection="row">
+        <text>
+          <span fg={primary}>{isSelected ? "▸ " : "  "}</span>
+        </text>
+        <box width={2} {...(onToggleSelect ? gutterTap : {})}>
+          <text fg={tokens.accent}>{isMultiSelected ? "✓ " : "  "}</text>
+        </box>
+        <text>
+          <span fg={tokens.dim}>{hierarchyPrefix}</span>
+          <span fg={primary}>{truncateBranch(row.branch)}</span>
+          <span fg={badge.fg}>{`  ${badge.text}`}</span>
+        </text>
+      </box>
+      <box flexDirection="row">
+        <text>
+          <span fg={tokens.dim}>{secondary}</span>
+          {row.prNumber !== null && secondary ? <span fg={tokens.dim}>{" · "}</span> : null}
+        </text>
         {row.prNumber !== null && (
-          <>
-            <span fg={tokens.dim}>{secondary ? " · " : ""}</span>
-            <span fg={tokens.accent}>{`#${row.prNumber}`}</span>
-            {row.prState && <span fg={tokens.dim}>{` ${row.prState}`}</span>}
-            {row.prChecks && <span fg={tokens.dim}>{` (${row.prChecks})`}</span>}
-            {row.prUrl && <span fg={tokens.dim}> ↗</span>}
-          </>
+          <box {...(row.prUrl ? prTap : {})}>
+            <text>
+              <span fg={tokens.accent}>{`#${row.prNumber}`}</span>
+              {row.prState && <span fg={tokens.dim}>{` ${row.prState}`}</span>}
+              {row.prChecks && <span fg={tokens.dim}>{` (${row.prChecks})`}</span>}
+              {row.prUrl && <span fg={tokens.dim}>{" ↗"}</span>}
+            </text>
+          </box>
         )}
-        {baseChangedSegment && <span fg={tokens.warning}>{baseChangedSegment}</span>}
-        {rebaseSegment && <span fg={tokens.error}>{rebaseSegment}</span>}
-      </text>
+        <text>
+          {baseChangedSegment && <span fg={tokens.warning}>{baseChangedSegment}</span>}
+          {rebaseSegment && <span fg={tokens.error}>{rebaseSegment}</span>}
+        </text>
+      </box>
     </box>
   );
 }
 
-export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), frame, repoVerbs, rowVerbs }: WorktreeTableProps) {
+export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), frame, repoVerbs, rowVerbs, onRowClick, onToggleSelect }: WorktreeTableProps) {
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   useEffect(() => {
@@ -112,19 +154,31 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
     }
   }, [selectedIndex]);
 
-  let flatIndex = 0;
+  const flatIndexMap = new Map<string, number>();
+  let idx = 0;
+  for (const b of blocks) {
+    for (const r of b.rows) {
+      if (!r.isPendingCreate) flatIndexMap.set(r.path, idx++);
+    }
+  }
+
+  let headerSeen = 0;
 
   return (
     <scrollbox
       ref={scrollRef}
       id="worktree-table"
-      flexGrow={2}
+      flexGrow={1}
+      width="100%"
       height="100%"
       border={true}
       borderColor={tokens.border}
       title="Worktrees"
       paddingX={1}
       focused={false}
+      onMouseScroll={(e) => {
+        e.stopPropagation();
+      }}
     >
       {blocks.length === 0 ? (
         <text fg={tokens.dim}>No repositories configured.</text>
@@ -133,7 +187,7 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
           const repoIndicator = repoVerbs.get(block.repoName);
           return (
             <box key={block.repoName} flexDirection="column" style={{ marginBottom: 1 }}>
-              <box style={{ marginTop: flatIndex === 0 ? 0 : 1 }}>
+              <box style={{ marginTop: headerSeen === 0 ? 0 : 1 }}>
                 <text>
                   <span fg={tokens.bright}>{block.repoName}</span>
                   {block.rows.length > 0 && (
@@ -151,10 +205,14 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
                 </text>
               </box>
 
+              {(() => {
+                headerSeen++;
+                return null;
+              })()}
               {block.rows.map((row) => {
                 const navigable = !row.isPendingCreate;
-                const isSelected = navigable && flatIndex === selectedIndex;
-                if (navigable) flatIndex++;
+                const flatIdx = flatIndexMap.get(row.path);
+                const isSelected = navigable && flatIdx === selectedIndex;
                 return (
                   <WorktreeItem
                     key={row.path}
@@ -164,6 +222,10 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
                     indicator={rowVerbs.get(row.path)}
                     frame={frame}
                     id={isSelected ? "selected-row" : undefined}
+                    onRowClick={
+                      navigable && flatIdx !== undefined && onRowClick ? () => onRowClick(flatIdx) : undefined
+                    }
+                    onToggleSelect={onToggleSelect ? () => onToggleSelect(row.path) : undefined}
                   />
                 );
               })}

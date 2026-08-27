@@ -18,6 +18,7 @@ export function DetailPane({ selectedRow }: DetailPaneProps) {
       <box
         id="detail-pane"
         flexGrow={1}
+        width="100%"
         height="100%"
         border={true}
         borderColor={tokens.border}
@@ -45,6 +46,7 @@ export function DetailPane({ selectedRow }: DetailPaneProps) {
     <scrollbox
       id="detail-pane"
       flexGrow={1}
+      width="100%"
       height="100%"
       border={true}
       borderColor={tokens.border}

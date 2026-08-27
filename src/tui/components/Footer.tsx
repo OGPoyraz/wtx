@@ -1,4 +1,5 @@
 import { tokens } from "../theme.js";
+import { useTapHandler } from "../hooks/use-tap.js";
 
 interface FooterProps {
   loading: boolean;
@@ -12,6 +13,8 @@ interface FooterProps {
     matches: number;
     total: number;
   };
+  onHintClick?: (key: string) => void;
+  onErrorClick?: () => void;
 }
 
 const HINTS: [string, string][] = [
@@ -30,10 +33,33 @@ const HINTS: [string, string][] = [
   ["s", "sync"],
 ];
 
-export function Footer({ loading, lastRefreshed, errorCount, message, busyText, spinnerFrame, filter }: FooterProps) {
-  const hints = HINTS.map(([key, action]) => `${key} ${action}`).join(" · ");
+function HintItem({ hintKey, label, isFirst, onClick }: { hintKey: string; label: string; isFirst: boolean; onClick?: (key: string) => void }) {
+  const tap = useTapHandler(() => onClick?.(hintKey));
+  return (
+    <box flexDirection="row" {...(onClick ? tap : {})}>
+      <text>
+        <span fg={tokens.dim}>{isFirst ? "" : " · "}</span>
+        <span fg={tokens.dim}>{`${hintKey} ${label}`}</span>
+      </text>
+    </box>
+  );
+}
+
+function ErrorBadge({ count, onClick }: { count: number; onClick?: () => void }) {
+  const tap = useTapHandler(() => onClick?.());
+  return (
+    <box {...(onClick ? tap : {})}>
+      <text>
+        <span fg={tokens.error}>{`${count} error${count !== 1 ? "s" : ""}`}</span>
+        <span fg={tokens.dim}> · e view</span>
+      </text>
+    </box>
+  );
+}
+
+export function Footer({ loading, lastRefreshed, errorCount, message, busyText, spinnerFrame, filter, onHintClick, onErrorClick }: FooterProps) {
   const frame = spinnerFrame ?? "◌";
-  
+
   return (
     <box
       id="footer"
@@ -49,7 +75,11 @@ export function Footer({ loading, lastRefreshed, errorCount, message, busyText, 
       {busyText ? (
         <text fg={tokens.accent}>{`${frame} ${busyText}`}</text>
       ) : (
-        <text fg={tokens.dim}>{hints}</text>
+        <box flexDirection="row" gap={1}>
+          {HINTS.map(([key, label], idx) => (
+            <HintItem key={key} hintKey={key} label={label} isFirst={idx === 0} onClick={onHintClick} />
+          ))}
+        </box>
       )}
       
       <box flexDirection="row" gap={2}>
@@ -61,12 +91,7 @@ export function Footer({ loading, lastRefreshed, errorCount, message, busyText, 
           <text fg="magenta">filter: {filter.term} ({filter.matches}/{filter.total})</text>
         ) : null}
 
-        {errorCount > 0 ? (
-          <text>
-            <span fg={tokens.error}>{`${errorCount} error${errorCount !== 1 ? "s" : ""}`}</span>
-            <span fg={tokens.dim}> · e view</span>
-          </text>
-        ) : null}
+        {errorCount > 0 ? <ErrorBadge count={errorCount} onClick={onErrorClick} /> : null}
         
         <text fg={tokens.dim}>
           {loading ? `${frame} Refreshing…` : `Updated ${lastRefreshed}`}
