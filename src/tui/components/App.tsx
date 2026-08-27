@@ -22,9 +22,7 @@ import { ConfigOverlay } from "./ConfigOverlay.js";
 import { WarningsOverlay } from "./WarningsOverlay.js";
 import { matchesFilter, toggleSelection, withCreatePlaceholders, sortBlocks, clampSplitRatio, DIVIDER_WIDTH } from "../utils.js";
 import { copyTextToClipboard } from "../platform.js";
-import { resolveAgentCommand, spawnAgentInWorktree } from "../../lib/agents.js";
 import { loadConfig } from "../../lib/config.js";
-import { appendHistory } from "../../lib/history.js";
 import { useSpinnerFrame } from "../hooks/useSpinnerFrame.js";
 
 export interface AppProps {
@@ -870,45 +868,6 @@ export function App({ opts }: AppProps) {
         }
         setModal({ type: "confirm_sync", rows: targets });
         return;
-      }
-
-      if (key.name === "a") {
-        const targets = getSelectedRows();
-        if (targets.length === 0) return;
-        const target = targets[0];
-        if (!target) return;
-        const conflict = findConflict([target]);
-        if (conflict) {
-          flash(conflict);
-          return;
-        }
-        void (async () => {
-          const startedAt = Date.now();
-          try {
-            const config = await loadConfig();
-            const cmdTemplate = resolveAgentCommand("claude", config.agents) ?? "claude";
-            const result = await spawnAgentInWorktree(cmdTemplate, target.path, { repoName: target.repoName, branch: target.branch });
-            appendHistory({
-              ts: new Date().toISOString(),
-              source: "terminal",
-              command: "agent",
-              args: ["agent", target.branch, "--repo", target.repoName],
-              durationMs: Date.now() - startedAt,
-              exit: 0,
-            });
-            flash(`Agent spawned (${result.mode}${result.session ? ` session ${result.session}` : ""})`, 5000);
-          } catch (e: any) {
-            appendHistory({
-              ts: new Date().toISOString(),
-              source: "terminal",
-              command: "agent",
-              args: ["agent", target.branch, "--repo", target.repoName],
-              durationMs: Date.now() - startedAt,
-              exit: 1,
-            });
-            flash(`Agent failed: ${e.message}`, 5000);
-          }
-        })();
       }
     }
   );
