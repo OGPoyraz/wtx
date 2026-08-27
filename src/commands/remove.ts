@@ -47,8 +47,8 @@ function isRecoverableWorktreeRemoveError(message: string): boolean {
     || isMissingWorktreePathError(message);
 }
 
-function removeExistingPath(wtPath: string): void {
-  if (fs.existsSync(wtPath)) {
+function removeExistingPath(wtPath: string, opts: GlobalOptions): void {
+  if (!opts.dryRun && fs.existsSync(wtPath)) {
     fs.rmSync(wtPath, { recursive: true, force: true });
   }
 }
@@ -165,9 +165,7 @@ export function registerRemoveCommand(program: Command) {
                 skipCount++;
                 continue;
               }
-              if (!globalOpts.dryRun) {
-                removeExistingPath(candidatePath);
-              }
+              removeExistingPath(candidatePath, globalOpts);
               await removeLocalBranchBestEffort(repo.mainPath, branch, globalOpts);
               await finishCleanup(repo, candidatePath, branch, globalOpts);
               stepSuccess("Worktree removed", candidatePath);
@@ -261,9 +259,7 @@ export function registerRemoveCommand(program: Command) {
               } catch (pruneErr: unknown) {
                 stepWarning("Worktree prune failed", errorMessage(pruneErr));
               }
-              if (!globalOpts.dryRun) {
-                removeExistingPath(wtPath);
-              }
+              removeExistingPath(wtPath, globalOpts);
               await removeLocalBranchBestEffort(repo.mainPath, branch, globalOpts);
               stepSuccess("Worktree removed", wtPath);
             } else {
