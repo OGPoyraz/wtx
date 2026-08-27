@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { existsSync } from "node:fs";
 import { useKeyboard, useRenderer, useSelectionHandler } from "@opentui/react";
 import type { GlobalOptions } from "../../types.js";
 import { useWorktrees } from "../hooks/useWorktrees.js";
@@ -110,6 +111,9 @@ export function App({ opts }: AppProps) {
   const [createBaseModal, setCreateBaseModal] = useState<{ branch: string; repoName: string } | null>(null);
   const [createBaseError, setCreateBaseError] = useState<string | undefined>();
   const [createDepsChoice, setCreateDepsChoice] = useState<{ branch: string; repoName: string; base?: string } | null>(null);
+  const [pullPrModal, setPullPrModal] = useState(false);
+  const [pullPrError, setPullPrError] = useState<string | undefined>();
+  const [pullForceChoice, setPullForceChoice] = useState<{ link: string; repoName: string } | null>(null);
   const [renameModal, setRenameModal] = useState(false);
   const [renameError, setRenameError] = useState<string | undefined>();
   const [configOpen, setConfigOpen] = useState(false);
@@ -344,6 +348,22 @@ export function App({ opts }: AppProps) {
     void executeOp(op, args, [repoName]);
   };
 
+  const startPullPr = (link: string, repoName: string, force?: boolean) => {
+    const op: PendingOp = {
+      id: nextOpId.current++,
+      kind: "pull",
+      repoNames: [repoName],
+      label: `PR ${link.split("/").pop()}`,
+      title: `Pull ${link}`,
+      status: "queued",
+      lines: [],
+    };
+    setOps(prev => [...prev, op]);
+    const args = ["pull", link, "--repo", repoName];
+    if (force) args.push("--force");
+    void executeOp(op, args, [repoName]);
+  };
+
   useKeyboard(
     (key) => {
       if (isFiltering) {
@@ -382,6 +402,16 @@ export function App({ opts }: AppProps) {
 
       if (createDepsChoice) return;
 
+      if (pullPrModal) {
+        if (key.name === "escape") {
+          setPullPrModal(false);
+          setPullPrError(undefined);
+        }
+        return;
+      }
+
+      if (pullForceChoice) return;
+
       if (renameModal) {
         if (key.name === "escape") {
           setRenameModal(false);
@@ -417,7 +447,8 @@ export function App({ opts }: AppProps) {
             if (action === "confirm_remove") {
               startBatchActions("remove", rows, (r) => {
                 const args = ["remove", r.branch, "--repo", r.repoName, "--yes"];
-                if (r.dirtyFiles.length > 0) args.push("--force");
+                const needsForce = r.dirtyFiles.length > 0 || !existsSync(r.path);
+                if (needsForce) args.push("--force");
                 return args;
               });
             } else if (action === "confirm_rebase") {
@@ -514,6 +545,21 @@ export function App({ opts }: AppProps) {
         if (!selectedRow) return;
         setCreateModal(true);
         setCreateError(undefined);
+        return;
+      }
+
+      if (key.name === "P" || (key.name === "p" && key.shift)) {
+        const repoName = selectedRow?.repoName ?? getSelectedRows()[0]?.repoName;
+        if (!repoName) {
+          flash("No repo selected");
+          return;
+        }
+        if (busyRepos.has(repoName)) {
+          flash(`${repoName} is busy`);
+          return;
+        }
+        setPullPrModal(true);
+        setPullPrError(undefined);
         return;
       }
 
@@ -820,6 +866,53 @@ export function App({ opts }: AppProps) {
             startCreate(branch, repoName, choice, base);
           }}
           onCancel={() => setCreateDepsChoice(null)}
+        />
+      )}
+
+      {pullPrModal && (
+        <InputModal
+          title={`Pull PR into ${selectedRow?.repoName ?? ""}`}
+          placeholder="https://github.com/owner/repo/pull/123"
+          errorMessage={pullPrError}
+          onSubmit={(value) => {
+            const link = value.trim();
+            if (!link) {
+              setPullPrModal(false);
+              return;
+            }
+            if (!link.includes("github.com") || !link.includes("/pull/")) {
+              setPullPrError("Invalid PR link: expected https://github.com/{owner}/{repo}/pull/{N}");
+              return;
+            }
+            const repoName = selectedRow?.repoName;
+            if (!repoName) {
+              setPullPrError("No repo selected");
+              return;
+            }
+            if (busyRepos.has(repoName)) {
+              setPullPrError(`${repoName} is busy`);
+              return;
+            }
+            setPullPrModal(false);
+            setPullPrError(undefined);
+            setPullForceChoice({ link, repoName });
+          }}
+        />
+      )}
+
+      {pullForceChoice && (
+        <ChoiceModal
+          title={`Pull ${pullForceChoice.link.split("/").pop()}?`}
+          options={[
+            { value: "normal", label: "Pull (skip if exists)", desc: "Fails if branch already exists" },
+            { value: "force", label: "Force Override", desc: "Remove existing branch/worktree and recreate" },
+          ]}
+          onSubmit={(choice) => {
+            const { link, repoName } = pullForceChoice;
+            setPullForceChoice(null);
+            startPullPr(link, repoName, choice === "force");
+          }}
+          onCancel={() => setPullForceChoice(null)}
         />
       )}
 
