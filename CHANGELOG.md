@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-08-27
+
+### Added
+
+- TUI: Pull PR by link via `Shift+P` — InputModal for `https://github.com/owner/repo/pull/N` followed by a choice between normal pull and force override; uses the existing `pull` verb and refreshes the worktree list on success
+- CLI: `wtx pull` now supports `-f/--force` to override an existing local branch/worktree — removes the existing worktree (`--force`), deletes any leftover directory, and deletes the local branch (`branch -D`) then recreates the worktree with `-B`
+
+### Fixed
+
+- `wtx remove` (CLI and TUI) now cleans up reliably when the worktree entry or folder is missing — with `--force` it removes an orphaned directory, deletes a stale local branch, runs `worktree prune`, cleans empty parent directories and removes stack metadata instead of rejecting with “No worktree found” or “Failed to check for uncommitted changes”
+- TUI delete now passes `--force` when the worktree folder is missing (`!existsSync`) or has dirty files, ensuring incoherent state can always be force-deleted from the dashboard
+- `remove` fallback cleanup now respects `--dry-run` (no filesystem mutation during dry runs)
+- Shell completions for `wtx pull` now include `-f/--force`
+
 ## [0.8.3] - 2026-08-26
 
 ### Fixed
@@ -224,7 +238,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.4...HEAD
+[0.8.4]: https://github.com/OGPoyraz/wtx/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/OGPoyraz/wtx/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/OGPoyraz/wtx/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/OGPoyraz/wtx/compare/v0.8.0...v0.8.1
