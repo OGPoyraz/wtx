@@ -122,7 +122,16 @@ export function App({ opts }: AppProps) {
   const [isFiltering, setIsFiltering] = useState(false);
   const [selection, setSelection] = useState<Set<string>>(new Set());
 
-  const [splitRatio, setSplitRatio] = useState(0.6);
+  const [splitRatio, setSplitRatio] = useState(() => {
+    try {
+      const cfg = loadConfig();
+      const left = cfg.tui?.leftPaneWidthWeight ?? 3;
+      const right = cfg.tui?.rightPaneWidthWeight ?? 7;
+      const total = left + right;
+      if (total > 0) return left / total;
+    } catch {}
+    return 3 / 10;
+  });
   const [isResizing, setIsResizing] = useState(false);
   const { width: termWidth } = useTerminalDimensions();
   const totalWidth = termWidth || renderer.width || 80;
