@@ -34,7 +34,7 @@ export function HelpOverlay() {
         <scrollbox flexGrow={1}>
           {HELP_ENTRIES.map(([key, desc]) => (
             <box key={key} flexDirection="row" gap={1}>
-              <box width={18} flexShrink={0}>
+              <box width={18} flexShrink={0} justifyContent="flex-end">
                 <text fg={tokens.accent}>{key}</text>
               </box>
               <text fg={tokens.dim}>-</text>
