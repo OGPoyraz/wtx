@@ -27,6 +27,13 @@ export const PortsConfigSchema = z.object({
 
 export type PortsConfig = z.infer<typeof PortsConfigSchema>;
 
+export const TuiConfigSchema = z.object({
+  leftPaneWidthWeight: z.number().int().min(1).max(10).default(3),
+  rightPaneWidthWeight: z.number().int().min(1).max(10).default(7),
+});
+
+export type TuiConfig = z.infer<typeof TuiConfigSchema>;
+
 const LEGACY_REPO_KEYS: Record<string, string> = {
   pr: "check_prs",
   forge: "forge_provider",
@@ -93,6 +100,7 @@ export const ConfigSchema = z.object({
     AgentConfigSchema
   ).optional(),
   ports: PortsConfigSchema.default({ min: 4100, max: 4999 }),
+  tui: TuiConfigSchema.default({ leftPaneWidthWeight: 3, rightPaneWidthWeight: 7 }),
 });
 
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
