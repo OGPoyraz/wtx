@@ -15,7 +15,6 @@ const HELP_ENTRIES: [string, string][] = [
   ["i", "Install dependencies in selection (worktrees and main)"],
   ["m", "Rename selected worktree (branch + directory)"],
   ["o", "Open selected in IDE"],
-  ["a", "Spawn agent in selected"],
   ["d", "Remove selected worktree(s)"],
   ["e", "View data warnings (when count > 0)"],
   ["r", "Refresh data"],
