@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-08-27
+
+### Changed
+
+- TUI: footer now shows only `n create` and `d remove` on the left; `? help` is shown next to the `e view` error badge on the right
+- TUI: help overlay widened to 84 cols with a row layout so long descriptions wrap inside their own column instead of breaking at column 0
+
+### Added
+
+- TUI: warnings overlay widened to 80 cols with an `Acknowledge` button (`a`) that clears the footer error badge until the next refresh; `esc` still just closes
+
+### Fixed
+
+- TUI: Worktrees and Details pane borders no longer change color when clicked/focused — they stay at the default border color
+
 ## [0.8.7] - 2026-08-27
 
 ### Added
@@ -257,7 +272,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.7...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.8...HEAD
+[0.8.8]: https://github.com/OGPoyraz/wtx/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/OGPoyraz/wtx/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/OGPoyraz/wtx/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/OGPoyraz/wtx/compare/v0.8.4...v0.8.5
