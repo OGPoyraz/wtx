@@ -118,9 +118,22 @@ export function useTerminalSessions() {
       };
 
       const onPtyData = (data: Uint8Array) => {
+        if (data.length > 0) {
+          const text = new TextDecoder().decode(data);
+          if (text.includes("page_list") || text.includes("x icon") || text.includes("received and ignored")) {
+            const reset = new TextEncoder().encode("\x1b[0m");
+            const buf = rawBuffersRef.current.get(id) ?? [];
+            buf.push(reset);
+            if (buf.length > 2000) buf.shift();
+            rawBuffersRef.current.set(id, buf);
+            const listener = listenersRef.current.get(id);
+            if (listener) listener(reset);
+            return;
+          }
+        }
         const buf = rawBuffersRef.current.get(id) ?? [];
         buf.push(data);
-        if (buf.length > 500) buf.shift();
+        if (buf.length > 2000) buf.shift();
         rawBuffersRef.current.set(id, buf);
         const listener = listenersRef.current.get(id);
         if (listener) {

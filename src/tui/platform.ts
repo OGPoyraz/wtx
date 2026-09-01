@@ -49,6 +49,40 @@ export async function copyTextToClipboard(renderer: CliRenderer, text: string): 
   return viaSystem || viaTerminal;
 }
 
+export function pasteCandidatesFor(
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv = process.env
+): PlatformCommand[] {
+  if (platform === "darwin") return [{ cmd: "pbpaste", args: [] }];
+  if (platform === "win32") return [{ cmd: "powershell.exe", args: ["-command", "Get-Clipboard"] }];
+  const candidates: PlatformCommand[] = [];
+  if (env.WAYLAND_DISPLAY) candidates.push({ cmd: "wl-paste", args: ["--no-newline"] });
+  if (env.DISPLAY) {
+    candidates.push({ cmd: "xclip", args: ["-selection", "clipboard", "-o"] });
+    candidates.push({ cmd: "xsel", args: ["--clipboard", "--output"] });
+  }
+  candidates.push({ cmd: "wl-paste", args: ["--no-newline"] });
+  candidates.push({ cmd: "xclip", args: ["-selection", "clipboard", "-o"] });
+  candidates.push({ cmd: "xsel", args: ["--clipboard", "--output"] });
+  return candidates;
+}
+
+export async function readTextFromClipboard(): Promise<string | null> {
+  for (const candidate of pasteCandidatesFor(process.platform)) {
+    try {
+      const proc = Bun.spawn([candidate.cmd, ...candidate.args], {
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      const text = await new Response(proc.stdout).text();
+      const code = await proc.exited;
+      if (code === 0 && text) return text;
+    } catch {}
+  }
+  return null;
+}
+
 export function browserCommandFor(platform: NodeJS.Platform, url: string): PlatformCommand | null {
   if (!/^https?:\/\//.test(url)) return null;
   if (platform === "darwin") return { cmd: "open", args: [url] };
