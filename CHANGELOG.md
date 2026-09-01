@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.10] - 2026-09-01
+
+### Fixed
+
+- TUI: terminal paste — bracketed paste via `usePaste` with Super/Meta/Ctrl+V fallback through `pbpaste`/`wl-paste`/`xclip`/`xsel`
+- TUI: terminal rendering — keep all `TerminalView` mounted (visible tab + absolute overlay), remove destructive clear, and invalidate on resize
+- TUI: terminal scroll — handle pty/scroll passthrough with `Shift+wheel` for outer scroll and plain wheel to app, `maxScrollback` 10000
+- TUI: suppress noisy logs — disable `RUST_LOG`/`ZIG_LOG`/`PAGE_LIST_LOG`, disable `consoleMode`, wrap `stdout`/`stderr` with filtering for `page_list` noise
+
 ## [0.8.9] - 2026-08-27
 
-## Changed
+### Changed
 
 - TUI: add terminal sessions
 - TUI: add TUI pane with weights config
@@ -280,8 +289,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.8...HEAD
-[0.8.8]: https://github.com/OGPoyraz/wtx/compare/v0.8.8...v0.8.9
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.8.10...HEAD
+[0.8.10]: https://github.com/OGPoyraz/wtx/compare/v0.8.9...v0.8.10
+[0.8.9]: https://github.com/OGPoyraz/wtx/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/OGPoyraz/wtx/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/OGPoyraz/wtx/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/OGPoyraz/wtx/compare/v0.8.5...v0.8.6
