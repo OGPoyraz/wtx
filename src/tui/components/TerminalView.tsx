@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { EmbeddedTerminalRenderable } from "@opentui/core";
+import type { EmbeddedTerminalRenderable, ScrollBoxRenderable } from "@opentui/core";
 import { tokens } from "../theme.js";
 import type { TerminalSession } from "../hooks/useTerminalSessions.js";
 import { useTapHandler } from "../hooks/use-tap.js";
@@ -18,6 +18,33 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
   const [draft, setDraft] = useState("");
   const focusTap = useTapHandler(() => onFocus());
   const termRef = useRef<EmbeddedTerminalRenderable | null>(null);
+  const pipeScrollRef = useRef<ScrollBoxRenderable | null>(null);
+
+  const handlePtyScroll = useCallback((e: unknown) => {
+    const ev = e as { scroll?: { direction?: string }; preventDefault?: () => void; stopPropagation?: () => void };
+    const dir = ev.scroll?.direction;
+    if (dir !== "up" && dir !== "down") return;
+    const term = termRef.current as unknown as { handle?: unknown; lib?: { embeddedTerminalScroll: (h: unknown, d: number) => void }; requestRender?: () => void } | null;
+    if (term?.handle && term?.lib) {
+      try {
+        term.lib.embeddedTerminalScroll(term.handle, dir === "up" ? -8 : 8);
+        term.requestRender?.();
+        ev.preventDefault?.();
+        ev.stopPropagation?.();
+      } catch {}
+    }
+  }, []);
+
+  const handlePipeScroll = useCallback((e: unknown) => {
+    const ev = e as { scroll?: { direction?: string }; preventDefault?: () => void; stopPropagation?: () => void };
+    const dir = ev.scroll?.direction;
+    if (dir !== "up" && dir !== "down") return;
+    try {
+      pipeScrollRef.current?.scrollBy(dir === "up" ? -4 : 4);
+      ev.preventDefault?.();
+      ev.stopPropagation?.();
+    } catch {}
+  }, []);
 
   const handleData = useCallback(
     (data: Uint8Array, source: string) => {
@@ -38,15 +65,15 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
   useEffect(() => {
     if (!session.usePty || !session.terminal) return;
     if (!termRef.current || !registerListener || !unregisterListener) return;
-    try {
-      termRef.current.write(new TextEncoder().encode("\x1b[2J\x1b[H"));
-    } catch {}
     const write = (data: Uint8Array) => {
       try {
         termRef.current?.write(data);
       } catch {}
     };
     registerListener(session.id, write);
+    try {
+      termRef.current?.invalidate?.();
+    } catch {}
     return () => unregisterListener(session.id);
   }, [session.id, session.usePty, session.terminal, registerListener, unregisterListener]);
 
@@ -59,17 +86,64 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
     } catch {}
   }, [focused, session.usePty]);
 
+  useEffect(() => {
+    if (!session.usePty || !session.terminal) return;
+    if (!termRef.current) return;
+    try {
+      termRef.current.invalidate?.();
+    } catch {}
+  }, [session.cols, session.rows, session.usePty]);
+
+  useEffect(() => {
+    if (!session.usePty || !termRef.current) return;
+    const term = termRef.current as unknown as {
+      handle?: unknown;
+      lib?: { embeddedTerminalScroll: (h: unknown, d: number) => void };
+      requestRender?: () => void;
+      forwardMouse?: (e: unknown, a: string) => void;
+    };
+    const orig = term.forwardMouse?.bind(term);
+    if (!orig) return;
+    const patched = (event: unknown, action: string) => {
+      const ev = event as { type?: string; scroll?: { direction?: string }; preventDefault?: () => void; stopPropagation?: () => void; modifiers?: { shift?: boolean } };
+      if (ev.type === "scroll") {
+        const dir = ev.scroll?.direction;
+        const shift = (ev as unknown as { modifiers?: { shift?: boolean } }).modifiers?.shift;
+        if (dir === "up" || dir === "down") {
+          const shouldScrollOuter = shift === true;
+          if (!shouldScrollOuter) {
+            return orig(event as never, action);
+          }
+          try {
+            if (term.handle && term.lib) {
+              term.lib.embeddedTerminalScroll(term.handle, dir === "up" ? -12 : 12);
+              term.requestRender?.();
+            }
+            ev.preventDefault?.();
+            ev.stopPropagation?.();
+            return;
+          } catch {}
+        }
+      }
+      return orig(event as never, action);
+    };
+    term.forwardMouse = patched as unknown as typeof term.forwardMouse;
+    return () => {
+      term.forwardMouse = orig as unknown as typeof term.forwardMouse;
+    };
+  }, [session.id, session.usePty, session.terminal]);
+
   if (session.usePty && session.terminal) {
     return (
-      <box flexDirection="column" flexGrow={1} width="100%" height="100%" {...focusTap}>
-        <box flexGrow={1} width="100%" height="100%" flexDirection="column" padding={1}>
+      <box flexDirection="column" flexGrow={1} width="100%" height="100%" {...focusTap} onMouseScroll={handlePtyScroll}>
+        <box flexGrow={1} width="100%" height="100%" flexDirection="column" padding={1} onMouseScroll={handlePtyScroll}>
           <embedded-terminal
             ref={termRef}
             width="100%"
             height="100%"
             cols={session.cols}
             rows={session.rows}
-            maxScrollback={1000}
+            maxScrollback={10000}
             onData={handleData}
             onTerminalResize={handleResize}
             selectable={true}
@@ -77,8 +151,8 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
           />
         </box>
         {session.exited !== null && <text fg={tokens.warning}>— exited with code {session.exited} — press t for new session</text>}
-        {!focused && <text fg={tokens.dim}>Click to focus · Ctrl+G or click table to unfocus · {session.label} PTY</text>}
-        {focused && <text fg={tokens.accent}>Focused PTY — all keys go to shell · Ctrl+G to unfocus</text>}
+        {!focused && <text fg={tokens.dim}>Click to focus · Ctrl+G or click table to unfocus · {session.label} PTY · scroll wheel to view history</text>}
+        {focused && <text fg={tokens.accent}>Focused PTY — all keys go to shell · Ctrl+G to unfocus · scroll wheel to view history</text>}
       </box>
     );
   }
@@ -86,12 +160,12 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
   const lines = session.lines;
 
   return (
-    <box flexDirection="column" flexGrow={1} width="100%" height="100%" {...focusTap}>
-      <scrollbox flexGrow={1} width="100%" border={false} focused={false} style={{ marginBottom: 1 }}>
+    <box flexDirection="column" flexGrow={1} width="100%" height="100%" {...focusTap} onMouseScroll={handlePipeScroll}>
+      <scrollbox ref={pipeScrollRef} flexGrow={1} width="100%" border={false} focused={false} stickyScroll={false} style={{ marginBottom: 1 }} onMouseScroll={handlePipeScroll}>
         {lines.length === 0 ? (
           <text fg={tokens.dim}>No output yet — type a command below.</text>
         ) : (
-          lines.slice(-200).map((line, idx) => (
+          lines.slice(-500).map((line, idx) => (
             <text key={idx} fg={session.exited !== null ? tokens.dim : tokens.fg}>
               {line || " "}
             </text>
