@@ -129,6 +129,10 @@ export function registerTerminalCommand(program: Command) {
         process.exit(1);
       }
 
+      process.env.RUST_LOG ??= "off";
+      process.env.ZIG_LOG ??= "off";
+      process.env.PAGE_LIST_LOG ??= "off";
+      process.env.OPENTUI_LOG ??= "off";
       const { runTerminal } = await import("../tui/index.js");
       await runTerminal(opts);
     });

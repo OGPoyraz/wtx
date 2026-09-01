@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { existsSync } from "node:fs";
-import { useKeyboard, useRenderer, useSelectionHandler, useTerminalDimensions } from "@opentui/react";
+import { useKeyboard, usePaste, useRenderer, useSelectionHandler, useTerminalDimensions } from "@opentui/react";
 import type { GlobalOptions } from "../../types.js";
 import { useWorktrees } from "../hooks/useWorktrees.js";
 import { WorktreeTable } from "./WorktreeTable.js";
@@ -8,7 +8,6 @@ import type { VerbIndicator } from "./WorktreeTable.js";
 import { TabPane } from "../tabs/TabPane.js";
 import type { TabDef } from "../tabs/types.js";
 import { DetailsContent } from "./DetailsTab.js";
-import { TerminalView } from "./TerminalView.js";
 import { Footer } from "./Footer.js";
 import { Divider } from "./Divider.js";
 import { HelpOverlay } from "./HelpOverlay.js";
@@ -24,7 +23,7 @@ import type { ChoiceOption } from "./ChoiceModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
 import { WarningsOverlay } from "./WarningsOverlay.js";
 import { matchesFilter, toggleSelection, withCreatePlaceholders, sortBlocks, clampSplitRatio, DIVIDER_WIDTH } from "../utils.js";
-import { copyTextToClipboard } from "../platform.js";
+import { copyTextToClipboard, readTextFromClipboard } from "../platform.js";
 import { loadConfig } from "../../lib/config.js";
 import { useSpinnerFrame } from "../hooks/useSpinnerFrame.js";
 import { MAX_TERMINAL_SESSIONS, useTerminalSessions } from "../hooks/useTerminalSessions.js";
@@ -281,6 +280,16 @@ export function App({ opts }: AppProps) {
     }
   }, [sessionsForSelected, activeTabId, worktreeKey]);
 
+  usePaste((event) => {
+    if (!terminalFocused) return;
+    const activeSession = sessionsForSelected.find((s) => s.id === activeTabId);
+    if (!activeSession) return;
+    event.preventDefault();
+    const data = event.bytes;
+    if (data.length === 0) return;
+    terminalSessions.sendInput(activeSession.repoName, activeSession.branch, activeSession.worktreePath, activeSession.id, data);
+  });
+
   const handleSelectTab = useCallback(
     (id: string) => {
       if (!worktreeKey) return;
@@ -344,6 +353,11 @@ export function App({ opts }: AppProps) {
     }
   }, [blocks, terminalSessions]);
 
+  const allSessionsFlat = useMemo(
+    () => Array.from(terminalSessions.sessionsByKey.values()).flat(),
+    [terminalSessions.sessionsByKey]
+  );
+
   const tabsForSelected: TabDef[] = useMemo(() => {
     const base: TabDef[] = [
       {
@@ -357,21 +371,11 @@ export function App({ opts }: AppProps) {
         id: s.id,
         label: s.label,
         closable: true,
-        render: () => (
-          <TerminalView
-            session={s}
-            focused={terminalFocused && activeTabId === s.id}
-            onFocus={() => setTerminalFocused(true)}
-            onSend={(data) => terminalSessions.sendInput(s.repoName, s.branch, s.worktreePath, s.id, data)}
-            onResize={(cols, rows) => terminalSessions.resizeSession(s.repoName, s.branch, s.worktreePath, s.id, cols, rows)}
-            registerListener={terminalSessions.registerListener}
-            unregisterListener={terminalSessions.unregisterListener}
-          />
-        ),
+        render: () => <box flexGrow={1} width="100%" height="100%" />,
       });
     }
     return base;
-  }, [sessionsForSelected, terminalFocused, activeTabId, terminalSessions]);
+  }, [sessionsForSelected]);
 
   const { repoVerbs, rowVerbs } = useMemo(() => {
     const rv = new Map<string, VerbIndicator>();
@@ -689,6 +693,12 @@ export function App({ opts }: AppProps) {
         }
         const activeSession = sessionsForSelected.find((s) => s.id === activeTabId);
         if (activeSession) {
+          if ((key.ctrl || (key as unknown as { super?: boolean }).super || (key as unknown as { meta?: boolean }).meta) && key.name === "v") {
+            void readTextFromClipboard().then((text) => {
+              if (text) terminalSessions.sendInput(activeSession.repoName, activeSession.branch, activeSession.worktreePath, activeSession.id, text);
+            });
+            return;
+          }
           let data: string | null = null;
           const seq = (key as unknown as { sequence?: string }).sequence;
           const raw = (key as unknown as { raw?: string }).raw;
@@ -1140,6 +1150,10 @@ export function App({ opts }: AppProps) {
             onSelect={handleSelectTab}
             onAdd={handleAddSession}
             onClose={handleCloseSession}
+            allSessionsFlat={allSessionsFlat}
+            terminalFocused={terminalFocused}
+            activeTabId={activeTabId}
+            terminalSessions={terminalSessions}
           />
         </box>
       </box>
