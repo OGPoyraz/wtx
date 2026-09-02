@@ -564,7 +564,15 @@ export function App({ opts }: AppProps) {
   }, [worktreeKey, activeTabByWorktree]);
 
   useEffect(() => {
-    if (sessionsForSelected.length === 0 && activeTabId !== "details") {
+    if (selectedRow?.isMainCheckout && activeTabId === "changes") {
+      setActiveTabByWorktree((prev) => {
+        const next = new Map(prev);
+        next.set(worktreeKey, "details");
+        return next;
+      });
+      return;
+    }
+    if (sessionsForSelected.length === 0 && activeTabId !== "details" && activeTabId !== "changes") {
       setActiveTabByWorktree((prev) => {
         const next = new Map(prev);
         next.set(worktreeKey, "details");
@@ -572,7 +580,7 @@ export function App({ opts }: AppProps) {
       });
       setTerminalFocused(false);
     } else if (sessionsForSelected.length > 0) {
-      const exists = sessionsForSelected.some((s) => s.id === activeTabId) || activeTabId === "details";
+      const exists = sessionsForSelected.some((s) => s.id === activeTabId) || activeTabId === "details" || (!selectedRow?.isMainCheckout && activeTabId === "changes");
       if (!exists) {
         setActiveTabByWorktree((prev) => {
           const next = new Map(prev);
@@ -581,7 +589,7 @@ export function App({ opts }: AppProps) {
         });
       }
     }
-  }, [sessionsForSelected, activeTabId, worktreeKey]);
+  }, [sessionsForSelected, activeTabId, worktreeKey, selectedRow]);
 
   usePaste((event) => {
     if (!terminalFocused) return;
@@ -698,12 +706,14 @@ export function App({ opts }: AppProps) {
         label: "Details",
         render: ({ worktree }) => <DetailsContent selectedRow={worktree} />,
       },
-      {
+    ];
+    if (!selectedRow?.isMainCheckout) {
+      base.push({
         id: "changes",
         label: "Changes",
         render: ({ worktree, isActive, focused }) => <ChangesContent selectedRow={worktree} isActive={isActive} focused={focused} worktreeKey={worktreeKey} />,
-      },
-    ];
+      });
+    }
     for (const s of sessionsForSelected) {
       base.push({
         id: s.id,
@@ -713,7 +723,7 @@ export function App({ opts }: AppProps) {
       });
     }
     return base;
-  }, [sessionsForSelected, worktreeKey]);
+  }, [selectedRow, sessionsForSelected, worktreeKey]);
 
   const { repoVerbs, rowVerbs } = useMemo(() => {
     const rv = new Map<string, VerbIndicator>();

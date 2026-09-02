@@ -1,57 +1,101 @@
 import { Overlay } from "./Overlay.js";
-import { tokens } from "../theme.js";
+import { useTheme } from "../theme.js";
 
-const HELP_ENTRIES: [string, string][] = [
-  ["↑/↓, k/j", "Navigate list"],
-  ["/", "Filter list"],
-  ["Space", "Multi-select"],
-  ["c", "Open configuration"],
-  ["n", "Create new worktree (pick dependency strategy)"],
-  ["f", "Fetch main for selected repo(s)"],
-  ["F (shift+f)", "Pin/unpin selected repo (favorites float to top)"],
-  ["W (shift+w)", "Scope list to a workspace's members (press again to clear)"],
-  ["p", "Pull latest changes for selected branch(es)"],
-  ["P (shift+p)", "Pull PR by link (force-override if exists)"],
-  ["b", "Rebase selected onto base (or main)"],
-  ["s", "Sync selected (env files + hooks)"],
-  ["s / Tab (Changes)", "Cycle changes scope: worktree → staged → base"],
-  ["i", "Install dependencies in selection (worktrees and main)"],
-  ["m", "Rename selected worktree (branch + directory)"],
-  ["o", "Open selected in IDE"],
-  ["t", "New terminal session (max 5 per worktree, Details ↔ Session tabs)"],
-  ["T (shift+t)", "Cycle theme presets"],
-  ["click tab", "Switch Details ↔ Session (professional tabs with ▎ active)"],
-  ["Ctrl+G / click table", "Leave terminal focus — focused terminal gets all keys"],
-  ["d", "Remove selected worktree(s)"],
-  ["e", "View data warnings (when count > 0)"],
-  ["r", "Refresh data"],
-  ["H", "Action history"],
-  ["mouse drag", "Select text — copied to clipboard automatically"],
-  ["ctrl+shift+c", "Copy selection again (terminals reserve cmd+c)"],
-  ["click PR #/URL", "Open pull request in browser"],
-  ["?", "Toggle help"],
-  ["q/esc", "Quit"],
+type HelpGroup = {
+  title: string;
+  entries: [string, string][];
+};
+
+const HELP_GROUPS: HelpGroup[] = [
+  {
+    title: "Navigation & Filtering",
+    entries: [
+      ["↑/↓, k/j", "Navigate list"],
+      ["/", "Filter list"],
+      ["Space", "Multi-select"],
+      ["q/esc", "Quit"],
+    ],
+  },
+  {
+    title: "Worktree Lifecycle",
+    entries: [
+      ["n", "Create new worktree (pick dependency strategy)"],
+      ["d", "Remove selected worktree(s)"],
+      ["m", "Rename selected worktree (branch + directory)"],
+      ["o", "Open selected in IDE"],
+      ["f", "Fetch main for selected repo(s)"],
+      ["p", "Pull latest changes for selected branch(es)"],
+      ["P (shift+p)", "Pull PR by link (force-override if exists)"],
+      ["b", "Rebase selected onto base (or main)"],
+      ["s", "Sync selected (env files + hooks)"],
+      ["i", "Install dependencies in selection (worktrees and main)"],
+    ],
+  },
+  {
+    title: "Favorites & Workspaces",
+    entries: [
+      ["F (shift+f)", "Pin/unpin selected repo (favorites float to top)"],
+      ["W (shift+w)", "Scope list to a workspace's members (press again to clear)"],
+    ],
+  },
+  {
+    title: "Terminal & Tabs",
+    entries: [
+      ["t", "New terminal session (max 5 per worktree)"],
+      ["click tab", "Switch Details / Changes / Session tabs"],
+      ["Ctrl+G / click table", "Leave terminal focus — focused terminal gets all keys"],
+    ],
+  },
+  {
+    title: "Changes Explorer",
+    entries: [
+      ["s / Tab", "Cycle scope: worktree → staged → base (when Changes focused)"],
+      ["j / k", "Navigate files in Changes (when focused)"],
+    ],
+  },
+  {
+    title: "View & System",
+    entries: [
+      ["T (shift+t)", "Cycle theme presets"],
+      ["c", "Open configuration"],
+      ["e", "View data warnings (when count > 0)"],
+      ["r", "Refresh data"],
+      ["H", "Action history"],
+      ["?", "Toggle help"],
+      ["mouse drag", "Select text — copied to clipboard automatically"],
+      ["ctrl+shift+c", "Copy selection again (terminals reserve cmd+c)"],
+      ["click PR #/URL", "Open pull request in browser"],
+    ],
+  },
 ];
 
 export function HelpOverlay() {
+  const theme = useTheme();
   return (
-    <Overlay title="Help" borderColor={tokens.border} width={84}>
-      <box flexDirection="column" style={{ maxHeight: 36 }}>
+    <Overlay title="Help" borderColor={theme.border} width={100}>
+      <box flexDirection="column" style={{ maxHeight: 38 }}>
         <scrollbox flexGrow={1}>
-          {HELP_ENTRIES.map(([key, desc]) => (
-            <box key={key} flexDirection="row" gap={1}>
-              <box width={18} flexShrink={0} justifyContent="flex-end">
-                <text fg={tokens.accent}>{key}</text>
+          {HELP_GROUPS.map((group) => (
+            <box key={group.title} flexDirection="column" style={{ marginBottom: 1 }}>
+              <box style={{ marginBottom: 1 }}>
+                <text fg={theme.accent} attributes={1}>{group.title}</text>
               </box>
-              <text fg={tokens.dim}>-</text>
-              <box flexGrow={1}>
-                <text fg={tokens.fg}>{desc}</text>
-              </box>
+              {group.entries.map(([key, desc]) => (
+                <box key={key} flexDirection="row" gap={1}>
+                  <box width={22} flexShrink={0} justifyContent="flex-end">
+                    <text fg={theme.accent}>{key}</text>
+                  </box>
+                  <text fg={theme.dim}>-</text>
+                  <box flexGrow={1}>
+                    <text fg={theme.fg}>{desc}</text>
+                  </box>
+                </box>
+              ))}
             </box>
           ))}
         </scrollbox>
       </box>
-      <text style={{ marginTop: 1, fg: tokens.dim }}>Press any key to close</text>
+      <text style={{ marginTop: 1, fg: theme.dim }}>Press any key to close</text>
     </Overlay>
   );
 }
