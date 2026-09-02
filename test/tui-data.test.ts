@@ -1,4 +1,4 @@
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { Semaphore } from "../src/lib/semaphore.js";
 import type { Config, RepoContext } from "../src/types.js";
 import type { ForgeAdapter, PrInfo } from "../src/lib/forge/types.js";
@@ -111,22 +111,22 @@ vi.mock("../src/lib/stack.js", async (importOriginal) => ({
   readStackMetadata: dataMocks.readStackMetadata,
 }));
 
-const { fetchWorktreeData } = await import("../src/tui/data.js");
+const { fetchWorktreeData, clearPrCacheForTests } = await import("../src/tui/data.js");
 const { useWorktrees } = await import("../src/tui/hooks/useWorktrees.js");
 
-function repoConfig() {
+function repoConfig(): Config["repos"][string] {
   return {
     main_branch: "main",
     fetch_main_on_create: true,
-    sync_files: [],
-    post_create: [],
-    post_sync: [],
+    sync_files: [] as string[],
+    post_create: [] as string[],
+    post_sync: [] as string[],
     install_script: null,
     check_prs: true,
-    forge_provider: "github",
+    forge_provider: "github" as const,
     pr_lookup_repo: null,
     deps: { manager: "auto", strategy: "auto" },
-  } as const;
+  };
 }
 
 function configFor(repoName: string): Config {
@@ -242,6 +242,11 @@ function setupRepo(repoName: string, rows: Worktree[]): RepoContext {
 beforeEach(() => {
   vi.clearAllMocks();
   reactMock.reset();
+  clearPrCacheForTests();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("TUI Data pure helpers", () => {
@@ -317,6 +322,65 @@ describe("fetchWorktreeData PR streaming", () => {
     expect(updates[0]!.warnings[0]!.message).toContain("gh unavailable");
     expect(updates[0]!.rows.find(row => row.branch === "feature")?.prNumber).toBe(88);
     expect(updates[0]!.rows.find(row => row.branch === "feature")?.prState).toBe("CI_RUNNING");
+  });
+
+  it("does not use TTL-expired PR cache entries as fallback", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-02T00:00:00Z"));
+
+    setupRepo("ttl-repo", [
+      worktree("/tmp/ttl-repo", "main"),
+      worktree("/tmp/ttl-repo-wt/feature", "feature"),
+    ]);
+
+    dataMocks.resolveForge.mockReturnValue(adapter(async () => new Map([["feature", pr({ number: 91 })]])));
+    const first = await fetchWorktreeData({ verbose: false, dryRun: false });
+    await first.streamPrData(() => {});
+
+    vi.setSystemTime(new Date("2026-09-02T00:05:01Z"));
+    dataMocks.resolveForge.mockReturnValue(adapter(async () => {
+      throw new Error("gh unavailable");
+    }));
+
+    const second = await fetchWorktreeData({ verbose: false, dryRun: false });
+    const updates: Array<{ rows: WorktreeRow[] }> = [];
+    await second.streamPrData(update => updates.push(update));
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.rows.find(row => row.branch === "feature")?.prNumber).toBeNull();
+    expect(updates[0]!.rows.find(row => row.branch === "feature")?.prState).toBeNull();
+  });
+
+  it("evicts the oldest PR cache entries when over the max bound", async () => {
+    setupRepo("bound-repo", [
+      worktree("/tmp/bound-repo", "main"),
+      ...Array.from({ length: 501 }, (_, index) => worktree(`/tmp/bound-repo-wt/feature-${index + 1}`, `feature-${index + 1}`)),
+    ]);
+
+    dataMocks.resolveForge.mockReturnValue(adapter(async ({ branches }) => {
+      const map = new Map<string, PrInfo>();
+      for (const branch of branches) {
+        if (branch !== "main") {
+          map.set(branch, pr({ number: Number(branch.split("-").pop()) }));
+        }
+      }
+      return map;
+    }));
+
+    const first = await fetchWorktreeData({ verbose: false, dryRun: false });
+    await first.streamPrData(() => {});
+
+    dataMocks.resolveForge.mockReturnValue(adapter(async () => {
+      throw new Error("gh unavailable");
+    }));
+
+    const second = await fetchWorktreeData({ verbose: false, dryRun: false });
+    const updates: Array<{ rows: WorktreeRow[] }> = [];
+    await second.streamPrData(update => updates.push(update));
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.rows.find(row => row.branch === "feature-1")?.prNumber).toBeNull();
+    expect(updates[0]!.rows.find(row => row.branch === "feature-2")?.prNumber).toBe(2);
   });
 });
 

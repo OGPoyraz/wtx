@@ -28,7 +28,42 @@ export interface TuiPrDataUpdate {
   warnings: DataWarning[];
 }
 
-const prCache = new Map<string, PrInfo>();
+const PR_CACHE_TTL_MS = 5 * 60 * 1000;
+const PR_CACHE_MAX_ENTRIES = 500;
+
+interface PrCacheEntry {
+  data: PrInfo;
+  timestamp: number;
+}
+
+const prCache = new Map<string, PrCacheEntry>();
+
+export function clearPrCacheForTests(): void {
+  prCache.clear();
+}
+
+function prunePrCache(): void {
+  while (prCache.size > PR_CACHE_MAX_ENTRIES) {
+    const oldest = prCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    prCache.delete(oldest);
+  }
+}
+
+function cachePrInfo(key: string, pr: PrInfo): void {
+  prCache.set(key, { data: pr, timestamp: Date.now() });
+  prunePrCache();
+}
+
+function getCachedPrInfo(key: string): PrInfo | null {
+  const entry = prCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp >= PR_CACHE_TTL_MS) {
+    prCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -145,12 +180,12 @@ async function fetchPrUpdateForRepo(
     try {
       prMap = await job.forge.findForBranches({ cwd: job.repo.mainPath, branches: job.branches, verbose: opts.verbose });
       for (const [br, pr] of prMap.entries()) {
-        prCache.set(`${job.repo.name}/${br}`, pr);
+        cachePrInfo(`${job.repo.name}/${br}`, pr);
       }
     } catch (err: unknown) {
       warnings.push({ repoName: job.repo.name, message: `PR lookup failed for ${job.repo.name}: ${errorMessage(err)}` });
       for (const br of job.branches) {
-        const cached = prCache.get(`${job.repo.name}/${br}`);
+        const cached = getCachedPrInfo(`${job.repo.name}/${br}`);
         if (cached) {
           prMap.set(br, cached);
         }
