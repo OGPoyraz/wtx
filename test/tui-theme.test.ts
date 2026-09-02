@@ -3,8 +3,13 @@ import { THEMES, tokyonightTokens } from "../src/tui/themes/index.js";
 import { tokens, ThemeContext, useTheme } from "../src/tui/theme.js";
 
 describe("theme registry", () => {
-  it("contains the tokyonight entry", () => {
+  it("contains all 5 theme presets", () => {
     expect(THEMES).toHaveProperty("tokyonight");
+    expect(THEMES).toHaveProperty("catppuccin-mocha");
+    expect(THEMES).toHaveProperty("gruvbox-dark");
+    expect(THEMES).toHaveProperty("nord");
+    expect(THEMES).toHaveProperty("rose-pine-dawn");
+
     expect(THEMES.tokyonight).toBe(tokyonightTokens);
   });
 
@@ -12,7 +17,7 @@ describe("theme registry", () => {
     expect(tokyonightTokens).toEqual(tokens);
   });
 
-  it("exposes every expected token key", () => {
+  it("exposes every expected token key for all themes", () => {
     const expectedKeys = [
       "fg",
       "bright",
@@ -27,9 +32,13 @@ describe("theme registry", () => {
       "panelBg",
       "scrim",
     ] as const;
-    for (const key of expectedKeys) {
-      expect(THEMES.tokyonight).toHaveProperty(key);
-      expect(typeof THEMES.tokyonight[key]).toBe("string");
+
+    for (const themeName of Object.keys(THEMES)) {
+      const theme = THEMES[themeName];
+      for (const key of expectedKeys) {
+        expect(theme).toHaveProperty(key);
+        expect(typeof theme[key]).toBe("string");
+      }
     }
   });
 
