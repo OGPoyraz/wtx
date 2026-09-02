@@ -136,6 +136,17 @@ function installPtySpawnMock() {
   };
 }
 
+function installPtySpawnFailureMock(error: Error) {
+  const spawn = vi.fn(() => {
+    throw error;
+  });
+
+  Object.defineProperty(globalThis, "Bun", {
+    configurable: true,
+    value: { spawn },
+  });
+}
+
 function restoreBun() {
   if (originalBun) {
     Object.defineProperty(globalThis, "Bun", originalBun);
@@ -168,6 +179,7 @@ function session(id: string, label: string): TerminalSession {
     cols: 80,
     rows: 24,
     usePty: false,
+    spawnError: null,
   };
 }
 
@@ -236,5 +248,18 @@ describe("useTerminalSessions helpers", () => {
     expect(sessionAfterSwitch?.terminal).toBe(pty.terminal);
     expect(sessionAfterSwitch?.usePty).toBe(true);
     expect(terminalWrite).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces PTY spawn failures as readable session state", () => {
+    installPtySpawnFailureMock(new Error("ENOENT"));
+    const api = Probe();
+    const created = api.createSession("repo", "branch", "/tmp/repo/branch").session;
+    if (!created) throw new Error("expected session");
+
+    const shell = process.env.SHELL || "/bin/bash";
+
+    expect(created.spawnError).toBe(`Failed to spawn ${shell}: ENOENT`);
+    expect(created.lines[0]).toBe(`Failed to spawn ${shell}: ENOENT`);
+    expect(created.usePty).toBe(false);
   });
 });

@@ -15,6 +15,7 @@ export interface TerminalSession {
   cols: number;
   rows: number;
   usePty: boolean;
+  spawnError: string | null;
 }
 
 export const MAX_TERMINAL_SESSIONS = 5;
@@ -85,11 +86,12 @@ export function useTerminalSessions() {
         cols,
         rows,
         usePty: false,
+        spawnError: null,
       };
 
       const shell = process.env.SHELL || "/bin/bash";
 
-      const appendPipe = (data: Uint8Array) => {
+      const appendPipe = (data: Uint8Array<ArrayBufferLike>) => {
         const text = new TextDecoder().decode(data);
         const parts = text.split("\n");
         setSessionsByKey((prev) => {
@@ -149,44 +151,46 @@ export function useTerminalSessions() {
         listenersRef.current.delete(id);
       };
 
-      let usePty = false;
       try {
-        if (typeof Bun !== "undefined" && typeof (Bun as any).spawn === "function") {
-          try {
-            const proc: any = (Bun as any).spawn([shell], {
-              cwd: path || process.cwd(),
-              env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", WTX_SESSION: label },
-              terminal: {
-                cols,
-                rows,
-                name: "xterm-256color",
-                data(_terminal: any, data: Uint8Array) {
-                  onPtyData(data);
-                },
-                exit(_terminal: any, exitCode: number | null) {
-                  onExit(exitCode);
-                },
-              },
-            });
-            if (proc && proc.terminal) {
-              session.proc = proc;
-              session.terminal = proc.terminal;
-              session.usePty = true;
-              usePty = true;
-              procsRef.current.set(id, proc);
-              (async () => {
-                try {
-                  const code = await proc.exited;
-                  onExit(code);
-                } catch {}
-              })();
-            }
-          } catch {}
+        if (typeof Bun === "undefined" || typeof Bun.spawn !== "function") {
+          throw new Error("pty not available");
         }
-        if (!usePty) throw new Error("pty not available");
-      } catch {
+        const proc = Bun.spawn([shell], {
+          cwd: path || process.cwd(),
+          env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", WTX_SESSION: label },
+          terminal: {
+            cols,
+            rows,
+            name: "xterm-256color",
+            data(_terminal: unknown, data: Uint8Array<ArrayBuffer>) {
+              onPtyData(data);
+            },
+            exit(_terminal: unknown, exitCode: number, signal: string | null) {
+              onExit(signal ? exitCode : exitCode);
+            },
+          },
+        });
+        if (!proc?.terminal) {
+          throw new Error("pty not available");
+        }
+        session.proc = proc;
+        session.terminal = proc.terminal;
+        session.usePty = true;
+        session.spawnError = null;
+        procsRef.current.set(id, proc);
+        (async () => {
+          try {
+            const code = await proc.exited;
+            onExit(code);
+          } catch {}
+        })();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        session.spawnError = `Failed to spawn ${shell}: ${message}`;
+        session.lines = [session.spawnError];
+        session.usePty = false;
         try {
-          const proc: any = (Bun as any).spawn([shell], {
+          const proc: any = Bun.spawn([shell], {
             cwd: path || process.cwd(),
             stdin: "pipe",
             stdout: "pipe",
@@ -197,7 +201,7 @@ export function useTerminalSessions() {
           session.usePty = false;
           procsRef.current.set(id, proc);
           (async () => {
-            const stdout = proc.stdout as ReadableStream<Uint8Array> | undefined;
+            const stdout = proc.stdout as ReadableStream<Uint8Array<ArrayBufferLike>> | undefined;
             if (stdout) {
               const reader = stdout.getReader();
               try {
@@ -210,7 +214,7 @@ export function useTerminalSessions() {
             }
           })();
           (async () => {
-            const stderr = proc.stderr as ReadableStream<Uint8Array> | undefined;
+            const stderr = proc.stderr as ReadableStream<Uint8Array<ArrayBufferLike>> | undefined;
             if (stderr) {
               const reader = stderr.getReader();
               try {
@@ -228,14 +232,12 @@ export function useTerminalSessions() {
               onExit(code);
             } catch {}
           })();
-        } catch (e: any) {
-          session.lines = [`Failed to spawn shell: ${e.message}`];
-        }
+        } catch {}
       }
 
       if (session.usePty) {
         session.lines = [`${label} — ${path} (${shell}) [pty]`, ""];
-      } else if (session.lines.length === 0) {
+      } else if (!session.spawnError && session.lines.length === 0) {
         session.lines = [`${label} — ${path} (${shell})`, ""];
       }
 

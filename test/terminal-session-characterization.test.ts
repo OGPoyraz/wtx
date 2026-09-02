@@ -45,6 +45,14 @@ describe("terminal rendering hotfix behavior", () => {
     expect(terminalView).toContain("}, [session.cols, session.rows, session.usePty]);");
   });
 
+  it("renders PTY spawn failures inline in the terminal pane", () => {
+    const terminalView = source("src/tui/components/TerminalView.tsx");
+
+    expect(terminalView).toContain("const spawnError = session.spawnError;");
+    expect(terminalView).toContain("spawnError && (");
+    expect(terminalView).toContain("fg={tokens.error}");
+  });
+
   it("does not clear the embedded terminal destructively when sessions mount or switch", () => {
     const terminalView = source("src/tui/components/TerminalView.tsx");
 
