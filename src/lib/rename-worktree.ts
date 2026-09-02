@@ -5,6 +5,7 @@ import { gitExec, getWorktreeList, localBranchExists } from "./git.js";
 import { findWorktreeForBranch, getWorktreePath } from "./resolver.js";
 import { cleanupEmptyParents } from "./path-safety.js";
 import { syncEntry } from "./worktree-setup.js";
+import { addMember, findWorkspacesForMember, removeMember } from "./workspace.js";
 
 export interface RenameOutcome {
   oldBranch: string;
@@ -17,6 +18,8 @@ export interface RenameOutcome {
   lostDirtyFiles: string[];
   resyncedFiles: string[];
   keptLocalSyncFiles: string[];
+  updatedWorkspaces: string[];
+  workspaceWarnings: string[];
 }
 
 async function getUpstream(wtPath: string): Promise<string | null> {
@@ -86,12 +89,15 @@ export async function renameWorktree(params: {
   oldBranch: string;
   newBranch: string;
   opts: GlobalOptions;
+  workspaceRoot?: string;
 }): Promise<RenameOutcome> {
   const { repo, oldBranch, newBranch, opts } = params;
 
   const planned = await planRename(repo, oldBranch, newBranch, opts);
   const cleanedDirs: string[] = [];
   const dirtyBefore = await getDirtyEntries(planned.worktreePath);
+  const updatedWorkspaces: string[] = [];
+  const workspaceWarnings: string[] = [];
 
   if (opts.dryRun) {
     return {
@@ -105,6 +111,8 @@ export async function renameWorktree(params: {
       lostDirtyFiles: [],
       resyncedFiles: [],
       keptLocalSyncFiles: [],
+      updatedWorkspaces,
+      workspaceWarnings,
     };
   }
 
@@ -113,15 +121,16 @@ export async function renameWorktree(params: {
   try {
     fs.mkdirSync(path.dirname(planned.newPath), { recursive: true });
     await gitExec(["-C", repo.mainPath, "worktree", "move", planned.worktreePath, planned.newPath], opts);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     try {
       await gitExec(["-C", planned.worktreePath, "branch", "-m", newBranch, oldBranch], opts);
     } catch {
       throw new Error(
-        `Move failed (${err.message}) and branch rollback failed — manual fix needed: git branch -m ${newBranch} ${oldBranch}`
+        `Move failed (${message}) and branch rollback failed — manual fix needed: git branch -m ${newBranch} ${oldBranch}`
       );
     }
-    throw new Error(`Failed to move worktree (branch rename rolled back): ${err.message}`);
+    throw new Error(`Failed to move worktree (branch rename rolled back): ${message}`);
   }
 
   for (const dir of cleanupEmptyParents(repo.wtRoot, repo.mainPath, planned.worktreePath)) {
@@ -155,6 +164,30 @@ export async function renameWorktree(params: {
     keptLocalSyncFiles.push(entry);
   }
 
+  const workspaceRoot = params.workspaceRoot ?? path.join(path.dirname(repo.mainPath), "wtx-workspaces");
+
+  let affectedWorkspaces: string[] = [];
+  try {
+    affectedWorkspaces = await findWorkspacesForMember(workspaceRoot, repo.name, oldBranch);
+  } catch (err: unknown) {
+    workspaceWarnings.push(`workspace lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  for (const workspaceName of affectedWorkspaces) {
+    const workspacePath = path.join(workspaceRoot, workspaceName);
+    try {
+      await removeMember({ workspacePath, repo: repo.name, branch: oldBranch });
+      await addMember({
+        workspacePath,
+        member: { repo: repo.name, branch: newBranch, path: planned.newPath },
+      });
+      updatedWorkspaces.push(workspaceName);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      workspaceWarnings.push(`workspace "${workspaceName}": ${message}`);
+    }
+  }
+
   return {
     oldBranch,
     newBranch,
@@ -166,5 +199,7 @@ export async function renameWorktree(params: {
     lostDirtyFiles,
     resyncedFiles,
     keptLocalSyncFiles,
+    updatedWorkspaces,
+    workspaceWarnings,
   };
 }

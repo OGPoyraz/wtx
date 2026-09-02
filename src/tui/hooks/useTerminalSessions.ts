@@ -1,4 +1,19 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+
+type BunProc = ReturnType<typeof Bun.spawn>;
+type BunTerminal = BunProc["terminal"];
+
+function hasDirectStdinWrite(proc: BunProc | null): proc is BunProc & {
+  stdin: { write: (data: string) => void };
+} {
+  return !!proc && typeof proc.stdin === "object" && proc.stdin !== null && "write" in proc.stdin;
+}
+
+function hasWritableStreamStdin(proc: BunProc | null): proc is BunProc & {
+  stdin: WritableStream<Uint8Array<ArrayBufferLike>>;
+} {
+  return !!proc && proc.stdin instanceof WritableStream;
+}
 
 export interface TerminalSession {
   id: string;
@@ -10,11 +25,12 @@ export interface TerminalSession {
   lines: string[];
   inputBuffer: string;
   exited: number | null;
-  proc: any | null;
-  terminal: any | null;
+  proc: BunProc | null;
+  terminal: BunTerminal | null;
   cols: number;
   rows: number;
   usePty: boolean;
+  spawnError: string | null;
 }
 
 export const MAX_TERMINAL_SESSIONS = 5;
@@ -41,9 +57,8 @@ export function relabelTerminalSessions(sessions: TerminalSession[]): TerminalSe
 
 export function useTerminalSessions() {
   const [sessionsByKey, setSessionsByKey] = useState<Map<string, TerminalSession[]>>(() => new Map());
-  const procsRef = useRef<Map<string, any>>(new Map());
+  const procsRef = useRef<Map<string, ReturnType<typeof Bun.spawn>>>(new Map());
   const listenersRef = useRef<Map<string, (data: Uint8Array) => void>>(new Map());
-  const rawBuffersRef = useRef<Map<string, Uint8Array[]>>(new Map());
 
   const getSessions = useCallback(
     (repoName: string, branch: string, path: string): TerminalSession[] => {
@@ -86,11 +101,12 @@ export function useTerminalSessions() {
         cols,
         rows,
         usePty: false,
+        spawnError: null,
       };
 
       const shell = process.env.SHELL || "/bin/bash";
 
-      const appendPipe = (data: Uint8Array) => {
+      const appendPipe = (data: Uint8Array<ArrayBufferLike>) => {
         const text = new TextDecoder().decode(data);
         const parts = text.split("\n");
         setSessionsByKey((prev) => {
@@ -122,19 +138,11 @@ export function useTerminalSessions() {
           const text = new TextDecoder().decode(data);
           if (text.includes("page_list") || text.includes("x icon") || text.includes("received and ignored")) {
             const reset = new TextEncoder().encode("\x1b[0m");
-            const buf = rawBuffersRef.current.get(id) ?? [];
-            buf.push(reset);
-            if (buf.length > 2000) buf.shift();
-            rawBuffersRef.current.set(id, buf);
             const listener = listenersRef.current.get(id);
             if (listener) listener(reset);
             return;
           }
         }
-        const buf = rawBuffersRef.current.get(id) ?? [];
-        buf.push(data);
-        if (buf.length > 2000) buf.shift();
-        rawBuffersRef.current.set(id, buf);
         const listener = listenersRef.current.get(id);
         if (listener) {
           listener(data);
@@ -158,44 +166,46 @@ export function useTerminalSessions() {
         listenersRef.current.delete(id);
       };
 
-      let usePty = false;
       try {
-        if (typeof Bun !== "undefined" && typeof (Bun as any).spawn === "function") {
-          try {
-            const proc: any = (Bun as any).spawn([shell], {
-              cwd: path || process.cwd(),
-              env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", WTX_SESSION: label },
-              terminal: {
-                cols,
-                rows,
-                name: "xterm-256color",
-                data(_terminal: any, data: Uint8Array) {
-                  onPtyData(data);
-                },
-                exit(_terminal: any, exitCode: number | null) {
-                  onExit(exitCode);
-                },
-              },
-            });
-            if (proc && proc.terminal) {
-              session.proc = proc;
-              session.terminal = proc.terminal;
-              session.usePty = true;
-              usePty = true;
-              procsRef.current.set(id, proc);
-              (async () => {
-                try {
-                  const code = await proc.exited;
-                  onExit(code);
-                } catch {}
-              })();
-            }
-          } catch {}
+        if (typeof Bun === "undefined" || typeof Bun.spawn !== "function") {
+          throw new Error("pty not available");
         }
-        if (!usePty) throw new Error("pty not available");
-      } catch {
+        const proc = Bun.spawn([shell], {
+          cwd: path || process.cwd(),
+          env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", WTX_SESSION: label },
+          terminal: {
+            cols,
+            rows,
+            name: "xterm-256color",
+            data(_terminal: unknown, data: Uint8Array<ArrayBuffer>) {
+              onPtyData(data);
+            },
+            exit(_terminal: unknown, exitCode: number, signal: string | null) {
+              onExit(signal ? exitCode : exitCode);
+            },
+          },
+        });
+        if (!proc?.terminal) {
+          throw new Error("pty not available");
+        }
+        session.proc = proc;
+        session.terminal = proc.terminal;
+        session.usePty = true;
+        session.spawnError = null;
+        procsRef.current.set(id, proc);
+        (async () => {
+          try {
+            const code = await proc.exited;
+            onExit(code);
+          } catch {}
+        })();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        session.spawnError = `Failed to spawn ${shell}: ${message}`;
+        session.lines = [session.spawnError];
+        session.usePty = false;
         try {
-          const proc: any = (Bun as any).spawn([shell], {
+          const proc = Bun.spawn([shell], {
             cwd: path || process.cwd(),
             stdin: "pipe",
             stdout: "pipe",
@@ -206,7 +216,7 @@ export function useTerminalSessions() {
           session.usePty = false;
           procsRef.current.set(id, proc);
           (async () => {
-            const stdout = proc.stdout as ReadableStream<Uint8Array> | undefined;
+            const stdout = proc.stdout as ReadableStream<Uint8Array<ArrayBufferLike>> | undefined;
             if (stdout) {
               const reader = stdout.getReader();
               try {
@@ -219,7 +229,7 @@ export function useTerminalSessions() {
             }
           })();
           (async () => {
-            const stderr = proc.stderr as ReadableStream<Uint8Array> | undefined;
+            const stderr = proc.stderr as ReadableStream<Uint8Array<ArrayBufferLike>> | undefined;
             if (stderr) {
               const reader = stderr.getReader();
               try {
@@ -237,14 +247,12 @@ export function useTerminalSessions() {
               onExit(code);
             } catch {}
           })();
-        } catch (e: any) {
-          session.lines = [`Failed to spawn shell: ${e.message}`];
-        }
+        } catch {}
       }
 
       if (session.usePty) {
         session.lines = [`${label} — ${path} (${shell}) [pty]`, ""];
-      } else if (session.lines.length === 0) {
+      } else if (!session.spawnError && session.lines.length === 0) {
         session.lines = [`${label} — ${path} (${shell})`, ""];
       }
 
@@ -276,7 +284,6 @@ export function useTerminalSessions() {
         } catch {}
         procsRef.current.delete(id);
         listenersRef.current.delete(id);
-        rawBuffersRef.current.delete(id);
       }
       const filtered = list.filter((s) => s.id !== id);
       const relabeled = relabelTerminalSessions(filtered);
@@ -304,16 +311,14 @@ export function useTerminalSessions() {
           }
           return;
         }
-        const proc = sess.proc as any;
+        const proc = sess.proc;
         const str = typeof data === "string" ? data : new TextDecoder().decode(data as Uint8Array);
-        if (proc.stdin && typeof proc.stdin.write === "function") {
+        if (hasDirectStdinWrite(proc)) {
           proc.stdin.write(str);
-        } else if (proc.stdin instanceof WritableStream) {
-          const writer = (proc.stdin as WritableStream<Uint8Array>).getWriter();
+        } else if (hasWritableStreamStdin(proc)) {
+          const writer = proc.stdin.getWriter();
           writer.write(new TextEncoder().encode(str));
           writer.releaseLock();
-        } else {
-          proc.stdin?.write?.(str);
         }
       } catch {}
       if (!sess.usePty) {
@@ -365,14 +370,6 @@ export function useTerminalSessions() {
 
   const registerListener = useCallback((id: string, fn: (data: Uint8Array) => void) => {
     listenersRef.current.set(id, fn);
-    const buf = rawBuffersRef.current.get(id);
-    if (buf) {
-      for (const chunk of buf) {
-        try {
-          fn(chunk);
-        } catch {}
-      }
-    }
   }, []);
 
   const unregisterListener = useCallback((id: string) => {
@@ -388,7 +385,6 @@ export function useTerminalSessions() {
     }
     procsRef.current.clear();
     listenersRef.current.clear();
-    rawBuffersRef.current.clear();
   }, []);
 
   useEffect(() => {
@@ -408,7 +404,6 @@ export function useTerminalSessions() {
           } catch {}
           procsRef.current.delete(s.id);
           listenersRef.current.delete(s.id);
-          rawBuffersRef.current.delete(s.id);
         }
       }
       next.delete(key);
@@ -416,5 +411,32 @@ export function useTerminalSessions() {
     });
   }, []);
 
-  return { sessionsByKey, getSessions, getKey, createSession, removeSession, sendInput, resizeSession, registerListener, unregisterListener, pruneKey, cleanupAll };
+  return useMemo(
+    () => ({
+      sessionsByKey,
+      getSessions,
+      getKey,
+      createSession,
+      removeSession,
+      sendInput,
+      resizeSession,
+      registerListener,
+      unregisterListener,
+      pruneKey,
+      cleanupAll,
+    }),
+    [
+      sessionsByKey,
+      getSessions,
+      getKey,
+      createSession,
+      removeSession,
+      sendInput,
+      resizeSession,
+      registerListener,
+      unregisterListener,
+      pruneKey,
+      cleanupAll,
+    ]
+  );
 }

@@ -90,7 +90,7 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
     if (!session.usePty || !session.terminal) return;
     if (!termRef.current) return;
     try {
-      termRef.current.invalidate?.();
+      termRef.current?.invalidate?.();
     } catch {}
   }, [session.cols, session.rows, session.usePty]);
 
@@ -158,15 +158,21 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
   }
 
   const lines = session.lines;
+  const spawnError = session.spawnError;
 
   return (
     <box flexDirection="column" flexGrow={1} width="100%" height="100%" {...focusTap} onMouseScroll={handlePipeScroll}>
+      {spawnError && (
+        <box border={true} borderColor={tokens.error} paddingX={1} paddingY={0} marginBottom={1}>
+          <text fg={tokens.error}>{spawnError}</text>
+        </box>
+      )}
       <scrollbox ref={pipeScrollRef} flexGrow={1} width="100%" border={false} focused={false} stickyScroll={false} style={{ marginBottom: 1 }} onMouseScroll={handlePipeScroll}>
         {lines.length === 0 ? (
           <text fg={tokens.dim}>No output yet — type a command below.</text>
         ) : (
           lines.slice(-500).map((line, idx) => (
-            <text key={idx} fg={session.exited !== null ? tokens.dim : tokens.fg}>
+            <text key={idx} fg={spawnError ? tokens.error : session.exited !== null ? tokens.dim : tokens.fg}>
               {line || " "}
             </text>
           ))

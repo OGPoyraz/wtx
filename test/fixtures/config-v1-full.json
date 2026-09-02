@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "root": "~/Repos",
+  "postfix": "-custom-wt",
+  "ide": "code",
+  "default_main_branch": "trunk",
+  "user": "ogp",
+  "ports": {
+    "min": 4200,
+    "max": 4300
+  },
+  "agents": {
+    "claude": {
+      "command": "claude --continue"
+    },
+    "review_bot": {
+      "command": "opencode --model test"
+    }
+  },
+  "repos": {
+    "legacy-repo": {
+      "main_branch": "develop",
+      "fetch_main_on_create": false,
+      "sync_files": [".env", ".env.local"],
+      "post_create": ["bun install"],
+      "post_sync": ["bun run sync"],
+      "install_script": "bun install --frozen-lockfile",
+      "pr": false,
+      "forge": "github",
+      "pr_repo": "upstream/legacy-repo",
+      "deps": {
+        "manager": "bun",
+        "strategy": "install"
+      }
+    }
+  },
+  "tui": {
+    "leftPaneWidthWeight": 4,
+    "rightPaneWidthWeight": 6
+  }
+}

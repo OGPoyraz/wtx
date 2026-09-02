@@ -17,6 +17,53 @@ export function matchesFilter(entry: WorktreeRow, term: string): boolean {
   return false;
 }
 
+export interface WorkspaceMemberRef {
+  repo: string;
+  branch: string;
+}
+
+export function workspaceMemberKey(repo: string, branch: string): string {
+  return `${repo}\u0000${branch}`;
+}
+
+export function buildWorkspaceMemberSet(members: readonly WorkspaceMemberRef[]): Set<string> {
+  const set = new Set<string>();
+  for (const m of members) set.add(workspaceMemberKey(m.repo, m.branch));
+  return set;
+}
+
+export function matchesWorkspace(entry: WorktreeRow, memberSet: Set<string> | null): boolean {
+  if (!memberSet) return true;
+  return memberSet.has(workspaceMemberKey(entry.repoName, entry.branch));
+}
+
+export function filterBlocksByWorkspace(
+  blocks: RepoBlock[],
+  memberSet: Set<string> | null
+): RepoBlock[] {
+  if (!memberSet) return blocks;
+  return blocks
+    .map((b) => ({ ...b, rows: b.rows.filter((r) => matchesWorkspace(r, memberSet)) }))
+    .filter((b) => b.rows.length > 0);
+}
+
+export function computeBrokenMemberWarnings(
+  workspaceName: string,
+  members: readonly WorkspaceMemberRef[],
+  presentKeys: Set<string>
+): DataWarning[] {
+  const warnings: DataWarning[] = [];
+  for (const m of members) {
+    if (!presentKeys.has(workspaceMemberKey(m.repo, m.branch))) {
+      warnings.push({
+        repoName: m.repo,
+        message: `Workspace "${workspaceName}" member ${m.repo}:${m.branch} is missing (worktree not found)`,
+      });
+    }
+  }
+  return warnings;
+}
+
 export function toggleSelection(current: Set<string>, path: string): Set<string> {
   const next = new Set(current);
   if (next.has(path)) {
@@ -71,8 +118,19 @@ export function sortRowsHierarchically(rows: WorktreeRow[]): WorktreeRow[] {
   }));
 }
 
-export function sortBlocks(blocks: RepoBlock[]): RepoBlock[] {
-  return [...blocks].sort((a, b) => a.repoName.localeCompare(b.repoName));
+export function sortBlocks(blocks: RepoBlock[], favorites: string[] = []): RepoBlock[] {
+  const favoriteRank = new Map<string, number>();
+  favorites.forEach((name, idx) => {
+    if (!favoriteRank.has(name)) favoriteRank.set(name, idx);
+  });
+  return [...blocks].sort((a, b) => {
+    const aRank = favoriteRank.get(a.repoName);
+    const bRank = favoriteRank.get(b.repoName);
+    if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
+    if (aRank !== undefined) return -1;
+    if (bRank !== undefined) return 1;
+    return a.repoName.localeCompare(b.repoName);
+  });
 }
 
 export function wrapText(text: string, width: number): string[] {
@@ -111,10 +169,10 @@ export function clampSplitRatio(totalWidth: number, ratio: number, dividerWidth 
   return Math.max(minRatio, Math.min(maxRatio, ratio));
 }
 
-export function mergeBlocks(prev: RepoBlock[], next: RepoBlock[], scope?: Set<string>): RepoBlock[] {
-  if (!scope) return sortBlocks(next);
+export function mergeBlocks(prev: RepoBlock[], next: RepoBlock[], scope?: Set<string>, favorites: string[] = []): RepoBlock[] {
+  if (!scope) return sortBlocks(next, favorites);
   const kept = prev.filter(b => !scope.has(b.repoName));
-  return sortBlocks([...kept, ...next]);
+  return sortBlocks([...kept, ...next], favorites);
 }
 
 export function mergeWarnings(prev: DataWarning[], next: DataWarning[], scope?: Set<string>): DataWarning[] {

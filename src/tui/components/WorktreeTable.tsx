@@ -5,6 +5,7 @@ import type { WorktreeRow } from "../types.js";
 import { tokens, truncateBranch } from "../theme.js";
 import { useTapHandler } from "../hooks/use-tap.js";
 import { openInBrowser } from "../platform.js";
+import { workspaceMemberKey } from "../utils.js";
 
 export interface VerbIndicator {
   verb: string;
@@ -18,6 +19,9 @@ interface WorktreeTableProps {
   frame: string;
   repoVerbs: Map<string, VerbIndicator>;
   rowVerbs: Map<string, VerbIndicator>;
+  favorites?: string[];
+  workspaceMemberSet?: Set<string> | null;
+  activeWorkspaceName?: string | null;
   onRowClick?: (index: number) => void;
   onToggleSelect?: (path: string) => void;
 }
@@ -41,6 +45,7 @@ function WorktreeItem({
   indicator,
   frame,
   id,
+  isWorkspaceMember,
   onRowClick,
   onToggleSelect,
 }: {
@@ -50,6 +55,7 @@ function WorktreeItem({
   indicator?: VerbIndicator;
   frame: string;
   id?: string;
+  isWorkspaceMember?: boolean;
   onRowClick?: () => void;
   onToggleSelect?: () => void;
 }) {
@@ -117,6 +123,7 @@ function WorktreeItem({
         </box>
         <text>
           <span fg={tokens.dim}>{hierarchyPrefix}</span>
+          {isWorkspaceMember && <span fg={tokens.accent}>{"⬡ "}</span>}
           <span fg={primary}>{truncateBranch(row.branch)}</span>
           <span fg={badge.fg}>{`  ${badge.text}`}</span>
         </text>
@@ -136,6 +143,9 @@ function WorktreeItem({
             </text>
           </box>
         )}
+        {row.prNumber === null && row.prState === "FETCHING" && (
+          <text fg={tokens.dim}>{secondary ? " · " : ""}PR …</text>
+        )}
         <text>
           {baseChangedSegment && <span fg={tokens.warning}>{baseChangedSegment}</span>}
           {rebaseSegment && <span fg={tokens.error}>{rebaseSegment}</span>}
@@ -145,7 +155,8 @@ function WorktreeItem({
   );
 }
 
-export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), frame, repoVerbs, rowVerbs, onRowClick, onToggleSelect }: WorktreeTableProps) {
+export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), frame, repoVerbs, rowVerbs, favorites = [], workspaceMemberSet = null, activeWorkspaceName = null, onRowClick, onToggleSelect }: WorktreeTableProps) {
+  const favoriteSet = new Set(favorites);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   useEffect(() => {
@@ -175,7 +186,7 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
       borderColor={tokens.border}
       focusedBorderColor={tokens.border}
       focusable={false}
-      title="Worktrees"
+      title={activeWorkspaceName ? `Repositories · workspace: ${activeWorkspaceName}` : "Repositories"}
       paddingX={1}
       focused={false}
       onMouseScroll={(e) => {
@@ -191,6 +202,7 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
             <box key={block.repoName} flexDirection="column" style={{ marginBottom: 1 }}>
               <box style={{ marginTop: headerSeen === 0 ? 0 : 1 }}>
                 <text>
+                  {favoriteSet.has(block.repoName) && <span fg={tokens.accent}>{"★ "}</span>}
                   <span fg={tokens.bright}>{block.repoName}</span>
                   {block.rows.length > 0 && (
                     <span fg={tokens.dim}>{` · ${block.rows.filter(r => !r.isPendingCreate).length}`}</span>
@@ -215,6 +227,9 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
                 const navigable = !row.isPendingCreate;
                 const flatIdx = flatIndexMap.get(row.path);
                 const isSelected = navigable && flatIdx === selectedIndex;
+                const isWorkspaceMember =
+                  workspaceMemberSet !== null &&
+                  workspaceMemberSet.has(workspaceMemberKey(row.repoName, row.branch));
                 return (
                   <WorktreeItem
                     key={row.path}
@@ -224,6 +239,7 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
                     indicator={rowVerbs.get(row.path)}
                     frame={frame}
                     id={isSelected ? "selected-row" : undefined}
+                    isWorkspaceMember={isWorkspaceMember}
                     onRowClick={
                       navigable && flatIdx !== undefined && onRowClick ? () => onRowClick(flatIdx) : undefined
                     }

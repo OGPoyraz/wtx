@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { existsSync } from "node:fs";
 import { useKeyboard, usePaste, useRenderer, useSelectionHandler, useTerminalDimensions } from "@opentui/react";
+import type { CliRenderer } from "@opentui/core";
 import type { GlobalOptions } from "../../types.js";
 import { useWorktrees } from "../hooks/useWorktrees.js";
 import { WorktreeTable } from "./WorktreeTable.js";
@@ -8,6 +9,7 @@ import type { VerbIndicator } from "./WorktreeTable.js";
 import { TabPane } from "../tabs/TabPane.js";
 import type { TabDef } from "../tabs/types.js";
 import { DetailsContent } from "./DetailsTab.js";
+import { ChangesContent } from "./ChangesTab.js";
 import { Footer } from "./Footer.js";
 import { Divider } from "./Divider.js";
 import { HelpOverlay } from "./HelpOverlay.js";
@@ -22,11 +24,25 @@ import { ChoiceModal } from "./ChoiceModal.js";
 import type { ChoiceOption } from "./ChoiceModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
 import { WarningsOverlay } from "./WarningsOverlay.js";
-import { matchesFilter, toggleSelection, withCreatePlaceholders, sortBlocks, clampSplitRatio, DIVIDER_WIDTH } from "../utils.js";
+import {
+  matchesFilter,
+  toggleSelection,
+  withCreatePlaceholders,
+  sortBlocks,
+  clampSplitRatio,
+  DIVIDER_WIDTH,
+  buildWorkspaceMemberSet,
+  matchesWorkspace,
+  computeBrokenMemberWarnings,
+  workspaceMemberKey,
+} from "../utils.js";
 import { copyTextToClipboard, readTextFromClipboard } from "../platform.js";
-import { loadConfig } from "../../lib/config.js";
+import { loadConfig, saveConfig } from "../../lib/config.js";
+import { getWorkspaceRoot, listWorkspaces, verify as verifyWorkspace, type WorkspaceInfo } from "../../lib/workspace.js";
 import { useSpinnerFrame } from "../hooks/useSpinnerFrame.js";
 import { MAX_TERMINAL_SESSIONS, useTerminalSessions } from "../hooks/useTerminalSessions.js";
+import { ThemeContext } from "../theme.js";
+import { THEMES, resolveThemeName, nextThemeName, DEFAULT_THEME_NAME } from "../themes/index.js";
 
 export interface AppProps {
   opts: GlobalOptions;
@@ -59,11 +75,53 @@ const VERBS: Record<BusyKind, string> = {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+export const TERMINAL_RESIZE_SETTLE_MS = 75;
+export const RECENT_TERMINAL_SESSION_LIMIT = 2;
+
 const DEPS_CHOICES: ChoiceOption[] = [
   { value: "auto", label: "Auto (default)", desc: "Safe-link when manifests match main, real install otherwise" },
   { value: "install", label: "Install", desc: "Real install in the worktree (uses the repo's install_script when configured)" },
   { value: "symlink", label: "Symlink", desc: "Share main checkout's node_modules via symlink" },
 ];
+
+interface FilterState {
+  isFiltering: boolean;
+  filterText: string;
+  selectedIndex: number;
+}
+
+interface FilteringKeyAction {
+  handledByApp: boolean;
+  skipAppShortcuts: boolean;
+  deliverToInput: boolean;
+  next?: FilterState;
+}
+
+export function resolveFilteringKey(state: FilterState, keyName: string): FilteringKeyAction {
+  if (!state.isFiltering) {
+    return { handledByApp: false, skipAppShortcuts: false, deliverToInput: false };
+  }
+
+  if (keyName === "escape") {
+    return {
+      handledByApp: true,
+      skipAppShortcuts: true,
+      deliverToInput: false,
+      next: { isFiltering: false, filterText: "", selectedIndex: 0 },
+    };
+  }
+
+  if (keyName === "return") {
+    return {
+      handledByApp: true,
+      skipAppShortcuts: true,
+      deliverToInput: false,
+      next: { ...state, isFiltering: false },
+    };
+  }
+
+  return { handledByApp: false, skipAppShortcuts: true, deliverToInput: true };
+}
 
 function getWorktreePathFor(repoName: string, branch: string): string {
   try {
@@ -95,9 +153,137 @@ interface FailedAction {
   exitCode: number;
 }
 
+interface InvalidatableTerminal {
+  invalidate?: () => void;
+}
+
+interface FullRepaintRenderer {
+  forceFullRepaintRequested: boolean;
+}
+
+function asFullRepaintRenderer(renderer: CliRenderer): FullRepaintRenderer {
+  return renderer as unknown as FullRepaintRenderer;
+}
+
+export interface ResizableTerminalSession {
+  repoName: string;
+  branch: string;
+  worktreePath: string;
+  id: string;
+  cols: number;
+  rows: number;
+  usePty: boolean;
+  terminal: unknown;
+}
+
+export function invalidateTerminalSession(session: Pick<ResizableTerminalSession, "usePty" | "terminal"> | undefined): boolean {
+  if (!session?.usePty || !session.terminal) return false;
+  const terminal = session.terminal as InvalidatableTerminal;
+  if (typeof terminal.invalidate !== "function") return false;
+  try {
+    terminal.invalidate();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function invalidateTerminalSessions(sessionsByKey: Map<string, ResizableTerminalSession[]>): number {
+  let invalidated = 0;
+  for (const sessions of sessionsByKey.values()) {
+    for (const session of sessions) {
+      if (invalidateTerminalSession(session)) invalidated += 1;
+    }
+  }
+  return invalidated;
+}
+
+export function requestFullRepaint(renderer: FullRepaintRenderer): void {
+  renderer.forceFullRepaintRequested = true;
+}
+
+export function activateTerminalSession(
+  sessions: ResizableTerminalSession[],
+  activeTabId: string | undefined,
+  nextTabId: string,
+  renderer: FullRepaintRenderer
+): boolean {
+  const activeSession = sessions.find((s) => s.id === nextTabId);
+  if (activeSession && activeTabId !== nextTabId) {
+    invalidateTerminalSession(activeSession);
+    requestFullRepaint(renderer);
+  }
+  return Boolean(activeSession);
+}
+
+export function updateRecentTerminalSessions(
+  recent: readonly string[],
+  activeTabId: string | undefined,
+  nextTabId: string,
+  sessionIds: readonly string[]
+): string[] {
+  if (activeTabId === undefined || activeTabId === nextTabId || !sessionIds.includes(activeTabId)) return [...recent];
+
+  const next = [activeTabId, ...recent.filter((id) => id !== activeTabId && id !== nextTabId)];
+  return next.slice(0, RECENT_TERMINAL_SESSION_LIMIT);
+}
+
+export function resizeTerminalSessionsToPane(
+  sessionsByKey: Map<string, ResizableTerminalSession[]>,
+  resizeSession: (repoName: string, branch: string, path: string, id: string, cols: number, rows: number) => void,
+  paneCols: number,
+  paneRows: number
+): number {
+  let resized = 0;
+
+  for (const sessions of sessionsByKey.values()) {
+    for (const s of sessions) {
+      if (s.usePty && s.terminal && (s.cols !== paneCols || s.rows !== paneRows)) {
+        resizeSession(s.repoName, s.branch, s.worktreePath, s.id, paneCols, paneRows);
+        resized += 1;
+      }
+    }
+  }
+
+  return resized;
+}
+
+export function createTerminalResizeScheduler(
+  getSessionsByKey: () => Map<string, ResizableTerminalSession[]>,
+  resizeSession: (repoName: string, branch: string, path: string, id: string, cols: number, rows: number) => void,
+  onSettled: () => void = () => {},
+  delayMs = TERMINAL_RESIZE_SETTLE_MS
+) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let latest: { cols: number; rows: number } | null = null;
+
+  const flush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (!latest) return;
+
+    const { cols, rows } = latest;
+    latest = null;
+    resizeTerminalSessionsToPane(getSessionsByKey(), resizeSession, cols, rows);
+    // T10 hook point: settled terminal resizes should invalidate embedded terminals here.
+    onSettled();
+  };
+
+  return {
+    schedule(cols: number, rows: number) {
+      latest = { cols, rows };
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(flush, delayMs);
+    },
+    flush,
+  };
+}
+
 export function App({ opts }: AppProps) {
   const renderer = useRenderer();
-  const { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, refresh, clearWarnings } = useWorktrees(opts);
+  const { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, favorites, refresh, clearWarnings, applyFavorites } = useWorktrees(opts);
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -125,6 +311,11 @@ export function App({ opts }: AppProps) {
   const [isFiltering, setIsFiltering] = useState(false);
   const [selection, setSelection] = useState<Set<string>>(new Set());
 
+  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
+  const [workspaceBrokenWarnings, setWorkspaceBrokenWarnings] = useState<{ repoName: string; message: string }[]>([]);
+
   const [splitRatio, setSplitRatio] = useState(() => {
     try {
       const cfg = loadConfig();
@@ -135,13 +326,23 @@ export function App({ opts }: AppProps) {
     } catch {}
     return 3 / 10;
   });
+  const [themeName, setThemeName] = useState<string>(() => {
+    try {
+      const cfg = loadConfig();
+      return resolveThemeName(cfg.tui?.theme);
+    } catch {
+      return DEFAULT_THEME_NAME;
+    }
+  });
+  const currentTheme = THEMES[themeName] ?? THEMES[DEFAULT_THEME_NAME]!;
   const [isResizing, setIsResizing] = useState(false);
   const terminalSessions = useTerminalSessions();
   const [activeTabByWorktree, setActiveTabByWorktree] = useState<Map<string, string>>(() => new Map());
+  const [recentTerminalSessionIds, setRecentTerminalSessionIds] = useState<string[]>([]);
   const [terminalFocused, setTerminalFocused] = useState(false);
   const { width: termW, height: termH } = useTerminalDimensions();
   const totalWidth = termW || renderer.width || 80;
-  const totalHeight = termH || (renderer as any).height || 24;
+  const totalHeight = termH || renderer.terminalHeight || 24;
 
   useEffect(() => {
     if (termW) setSplitRatio((prev) => clampSplitRatio(termW, prev));
@@ -168,11 +369,82 @@ export function App({ opts }: AppProps) {
     }
   }, [error]);
 
+  const loadWorkspaces = useCallback(async () => {
+    try {
+      const cfg = loadConfig();
+      const root = getWorkspaceRoot(cfg);
+      const list = await listWorkspaces(root);
+      setWorkspaces(list);
+      setActiveWorkspace((prev) => (prev ? list.find((w) => w.name === prev.name) ?? null : null));
+    } catch {
+      setWorkspaces([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadWorkspaces();
+  }, [loadWorkspaces, lastRefreshed]);
+
+  useEffect(() => {
+    if (!activeWorkspace) {
+      setWorkspaceBrokenWarnings([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await verifyWorkspace(activeWorkspace.path);
+        if (cancelled) return;
+        const next: { repoName: string; message: string }[] = [];
+        for (const name of result.broken) {
+          next.push({ repoName: activeWorkspace.name, message: `Workspace "${activeWorkspace.name}" symlink broken: ${name}` });
+        }
+        for (const name of result.cycles) {
+          next.push({ repoName: activeWorkspace.name, message: `Workspace "${activeWorkspace.name}" symlink cycle: ${name}` });
+        }
+        setWorkspaceBrokenWarnings(next);
+      } catch {
+        if (!cancelled) setWorkspaceBrokenWarnings([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWorkspace, lastRefreshed]);
+
   const flash = useCallback((message: string, ms = 3000) => {
     if (messageTimer.current) clearTimeout(messageTimer.current);
     setActionMessage(message);
     messageTimer.current = setTimeout(() => setActionMessage(undefined), ms);
   }, []);
+
+  const cycleTheme = useCallback(() => {
+    const next = nextThemeName(themeName);
+    setThemeName(next);
+    try {
+      const cfg = loadConfig();
+      saveConfig({ ...cfg, tui: { ...cfg.tui, theme: next } });
+      flash(`Theme: ${next}`);
+    } catch (err) {
+      flash(`Failed to save theme: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [themeName, flash]);
+
+  const toggleFavorite = useCallback((repoName: string) => {
+    try {
+      const cfg = loadConfig();
+      const current = cfg.favorites;
+      const isFavorite = current.includes(repoName);
+      const nextFavorites = isFavorite
+        ? current.filter((n) => n !== repoName)
+        : [...current, repoName];
+      saveConfig({ ...cfg, favorites: nextFavorites });
+      applyFavorites(nextFavorites);
+      flash(isFavorite ? `Unpinned ${repoName}` : `Pinned ${repoName}`);
+    } catch (err) {
+      flash(`Failed to toggle favorite: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [applyFavorites, flash]);
 
   // Terminals intercept Cmd+C before it reaches the app; copy when drag selection completes.
   const copySelectedText = useCallback(
@@ -203,12 +475,34 @@ export function App({ opts }: AppProps) {
   const anyRunning = ops.some(o => o.status === "running");
   const spinnerFrame = useSpinnerFrame(anyRunning || loading || refreshing);
 
+  const workspaceMemberSet = useMemo(
+    () => (activeWorkspace ? buildWorkspaceMemberSet(activeWorkspace.members) : null),
+    [activeWorkspace]
+  );
+
   const baseFiltered = useMemo(
     () =>
       blocks
-        .map(b => ({ ...b, rows: b.rows.filter(r => matchesFilter(r, filterText)) }))
-        .filter(b => b.rows.length > 0 || pendingRepos.includes(b.repoName)),
-    [blocks, filterText, pendingRepos]
+        .map(b => ({
+          ...b,
+          rows: b.rows.filter(r => matchesFilter(r, filterText) && matchesWorkspace(r, workspaceMemberSet)),
+        }))
+        .filter(b => b.rows.length > 0 || (workspaceMemberSet === null && pendingRepos.includes(b.repoName))),
+    [blocks, filterText, pendingRepos, workspaceMemberSet]
+  );
+
+  const missingMemberWarnings = useMemo(() => {
+    if (!activeWorkspace) return [];
+    const presentKeys = new Set<string>();
+    for (const b of blocks) {
+      for (const r of b.rows) presentKeys.add(workspaceMemberKey(r.repoName, r.branch));
+    }
+    return computeBrokenMemberWarnings(activeWorkspace.name, activeWorkspace.members, presentKeys);
+  }, [activeWorkspace, blocks]);
+
+  const combinedWarnings = useMemo(
+    () => [...warnings, ...workspaceBrokenWarnings, ...missingMemberWarnings],
+    [warnings, workspaceBrokenWarnings, missingMemberWarnings]
   );
 
   const pendingBlocks = useMemo<RepoBlock[]>(() => {
@@ -293,15 +587,16 @@ export function App({ opts }: AppProps) {
   const handleSelectTab = useCallback(
     (id: string) => {
       if (!worktreeKey) return;
+      const isSession = activateTerminalSession(sessionsForSelected, activeTabId, id, asFullRepaintRenderer(renderer));
+      setRecentTerminalSessionIds((prev) => updateRecentTerminalSessions(prev, activeTabId, id, sessionsForSelected.map((s) => s.id)));
       setActiveTabByWorktree((prev) => {
         const next = new Map(prev);
         next.set(worktreeKey, id);
         return next;
       });
-      const isSession = sessionsForSelected.some((s) => s.id === id);
       setTerminalFocused(isSession);
     },
-    [worktreeKey, sessionsForSelected]
+    [activeTabId, renderer, worktreeKey, sessionsForSelected]
   );
 
   const handleAddSession = useCallback(() => {
@@ -320,6 +615,7 @@ export function App({ opts }: AppProps) {
       return;
     }
     const key = terminalSessions.getKey(selectedRow.repoName, selectedRow.branch, selectedRow.path);
+    setRecentTerminalSessionIds((prev) => updateRecentTerminalSessions(prev, activeTabId, session.id, sessionsForSelected.map((s) => s.id)));
     setActiveTabByWorktree((prev) => {
       const next = new Map(prev);
       next.set(key, session.id);
@@ -327,7 +623,7 @@ export function App({ opts }: AppProps) {
     });
     setTerminalFocused(true);
     flash(`Session ${session.label} created`, 2000);
-  }, [selectedRow, terminalSessions, flash, totalWidth, splitRatio, totalHeight]);
+  }, [selectedRow, terminalSessions, flash, totalWidth, splitRatio, totalHeight, activeTabId, sessionsForSelected]);
 
   const handleCloseSession = useCallback(
     (id: string) => {
@@ -341,6 +637,7 @@ export function App({ opts }: AppProps) {
         return next;
       });
       setTerminalFocused(false);
+      setRecentTerminalSessionIds((prev) => prev.filter((sessionId) => sessionId !== id));
       flash("Session closed", 2000);
     },
     [selectedRow, terminalSessions, flash]
@@ -358,12 +655,27 @@ export function App({ opts }: AppProps) {
     [terminalSessions.sessionsByKey]
   );
 
+  const mountedRecentSessionIds = useMemo(() => new Set(recentTerminalSessionIds), [recentTerminalSessionIds]);
+
+  useEffect(() => {
+    const liveSessionIds = new Set(allSessionsFlat.map((s) => s.id));
+    setRecentTerminalSessionIds((prev) => {
+      const next = prev.filter((id) => liveSessionIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [allSessionsFlat]);
+
   const tabsForSelected: TabDef[] = useMemo(() => {
     const base: TabDef[] = [
       {
         id: "details",
         label: "Details",
         render: ({ worktree }) => <DetailsContent selectedRow={worktree} />,
+      },
+      {
+        id: "changes",
+        label: "Changes",
+        render: ({ worktree, isActive, focused }) => <ChangesContent selectedRow={worktree} isActive={isActive} focused={focused} worktreeKey={worktreeKey} />,
       },
     ];
     for (const s of sessionsForSelected) {
@@ -375,7 +687,7 @@ export function App({ opts }: AppProps) {
       });
     }
     return base;
-  }, [sessionsForSelected]);
+  }, [sessionsForSelected, worktreeKey]);
 
   const { repoVerbs, rowVerbs } = useMemo(() => {
     const rv = new Map<string, VerbIndicator>();
@@ -681,7 +993,7 @@ export function App({ opts }: AppProps) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedRow, selection, warnings, busyRepos, busyRowPaths, doRefresh, flash, blocks, terminalSessions]
+    [selectedRow, selection, combinedWarnings, busyRepos, busyRowPaths, doRefresh, flash, blocks, terminalSessions]
   );
 
   useKeyboard(
@@ -744,14 +1056,18 @@ export function App({ opts }: AppProps) {
       }
 
       if (isFiltering) {
-        if (key.name === "escape") {
-          setIsFiltering(false);
-          setFilterText("");
-          setSelectedIndex(0);
-        } else if (key.name === "return") {
-          setIsFiltering(false);
+        const action = resolveFilteringKey({ isFiltering, filterText, selectedIndex }, key.name);
+        if (action.next) {
+          setIsFiltering(action.next.isFiltering);
+          setFilterText(action.next.filterText);
+          setSelectedIndex(action.next.selectedIndex);
         }
-        return;
+        if (action.handledByApp) {
+          key.stopPropagation();
+        }
+        if (action.skipAppShortcuts) {
+          return;
+        }
       }
 
       if (failedLogs.length > 0) {
@@ -760,6 +1076,8 @@ export function App({ opts }: AppProps) {
       }
 
       if (configOpen) return;
+
+      if (workspacePickerOpen) return;
 
       if (createModal) {
         if (key.name === "escape") {
@@ -1002,6 +1320,30 @@ export function App({ opts }: AppProps) {
         return;
       }
 
+      if (key.name === "F" || (key.name === "f" && key.shift)) {
+        const target = selectedRow ?? getSelectedRows()[0];
+        if (!target) {
+          flash("No repo selected");
+          return;
+        }
+        toggleFavorite(target.repoName);
+        return;
+      }
+
+      if (key.name === "W" || (key.name === "w" && key.shift)) {
+        if (activeWorkspace) {
+          setActiveWorkspace(null);
+          flash("Workspace scope cleared");
+          return;
+        }
+        if (workspaces.length === 0) {
+          flash("No workspaces defined");
+          return;
+        }
+        setWorkspacePickerOpen(true);
+        return;
+      }
+
       if (key.name === "f") {
         const targets = getSelectedRows();
         if (targets.length > 0) startFetch(targets);
@@ -1085,6 +1427,11 @@ export function App({ opts }: AppProps) {
         return;
       }
 
+      if (key.name === "T" || (key.name === "t" && key.shift)) {
+        cycleTheme();
+        return;
+      }
+
       if (key.name === "t") {
         if (!selectedRow) {
           flash("No worktree selected");
@@ -1106,22 +1453,36 @@ export function App({ opts }: AppProps) {
   const rightCols = Math.max(20, totalWidth - leftCols - DIVIDER_WIDTH);
   const paneCols = Math.max(20, rightCols - 4);
   const paneRows = Math.max(10, totalHeight - 10);
+  const terminalResizeStateRef = useRef({
+    sessionsByKey: terminalSessions.sessionsByKey,
+    resizeSession: terminalSessions.resizeSession,
+  });
+  terminalResizeStateRef.current.sessionsByKey = terminalSessions.sessionsByKey;
+  terminalResizeStateRef.current.resizeSession = terminalSessions.resizeSession;
+  const terminalResizeSchedulerRef = useRef<ReturnType<typeof createTerminalResizeScheduler> | null>(null);
+  if (!terminalResizeSchedulerRef.current) {
+    terminalResizeSchedulerRef.current = createTerminalResizeScheduler(
+      () => terminalResizeStateRef.current.sessionsByKey,
+      (...args) => terminalResizeStateRef.current.resizeSession(...args),
+      () => {
+        invalidateTerminalSessions(terminalResizeStateRef.current.sessionsByKey);
+        requestFullRepaint(asFullRepaintRenderer(renderer));
+      }
+    );
+  }
 
   useEffect(() => {
-    for (const sessions of terminalSessions.sessionsByKey.values()) {
-      for (const s of sessions) {
-        if (s.usePty && s.terminal && (s.cols !== paneCols || s.rows !== paneRows)) {
-          terminalSessions.resizeSession(s.repoName, s.branch, s.worktreePath, s.id, paneCols, paneRows);
-        }
-      }
-    }
-  }, [paneCols, paneRows, terminalSessions]);
+    terminalResizeSchedulerRef.current?.schedule(paneCols, paneRows);
+  }, [paneCols, paneRows]);
+
+  useEffect(() => () => terminalResizeSchedulerRef.current?.flush(), []);
 
   useEffect(() => {
     setTerminalFocused(false);
   }, [selectedIndex]);
 
   return (
+    <ThemeContext.Provider value={currentTheme}>
     <box flexDirection="column" width="100%" height="100%">
       <box flexDirection="row" width="100%" flexGrow={1}>
         <box width={leftCols} height="100%" flexDirection="column" onMouseDown={() => setTerminalFocused(false)}>
@@ -1132,6 +1493,9 @@ export function App({ opts }: AppProps) {
             frame={spinnerFrame}
             repoVerbs={repoVerbs}
             rowVerbs={rowVerbs}
+            favorites={favorites}
+            workspaceMemberSet={workspaceMemberSet}
+            activeWorkspaceName={activeWorkspace?.name ?? null}
             onRowClick={(idx) => {
               setTerminalFocused(false);
               setSelectedIndex(idx);
@@ -1153,6 +1517,7 @@ export function App({ opts }: AppProps) {
             allSessionsFlat={allSessionsFlat}
             terminalFocused={terminalFocused}
             activeTabId={activeTabId}
+            recentSessionIds={mountedRecentSessionIds}
             terminalSessions={terminalSessions}
           />
         </box>
@@ -1160,7 +1525,7 @@ export function App({ opts }: AppProps) {
       {isFiltering && (
         <box flexDirection="row" paddingX={1} border={true} borderColor="magenta">
           <text>filter: </text>
-          <input focused={true} placeholder="Type to filter..." onInput={(v: string) => setFilterText(v)} />
+          <input focused={true} value={filterText} placeholder="Type to filter..." onInput={(v: string) => setFilterText(v)} />
         </box>
       )}
       <Footer
@@ -1179,11 +1544,31 @@ export function App({ opts }: AppProps) {
         onErrorClick={() => setModal({ type: "warnings" })}
       />
 
+      {workspacePickerOpen && (
+        <ChoiceModal
+          title={`Select Workspace (${workspaces.length})`}
+          options={workspaces.map((w) => ({
+            value: w.name,
+            label: w.name,
+            desc: `${w.members.length} member${w.members.length === 1 ? "" : "s"}`,
+          }))}
+          onSubmit={(name) => {
+            const chosen = workspaces.find((w) => w.name === name);
+            setWorkspacePickerOpen(false);
+            if (chosen) {
+              setActiveWorkspace(chosen);
+              flash(`Workspace scope: ${chosen.name}`);
+            }
+          }}
+          onCancel={() => setWorkspacePickerOpen(false)}
+        />
+      )}
+
       {modal.type === "help" && <HelpOverlay />}
       {modal.type === "history" && <HistoryOverlay />}
       {modal.type === "warnings" && (
         <WarningsOverlay
-          warnings={warnings}
+          warnings={combinedWarnings}
           onAcknowledge={() => {
             clearWarnings();
             setModal({ type: "none" });
@@ -1451,5 +1836,6 @@ export function App({ opts }: AppProps) {
         />
       )}
     </box>
+    </ThemeContext.Provider>
   );
 }

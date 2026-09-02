@@ -118,6 +118,11 @@ export async function removeStackEntry(
   await writeStackMetadata(repoPath, metadata, opts);
 }
 
+export async function getStackBase(repoPath: string, branch: string): Promise<string | null> {
+  const metadata = await readStackMetadata(repoPath, { verbose: false, dryRun: false });
+  return metadata.branches[branch]?.baseRef ?? null;
+}
+
 export async function renameStackEntry(
   repoPath: string,
   oldBranch: string,

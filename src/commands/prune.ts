@@ -13,17 +13,28 @@ import {
   indented,
 } from "../lib/log.js";
 import { gitExec, getDirtyFiles, getWorktreeList } from "../lib/git.js";
+import type { Worktree } from "../lib/git.js";
 import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
+import type { RepoContext } from "../types.js";
 import { resolveForge } from "../lib/forge/index.js";
 import { selectMergedCandidates } from "../lib/prune.js";
+import type { PruneCandidate } from "../lib/prune.js";
 import { isSafeWorktreeConfig, cleanupEmptyParents, safeResolve } from "../lib/path-safety.js";
 import { isInteractive, confirm, canProceedDeletion } from "../lib/prompts.js";
 import { getStackChildren, readStackMetadata, removeStackEntry } from "../lib/stack.js";
+import { findWorkspacesForMember, getWorkspaceRoot, removeMember } from "../lib/workspace.js";
 
 interface PruneOptions {
   repo?: string[];
   force?: boolean;
   yes?: boolean;
+}
+
+interface PruneAction {
+  repo: RepoContext;
+  candidate: PruneCandidate;
+  label: string;
+  worktrees: Worktree[];
 }
 
 export function registerPruneCommand(program: Command) {
@@ -36,13 +47,14 @@ export function registerPruneCommand(program: Command) {
     .action(async (options: PruneOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
+      const workspaceRoot = getWorkspaceRoot(config);
       const repoFilter = parseRepoFlag(options.repo);
       const repos = resolveRepos(config, repoFilter);
 
       let removedCount = 0;
       let skippedCount = 0;
 
-      const actionsToRun: { repo: any; candidate: any; label: string }[] = [];
+      const actionsToRun: PruneAction[] = [];
 
       for (const repo of repos) {
         repoHeader(repo.name);
@@ -127,7 +139,7 @@ export function registerPruneCommand(program: Command) {
               }
             }
 
-            actionsToRun.push({ repo, candidate, label });
+            actionsToRun.push({ repo, candidate, label, worktrees });
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -181,8 +193,8 @@ export function registerPruneCommand(program: Command) {
         try {
           await gitExec(args, globalOpts);
           stepSuccess("Worktree removed", label);
-        } catch (err: any) {
-          const msg = err.message || "";
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes("not a working tree") || msg.includes("already removed")) {
             stepWarning("Worktree already removed or invalid", msg);
             skippedCount++;
@@ -204,6 +216,19 @@ export function registerPruneCommand(program: Command) {
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           stepWarning("Stack metadata not removed", message);
+        }
+        try {
+          const affectedWorkspaces = await findWorkspacesForMember(workspaceRoot, repo.name, candidate.branch);
+          for (const workspace of affectedWorkspaces) {
+            try {
+              await removeMember({ workspacePath: path.join(workspaceRoot, workspace), repo: repo.name, branch: candidate.branch });
+              stepWarning(`Unlinked from workspace "${workspace}"`);
+            } catch (err: unknown) {
+              stepWarning(`Failed to unlink workspace "${workspace}"`, err instanceof Error ? err.message : String(err));
+            }
+          }
+        } catch (err: unknown) {
+          stepWarning("Workspace unlink failed", err instanceof Error ? err.message : String(err));
         }
         removedCount++;
       }

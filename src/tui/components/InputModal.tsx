@@ -18,7 +18,7 @@ export function InputModal({ title, placeholder, initialValue, errorMessage, onS
       <box flexDirection="column">
         <input
           focused={true}
-          value={initialValue ?? ""}
+          value={value}
           placeholder={placeholder}
           onInput={(val: string) => setValue(val)}
           onSubmit={() => onSubmit(value)}

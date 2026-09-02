@@ -15,6 +15,7 @@ import { validateSafeBranchName } from "../lib/git.js";
 import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
 import { planRename, renameWorktree } from "../lib/rename-worktree.js";
 import { renameStackEntry } from "../lib/stack.js";
+import { getWorkspaceRoot } from "../lib/workspace.js";
 
 interface RenameOptions {
   repo?: string[];
@@ -42,8 +43,8 @@ export function registerRenameCommand(program: Command) {
       let repos;
       try {
         repos = resolveRepos(config, repoFilter);
-      } catch (err: any) {
-        stepError("Failed to resolve repo", err.message);
+      } catch (err: unknown) {
+        stepError("Failed to resolve repo", err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
 
@@ -66,7 +67,7 @@ export function registerRenameCommand(program: Command) {
         }
 
         stepProgress(`Renaming ${oldBranch} → ${newBranch}...`);
-        const outcome = await renameWorktree({ repo, oldBranch, newBranch, opts: globalOpts });
+        const outcome = await renameWorktree({ repo, oldBranch, newBranch, opts: globalOpts, workspaceRoot: getWorkspaceRoot(config) });
 
         for (const dir of outcome.cleanedDirs) {
           stepSuccess("Cleaned up empty directory", path.relative(repo.wtRoot, dir) + "/");
@@ -86,6 +87,12 @@ export function registerRenameCommand(program: Command) {
         for (const entry of outcome.keptLocalSyncFiles) {
           indented(`Kept local version of ${entry} — it has uncommitted edits`);
         }
+        for (const workspace of outcome.updatedWorkspaces) {
+          stepWarning(`Unlinked from workspace "${workspace}"`, "relinked to the renamed branch");
+        }
+        for (const warning of outcome.workspaceWarnings) {
+          stepWarning("Workspace updated", warning);
+        }
 
         if (outcome.upstream) {
           indented(`Upstream still tracks '${outcome.upstream}' — after pushing run: git push -u origin ${newBranch}`);
@@ -100,8 +107,8 @@ export function registerRenameCommand(program: Command) {
         }
 
         summary(`Done — renamed ${oldBranch} to ${newBranch}`);
-      } catch (err: any) {
-        stepError("Rename failed", err.message);
+      } catch (err: unknown) {
+        stepError("Rename failed", err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
     });

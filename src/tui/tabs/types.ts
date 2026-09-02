@@ -5,7 +5,7 @@ export interface TabDef {
   id: string;
   label: string;
   closable?: boolean;
-  render: (ctx: { worktree: WorktreeRow | null; isActive: boolean }) => ReactNode;
+  render: (ctx: { worktree: WorktreeRow | null; isActive: boolean; focused?: boolean }) => ReactNode;
 }
 
 export interface TabRegistry {

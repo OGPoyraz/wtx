@@ -1,25 +1,21 @@
 # wtx
 
-Multi-repo git worktree manager built for parallel development — human or AI.
+[![npm version](https://img.shields.io/npm/v/@ogpoyraz/wtx.svg)](https://www.npmjs.com/package/@ogpoyraz/wtx)
+[![license](https://img.shields.io/npm/l/@ogpoyraz/wtx.svg)](https://github.com/OGPoyraz/wtx/blob/main/LICENSE)
+[![CI status](https://github.com/OGPoyraz/wtx/actions/workflows/ci.yml/badge.svg)](https://github.com/OGPoyraz/wtx/actions)
+[![downloads](https://img.shields.io/npm/dm/@ogpoyraz/wtx.svg)](https://www.npmjs.com/package/@ogpoyraz/wtx)
+[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#)
 
-Create isolated worktrees across every repo you maintain, with working dependencies, synced env files, deterministic ports, and one-command hand-off to coding agents like Claude Code, Codex, OpenCode, or Cursor.
+<!-- DEMO GIF: owner-provided. Drop the file at demo/wtx.gif and this will render. -->
+![wtx demo](demo/wtx.gif)
 
-```
-$ wtx create feat/auth --agent claude
-
-  my-api
-  ◌ Fetching origin/main...
-  ✓ Worktree created           → ~/Repos/my-api-wt/feat/auth
-  ✓ Synced .env
-  ✓ Safely linked 214 packages
-✓ Done — agent spawned in tmux session wtx-my-api-feat-auth
-```
+`wtx` is a multi-repo git worktree manager with a TUI terminal dashboard built for parallel development. It creates isolated environments across every repository you maintain, ensuring working dependencies, synced `.env` files, and deterministic ports with a single command.
 
 ---
 
 ## Why not plain `git worktree`?
 
-`git worktree add` gives you a directory — no dependencies, no `.env`, no port-conflict solution, no cleanup discipline. Every wrapper solves one slice.
+`git worktree add` gives you a directory—no dependencies, no environment, and no port conflict management.
 
 | | git worktree | single-repo managers | wtx |
 |---|---|---|---|
@@ -28,8 +24,9 @@ $ wtx create feat/auth --agent claude
 | `.env` sync from main | manual | some | ✓ |
 | Parallel dev-server ports | collide | – | deterministic `{port}` |
 | Safe removal (dirty guards) | none | varies | boundary-checked |
-| Spawn coding agents | – | some | ✓ tmux-aware |
-| MCP server for agents | – | – | ✓ |
+| Workspace management | – | – | ✓ symlinked groups |
+
+---
 
 ## Installation
 
@@ -280,14 +277,11 @@ $ wtx prs
 
 Every PR gets one ranked display state (`CONFLICTED`, `CI_FAILING`, `CHANGES_REQUESTED`, ...). Merged and closed PRs surface in `wtx ls --pr` and `wtx status`, so stale worktrees are recognizable at a glance.
 
-```bash
-wtx pull https://github.com/OGPoyraz/wtx/pull/11   # PR → worktree in one command
-wtx prune                                          # remove worktrees whose PR merged
-```
-
 Lookups degrade gracefully: if `gh` is missing or unauthenticated you get a warning and everything else keeps working. Fork workflows are covered by `check_prs` / `forge_provider` / `pr_lookup_repo`.
 
-### Stacked branches
+---
+
+## Stacked branches
 
 Worktrees remain sibling directories on disk, while their branches can form a dependency stack:
 
@@ -306,39 +300,62 @@ Stack metadata is stored under the repository's common Git directory and is not 
 
 ---
 
-## Terminal dashboard
+## Interactive Dashboard
 
+Launch the TUI with `wtx terminal` (requires [Bun](https://bun.sh)). Navigation never locks, and actions run in the background.
 `wtx terminal` opens a full-screen dashboard across all configured repos (requires the [Bun](https://bun.sh) runtime).
 
 | Key | Action |
 |---|---|
-| `/` | Fuzzy-filter entries by branch, repo, PR, owner |
+| `↑/↓, k/j` | Navigate the worktree list |
+| `/` | Fuzzy-filter by branch, repo, PR, or owner |
 | `Space` | Multi-select for batch operations |
-| `R` / `D` / `s` | Batch rebase / remove / sync selection |
-| `p` | Pull latest changes for selected branch(es) |
-| `i` | Install dependencies in selected worktree(s) |
-| `n` | Create worktree — pick a dependency strategy (auto / install / symlink) |
-| `m` | Rename worktree (branch + directory move) |
-| `b` | Rebase selected |
-| `a` | Spawn coding agent in selected worktree |
-| `H` | Action history (recent actions across CLI and dashboard) |
-| `o` | Open in IDE |
-| `c` | Edit configuration |
-| `?` / `q` | Help / quit |
-
-Actions run in the background — navigation never locks. Progress shows inline: `fetching`, `pulling`, `installing deps`, `renaming`, etc. next to the repo or branch being worked on, and a new worktree appears immediately as a `(creating)` row. Repositories render alphabetically and stay sorted across create/delete operations. While data loads, repos appear immediately with a `refreshing…` indicator. One operation runs per repo at a time; conflicting actions are rejected with a toast until it finishes. On failure a log modal opens with the captured output; press any key to dismiss. Destructive ones confirm first.
-
-If a rebase hits conflicts, the worktree is restored: the in-progress rebase is aborted automatically, the branch stays on its pre-rebase commits, and a "Rebase failed — manual merge needed" log explains what happened.
+| `p / i / b` | Pull latest / Install deps / Rebase selection |
+| `n / d / m` | Create new / Remove / Rename worktree |
+| `s / Tab` | Sync env files + hooks / Cycle changes scope |
+| `t / T` | New terminal session / Cycle theme presets |
+| `F / W` | Pin repo to favorites / Filter by workspace scope |
+| `o / c` | Open in IDE / Edit configuration |
+| `? / H` | Help overlay / Action history |
 
 ---
 
-## Scripting
+## CLI Quick Start
 
-Machine-readable output where it matters: `wtx ls --json`, `wtx status <branch> --json`, `wtx deps <branch> --json`, `wtx prs --json`. Combine with `-q` to suppress progress lines, and preview anything destructive with `--dry-run` — including planned deletions and hook commands.
+```bash
+# Create a worktree across repos (deps + sync_files handled)
+wtx create feat/auth --repo my-api --repo my-frontend
 
-### Action history
+# Pull a GitHub PR into a fresh worktree
+wtx pull https://github.com/owner/repo/pull/123
 
-Mutating commands (`create`, `remove`, `rebase`, `sync`, `pull`, ...) are recorded to `~/.local/state/wtx/history.jsonl` — whether you ran them from your shell or from inside `wtx terminal` (entries are tagged with their source). Inspect with `wtx history --limit 50 --json --source terminal`, or press `H` in the dashboard. The file rotates automatically at ~5 MB, keeping the newest entries.
+# Rebase onto the recorded base (or main)
+wtx rebase feat/auth
+
+# Safe removal—refuses dirty trees unless --force is used
+wtx remove feat/auth
+```
+
+---
+
+## Features
+
+- **Dependency Syncing**: Smart adapters for npm, bun, pnpm, yarn, Go, Python, and Cargo. [Read more](docs/configuration.md#dependency-syncing)
+- **Stacked Branches**: Record local parent/child relationships for rebasing. [Read more](docs/cli.md#stacked-branches)
+- **Port Isolation**: Deterministic `{port}` mapping to prevent dev-server collisions. [Read more](docs/configuration.md#template-variables)
+- **Workspace Scope**: Group related worktrees from different repos into logical workspaces. [Read more](docs/workspaces.md)
+- **Terminal Sessions**: Embedded PTYs with tab management and LRU mounting. [Read more](docs/terminal.md)
+- **AI Readiness**: Native MCP server and skill files for coding agents. [Read more](docs/agents.md)
+
+---
+
+## Documentation
+
+- [CLI Reference](docs/cli.md) — All commands and flags
+- [Configuration](docs/configuration.md) — schema, hooks, and template variables
+- [Terminal Dashboard](docs/terminal.md) — TUI guide and customization
+- [Workspaces](docs/workspaces.md) — Managing multi-repo groups
+- [AI Agents](docs/agents.md) — Using wtx with Claude Code, Cursor, and OpenCode
 
 ---
 
