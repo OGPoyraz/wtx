@@ -1,4 +1,4 @@
-import { tokens } from "../theme.js";
+import { useTheme } from "../theme.js";
 import { useTapHandler } from "../hooks/use-tap.js";
 
 interface TabBarProps {
@@ -25,6 +25,7 @@ function TabItem({
   onSelect: (id: string) => void;
   onClose?: (id: string) => void;
 }) {
+  const theme = useTheme();
   const tap = useTapHandler(() => onSelect(id));
   const closeTap = useTapHandler((e) => {
     e.stopPropagation();
@@ -32,12 +33,12 @@ function TabItem({
   });
   return (
     <box flexDirection="row" paddingRight={1} {...tap}>
-      <text fg={active ? tokens.accent : tokens.dim} attributes={active ? 1 : 0}>
+      <text fg={active ? theme.accent : theme.dim} attributes={active ? 1 : 0}>
         {label}
       </text>
       {closable ? (
-        <box {...closeTap} style={{ marginLeft: 1 }}>
-          <text fg={active ? tokens.accent : tokens.dim}>✕</text>
+        <box {...closeTap} style={{ marginLeft: 1, paddingLeft: 1, paddingRight: 1 }}>
+          <text fg={theme.accent}>✕</text>
         </box>
       ) : null}
       <text> </text>

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { tokens } from "../theme.js";
+import { useTheme } from "../theme.js";
 
 export interface OverlayProps {
   title?: string;
@@ -8,7 +8,9 @@ export interface OverlayProps {
   children: ReactNode;
 }
 
-export function Overlay({ title, borderColor = tokens.border, width = 64, children }: OverlayProps) {
+export function Overlay({ title, borderColor, width = 64, children }: OverlayProps) {
+  const theme = useTheme();
+  const resolvedBorder = borderColor ?? theme.border;
   return (
     <box
       id="overlay-scrim"
@@ -17,7 +19,7 @@ export function Overlay({ title, borderColor = tokens.border, width = 64, childr
       height="100%"
       top={0}
       left={0}
-      backgroundColor={tokens.scrim}
+      backgroundColor={theme.scrim}
       zIndex={100}
       flexDirection="row"
       justifyContent="center"
@@ -27,13 +29,13 @@ export function Overlay({ title, borderColor = tokens.border, width = 64, childr
         id="overlay-panel"
         width={width}
         border={true}
-        borderColor={borderColor}
+        borderColor={resolvedBorder}
         title={title}
-        titleColor={borderColor}
+        titleColor={resolvedBorder}
         paddingX={2}
         paddingY={1}
         flexDirection="column"
-        backgroundColor={tokens.panelBg}
+        backgroundColor={theme.panelBg}
       >
         {children}
       </box>

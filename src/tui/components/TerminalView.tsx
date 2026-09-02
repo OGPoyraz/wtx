@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { EmbeddedTerminalRenderable, ScrollBoxRenderable } from "@opentui/core";
-import { tokens } from "../theme.js";
+import { useTheme } from "../theme.js";
 import type { TerminalSession } from "../hooks/useTerminalSessions.js";
 import { useTapHandler } from "../hooks/use-tap.js";
 
@@ -15,6 +15,7 @@ interface TerminalViewProps {
 }
 
 export function TerminalView({ session, focused, onFocus, onSend, onResize, registerListener, unregisterListener }: TerminalViewProps) {
+  const theme = useTheme();
   const [draft, setDraft] = useState("");
   const focusTap = useTapHandler(() => onFocus());
   const termRef = useRef<EmbeddedTerminalRenderable | null>(null);
@@ -150,9 +151,9 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
             focused={focused}
           />
         </box>
-        {session.exited !== null && <text fg={tokens.warning}>— exited with code {session.exited} — press t for new session</text>}
-        {!focused && <text fg={tokens.dim}>Click to focus · Ctrl+G or click table to unfocus · {session.label} PTY · scroll wheel to view history</text>}
-        {focused && <text fg={tokens.accent}>Focused PTY — all keys go to shell · Ctrl+G to unfocus · scroll wheel to view history</text>}
+        {session.exited !== null && <text fg={theme.warning}>— exited with code {session.exited} — press t for new session</text>}
+        {!focused && <text fg={theme.dim}>Click to focus · Ctrl+G or click table to unfocus · {session.label} PTY · scroll wheel to view history</text>}
+        {focused && <text fg={theme.accent}>Focused PTY — all keys go to shell · Ctrl+G to unfocus · scroll wheel to view history</text>}
       </box>
     );
   }
@@ -163,24 +164,24 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
   return (
     <box flexDirection="column" flexGrow={1} width="100%" height="100%" {...focusTap} onMouseScroll={handlePipeScroll}>
       {spawnError && (
-        <box border={true} borderColor={tokens.error} paddingX={1} paddingY={0} marginBottom={1}>
-          <text fg={tokens.error}>{spawnError}</text>
+        <box border={true} borderColor={theme.error} paddingX={1} paddingY={0} marginBottom={1}>
+          <text fg={theme.error}>{spawnError}</text>
         </box>
       )}
       <scrollbox ref={pipeScrollRef} flexGrow={1} width="100%" border={false} focused={false} stickyScroll={false} style={{ marginBottom: 1 }} onMouseScroll={handlePipeScroll}>
         {lines.length === 0 ? (
-          <text fg={tokens.dim}>No output yet — type a command below.</text>
+          <text fg={theme.dim}>No output yet — type a command below.</text>
         ) : (
           lines.slice(-500).map((line, idx) => (
-            <text key={idx} fg={spawnError ? tokens.error : session.exited !== null ? tokens.dim : tokens.fg}>
+            <text key={idx} fg={spawnError ? theme.error : session.exited !== null ? theme.dim : theme.fg}>
               {line || " "}
             </text>
           ))
         )}
-        {session.exited !== null && <text fg={tokens.warning}>— exited with code {session.exited} —</text>}
+        {session.exited !== null && <text fg={theme.warning}>— exited with code {session.exited} —</text>}
       </scrollbox>
       <box flexDirection="row" gap={1} width="100%">
-        <text fg={tokens.dim}>$</text>
+        <text fg={theme.dim}>$</text>
         <box flexGrow={1}>
           <input
             focused={focused}
@@ -195,8 +196,8 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
           />
         </box>
       </box>
-      {!focused && <text fg={tokens.dim}>Click terminal or press 't' to focus · Ctrl+G or click table to unfocus</text>}
-      {focused && <text fg={tokens.accent}>Focused — typing goes to shell · Ctrl+G to unfocus · max 5 per worktree persist across switches</text>}
+      {!focused && <text fg={theme.dim}>Click terminal or press 't' to focus · Ctrl+G or click table to unfocus</text>}
+      {focused && <text fg={theme.accent}>Focused — typing goes to shell · Ctrl+G to unfocus · max 5 per worktree persist across switches</text>}
     </box>
   );
 }

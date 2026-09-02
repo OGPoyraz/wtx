@@ -2,7 +2,9 @@ import { useEffect, useRef } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { RepoBlock } from "../types.js";
 import type { WorktreeRow } from "../types.js";
-import { tokens, truncateBranch } from "../theme.js";
+import { truncateBranch } from "../theme.js";
+import { useTheme } from "../theme.js";
+import type { ThemeTokens } from "../theme.js";
 import { useTapHandler } from "../hooks/use-tap.js";
 import { openInBrowser } from "../platform.js";
 import { workspaceMemberKey } from "../utils.js";
@@ -28,14 +30,14 @@ interface WorktreeTableProps {
 
 const SECONDARY_INDENT = "      ";
 
-function statusBadge(row: WorktreeRow): { text: string; fg: string } {
-  if (row.isMainCheckout) return { text: "[main]", fg: tokens.accent };
-  if (row.isPrunable) return { text: "missing", fg: tokens.error };
-  if (row.isLocked) return { text: "locked", fg: tokens.error };
-  if (row.rebaseStatus) return { text: "rebasing", fg: tokens.warning };
+function statusBadge(row: WorktreeRow, theme: ThemeTokens): { text: string; fg: string } {
+  if (row.isMainCheckout) return { text: "[main]", fg: theme.accent };
+  if (row.isPrunable) return { text: "missing", fg: theme.error };
+  if (row.isLocked) return { text: "locked", fg: theme.error };
+  if (row.rebaseStatus) return { text: "rebasing", fg: theme.warning };
   if (row.dirtyFiles.length > 0)
-    return { text: `dirty (${row.dirtyFiles.length})`, fg: tokens.warning };
-  return { text: "clean", fg: tokens.dim };
+    return { text: `dirty (${row.dirtyFiles.length})`, fg: theme.warning };
+  return { text: "clean", fg: theme.dim };
 }
 
 function WorktreeItem({
@@ -59,6 +61,7 @@ function WorktreeItem({
   onRowClick?: () => void;
   onToggleSelect?: () => void;
 }) {
+  const theme = useTheme();
   const prTap = useTapHandler(() => {
     if (row.prUrl) void openInBrowser(row.prUrl);
   });
@@ -72,14 +75,14 @@ function WorktreeItem({
 
   const badge = indicator
     ? indicator.running
-      ? { text: `${frame} ${indicator.verb}…`, fg: tokens.accent }
-      : { text: `◌ ${indicator.verb}`, fg: tokens.dim }
+      ? { text: `${frame} ${indicator.verb}…`, fg: theme.accent }
+      : { text: `◌ ${indicator.verb}`, fg: theme.dim }
     : row.isPendingCreate
-      ? { text: `${frame} creating…`, fg: tokens.accent }
-      : statusBadge(row);
+      ? { text: `${frame} creating…`, fg: theme.accent }
+      : statusBadge(row, theme);
 
   const disabled = indicator !== undefined || row.isPendingCreate === true;
-  const primary = isSelected ? tokens.bright : disabled ? tokens.dim : tokens.fg;
+  const primary = isSelected ? theme.bright : disabled ? theme.dim : theme.fg;
 
   const divergence =
     row.ahead !== null && row.behind !== null && (row.ahead > 0 || row.behind > 0)
@@ -110,7 +113,7 @@ function WorktreeItem({
     <box
       id={id}
       flexDirection="column"
-      backgroundColor={isSelected ? tokens.selectionBg : undefined}
+      backgroundColor={isSelected ? theme.selectionBg : undefined}
       style={{ paddingRight: 1 }}
       {...(isClickable && onRowClick ? rowTap : {})}
     >
@@ -119,36 +122,36 @@ function WorktreeItem({
           <span fg={primary}>{isSelected ? "▸ " : "  "}</span>
         </text>
         <box width={2} {...(onToggleSelect ? gutterTap : {})}>
-          <text fg={tokens.accent}>{isMultiSelected ? "✓ " : "  "}</text>
+          <text fg={theme.accent}>{isMultiSelected ? "✓ " : "  "}</text>
         </box>
         <text>
-          <span fg={tokens.dim}>{hierarchyPrefix}</span>
-          {isWorkspaceMember && <span fg={tokens.accent}>{"⬡ "}</span>}
+          <span fg={theme.dim}>{hierarchyPrefix}</span>
+          {isWorkspaceMember && <span fg={theme.accent}>{"⬡ "}</span>}
           <span fg={primary}>{truncateBranch(row.branch)}</span>
           <span fg={badge.fg}>{`  ${badge.text}`}</span>
         </text>
       </box>
       <box flexDirection="row">
         <text>
-          <span fg={tokens.dim}>{secondary}</span>
-          {row.prNumber !== null && secondary ? <span fg={tokens.dim}>{" · "}</span> : null}
+          <span fg={theme.dim}>{secondary}</span>
+          {row.prNumber !== null && secondary ? <span fg={theme.dim}>{" · "}</span> : null}
         </text>
         {row.prNumber !== null && (
           <box {...(row.prUrl ? prTap : {})}>
             <text>
-              <span fg={tokens.accent}>{`#${row.prNumber}`}</span>
-              {row.prState && <span fg={tokens.dim}>{` ${row.prState}`}</span>}
-              {row.prChecks && <span fg={tokens.dim}>{` (${row.prChecks})`}</span>}
-              {row.prUrl && <span fg={tokens.dim}>{" ↗"}</span>}
+              <span fg={theme.accent}>{`#${row.prNumber}`}</span>
+              {row.prState && <span fg={theme.dim}>{` ${row.prState}`}</span>}
+              {row.prChecks && <span fg={theme.dim}>{` (${row.prChecks})`}</span>}
+              {row.prUrl && <span fg={theme.dim}>{" ↗"}</span>}
             </text>
           </box>
         )}
         {row.prNumber === null && row.prState === "FETCHING" && (
-          <text fg={tokens.dim}>{secondary ? " · " : ""}PR …</text>
+          <text fg={theme.dim}>{secondary ? " · " : ""}PR …</text>
         )}
         <text>
-          {baseChangedSegment && <span fg={tokens.warning}>{baseChangedSegment}</span>}
-          {rebaseSegment && <span fg={tokens.error}>{rebaseSegment}</span>}
+          {baseChangedSegment && <span fg={theme.warning}>{baseChangedSegment}</span>}
+          {rebaseSegment && <span fg={theme.error}>{rebaseSegment}</span>}
         </text>
       </box>
     </box>
@@ -156,6 +159,7 @@ function WorktreeItem({
 }
 
 export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), frame, repoVerbs, rowVerbs, favorites = [], workspaceMemberSet = null, activeWorkspaceName = null, onRowClick, onToggleSelect }: WorktreeTableProps) {
+  const theme = useTheme();
   const favoriteSet = new Set(favorites);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 
@@ -183,8 +187,8 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
       width="100%"
       height="100%"
       border={true}
-      borderColor={tokens.border}
-      focusedBorderColor={tokens.border}
+      borderColor={theme.border}
+      focusedBorderColor={theme.border}
       focusable={false}
       title={activeWorkspaceName ? `Repositories · workspace: ${activeWorkspaceName}` : "Repositories"}
       paddingX={1}
@@ -194,7 +198,7 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
       }}
     >
       {blocks.length === 0 ? (
-        <text fg={tokens.dim}>No repositories configured.</text>
+        <text fg={theme.dim}>No repositories configured.</text>
       ) : (
         blocks.map((block) => {
           const repoIndicator = repoVerbs.get(block.repoName);
@@ -202,19 +206,19 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
             <box key={block.repoName} flexDirection="column" style={{ marginBottom: 1 }}>
               <box style={{ marginTop: headerSeen === 0 ? 0 : 1 }}>
                 <text>
-                  {favoriteSet.has(block.repoName) && <span fg={tokens.accent}>{"★ "}</span>}
-                  <span fg={tokens.bright}>{block.repoName}</span>
+                  {favoriteSet.has(block.repoName) && <span fg={theme.accent}>{"★ "}</span>}
+                  <span fg={theme.bright}>{block.repoName}</span>
                   {block.rows.length > 0 && (
-                    <span fg={tokens.dim}>{` · ${block.rows.filter(r => !r.isPendingCreate).length}`}</span>
+                    <span fg={theme.dim}>{` · ${block.rows.filter(r => !r.isPendingCreate).length}`}</span>
                   )}
                   {repoIndicator ? (
-                    <span fg={repoIndicator.running ? tokens.accent : tokens.dim}>
+                    <span fg={repoIndicator.running ? theme.accent : theme.dim}>
                       {repoIndicator.running
                         ? `  ${frame} ${repoIndicator.verb}…`
                         : `  ◌ ${repoIndicator.verb}`}
                     </span>
                   ) : block.rows.length === 0 ? (
-                    <span fg={tokens.accent}>{`  ${frame} refreshing…`}</span>
+                    <span fg={theme.accent}>{`  ${frame} refreshing…`}</span>
                   ) : null}
                 </text>
               </box>

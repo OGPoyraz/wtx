@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { gitExec } from "./git.js";
 import { readStackMetadata } from "./stack.js";
 
@@ -154,7 +156,7 @@ export async function getChangedFiles(opts: ChangeOptions): Promise<ChangedFile[
 
   const key = cacheKey(opts);
   const cached = listCache.get(key);
-  if (!opts.invalidate && cached?.head === head) return cached.value;
+  if (!opts.invalidate && cached?.head === head && opts.scope !== "worktree") return cached.value;
 
   try {
     const baseArgs = await diffArgs(opts);
@@ -170,6 +172,27 @@ export async function getChangedFiles(opts: ChangeOptions): Promise<ChangedFile[
 
     for (const file of files) {
       if (!await isSubmodule(opts.repoPath, file.path)) filtered.push(file);
+    }
+
+    if (opts.scope === "worktree") {
+      try {
+        const untrackedRaw = await gitExec(["-C", opts.repoPath, "ls-files", "--others", "--exclude-standard", "-z"]);
+        const untrackedPaths = untrackedRaw.split("\0").filter(Boolean);
+        for (const p of untrackedPaths) {
+          if (filtered.some(f => f.path === p)) continue;
+          if (await isSubmodule(opts.repoPath, p)) continue;
+          try {
+            const full = path.join(opts.repoPath, p);
+            const buf = fs.readFileSync(full);
+            const binary = buf.includes(0);
+            const str = binary ? "" : buf.toString("utf8");
+            const added = binary ? 0 : str.split("\n").length;
+            filtered.push({ path: p, status: "A", added, removed: 0, binary });
+          } catch {
+            filtered.push({ path: p, status: "A", added: 1, removed: 0, binary: false });
+          }
+        }
+      } catch {}
     }
 
     listCache.set(key, { head, value: filtered });
@@ -209,7 +232,19 @@ export async function getFileDiff(opts: FileDiffOptions): Promise<FileDiff> {
     const args = await diffArgs(opts, opts.filePath);
     if (!args) return empty;
 
-    const rawDiff = await gitExec(args);
+    let rawDiff = await gitExec(args);
+    if (!rawDiff && opts.scope === "worktree" && changedFile.status === "A") {
+      try {
+        const full = path.join(opts.repoPath, opts.filePath);
+        const buf = fs.readFileSync(full);
+        if (!buf.includes(0)) {
+          const content = buf.toString("utf8");
+          const lines = content.split("\n");
+          const header = `diff --git a/${opts.filePath} b/${opts.filePath}\nnew file mode 100644\n--- /dev/null\n+++ b/${opts.filePath}\n@@ -0,0 +1,${lines.length} @@\n`;
+          rawDiff = header + lines.map(l => `+${l}`).join("\n");
+        }
+      } catch {}
+    }
     const { diff, truncated } = truncateDiff(rawDiff);
     const value = { ...empty, diff, truncated };
     diffCache.set(key, { head, value });

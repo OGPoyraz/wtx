@@ -340,6 +340,7 @@ export function App({ opts }: AppProps) {
   const [activeTabByWorktree, setActiveTabByWorktree] = useState<Map<string, string>>(() => new Map());
   const [recentTerminalSessionIds, setRecentTerminalSessionIds] = useState<string[]>([]);
   const [terminalFocused, setTerminalFocused] = useState(false);
+  const [changesFocused, setChangesFocused] = useState(false);
   const { width: termW, height: termH } = useTerminalDimensions();
   const totalWidth = termW || renderer.width || 80;
   const totalHeight = termH || renderer.terminalHeight || 24;
@@ -487,7 +488,13 @@ export function App({ opts }: AppProps) {
           ...b,
           rows: b.rows.filter(r => matchesFilter(r, filterText) && matchesWorkspace(r, workspaceMemberSet)),
         }))
-        .filter(b => b.rows.length > 0 || (workspaceMemberSet === null && pendingRepos.includes(b.repoName))),
+        .filter(b => {
+          if (b.rows.length > 0) return true;
+          if (workspaceMemberSet !== null) return false;
+          if (pendingRepos.includes(b.repoName)) return true;
+          if (!filterText) return true;
+          return matchesFilter({ repoName: b.repoName, branch: "" } as WorktreeRow, filterText);
+        }),
     [blocks, filterText, pendingRepos, workspaceMemberSet]
   );
 
@@ -514,14 +521,17 @@ export function App({ opts }: AppProps) {
 
   const displayBlocks = useMemo(
     () =>
-      sortBlocks([
-        ...withCreatePlaceholders(
-          baseFiltered,
-          ops.filter(o => o.branch !== undefined).map(o => ({ repoName: o.repoNames[0]!, branch: o.branch! }))
-        ),
-        ...pendingBlocks,
-      ]),
-    [baseFiltered, ops, pendingBlocks]
+      sortBlocks(
+        [
+          ...withCreatePlaceholders(
+            baseFiltered,
+            ops.filter(o => o.branch !== undefined).map(o => ({ repoName: o.repoNames[0]!, branch: o.branch! }))
+          ),
+          ...pendingBlocks,
+        ],
+        favorites
+      ),
+    [baseFiltered, ops, pendingBlocks, favorites]
   );
 
   const flatRows = useMemo(
@@ -555,7 +565,15 @@ export function App({ opts }: AppProps) {
   }, [worktreeKey, activeTabByWorktree]);
 
   useEffect(() => {
-    if (sessionsForSelected.length === 0 && activeTabId !== "details") {
+    if (activeTabId === "changes" && selectedRow && (selectedRow.isMainCheckout || selectedRow.dirtyFiles.length === 0)) {
+      setActiveTabByWorktree((prev) => {
+        const next = new Map(prev);
+        next.set(worktreeKey, "details");
+        return next;
+      });
+      return;
+    }
+    if (sessionsForSelected.length === 0 && activeTabId !== "details" && activeTabId !== "changes") {
       setActiveTabByWorktree((prev) => {
         const next = new Map(prev);
         next.set(worktreeKey, "details");
@@ -563,7 +581,7 @@ export function App({ opts }: AppProps) {
       });
       setTerminalFocused(false);
     } else if (sessionsForSelected.length > 0) {
-      const exists = sessionsForSelected.some((s) => s.id === activeTabId) || activeTabId === "details";
+      const exists = sessionsForSelected.some((s) => s.id === activeTabId) || activeTabId === "details" || (selectedRow && !selectedRow.isMainCheckout && selectedRow.dirtyFiles.length > 0 && activeTabId === "changes");
       if (!exists) {
         setActiveTabByWorktree((prev) => {
           const next = new Map(prev);
@@ -572,7 +590,16 @@ export function App({ opts }: AppProps) {
         });
       }
     }
-  }, [sessionsForSelected, activeTabId, worktreeKey]);
+  }, [sessionsForSelected, activeTabId, worktreeKey, selectedRow]);
+
+  useEffect(() => {
+    setChangesFocused(false);
+    setTerminalFocused(false);
+  }, [worktreeKey]);
+
+  useEffect(() => {
+    if (activeTabId !== "changes") setChangesFocused(false);
+  }, [activeTabId]);
 
   usePaste((event) => {
     if (!terminalFocused) return;
@@ -595,8 +622,9 @@ export function App({ opts }: AppProps) {
         return next;
       });
       setTerminalFocused(isSession);
+      setChangesFocused(id === "changes" && selectedRow != null && !selectedRow.isMainCheckout && selectedRow.dirtyFiles.length > 0);
     },
-    [activeTabId, renderer, worktreeKey, sessionsForSelected]
+    [activeTabId, renderer, worktreeKey, sessionsForSelected, selectedRow]
   );
 
   const handleAddSession = useCallback(() => {
@@ -622,14 +650,32 @@ export function App({ opts }: AppProps) {
       return next;
     });
     setTerminalFocused(true);
+    setChangesFocused(false);
     flash(`Session ${session.label} created`, 2000);
   }, [selectedRow, terminalSessions, flash, totalWidth, splitRatio, totalHeight, activeTabId, sessionsForSelected]);
 
   const handleCloseSession = useCallback(
     (id: string) => {
-      if (!selectedRow) return;
-      terminalSessions.removeSession(selectedRow.repoName, selectedRow.branch, selectedRow.path, id);
-      const key = terminalSessions.getKey(selectedRow.repoName, selectedRow.branch, selectedRow.path);
+      let targetRepo: string | undefined;
+      let targetBranch: string | undefined;
+      let targetPath: string | undefined;
+      for (const sessions of terminalSessions.sessionsByKey.values()) {
+        const found = sessions.find((s) => s.id === id);
+        if (found) {
+          targetRepo = found.repoName;
+          targetBranch = found.branch;
+          targetPath = found.worktreePath;
+          break;
+        }
+      }
+      if (!targetRepo || !targetBranch || !targetPath) {
+        if (!selectedRow) return;
+        targetRepo = selectedRow.repoName;
+        targetBranch = selectedRow.branch;
+        targetPath = selectedRow.path;
+      }
+      terminalSessions.removeSession(targetRepo, targetBranch, targetPath, id);
+      const key = terminalSessions.getKey(targetRepo, targetBranch, targetPath);
       setActiveTabByWorktree((prev) => {
         const next = new Map(prev);
         const current = next.get(key);
@@ -672,12 +718,14 @@ export function App({ opts }: AppProps) {
         label: "Details",
         render: ({ worktree }) => <DetailsContent selectedRow={worktree} />,
       },
-      {
+    ];
+    if (selectedRow != null && !selectedRow.isMainCheckout && selectedRow.dirtyFiles.length > 0) {
+      base.push({
         id: "changes",
         label: "Changes",
         render: ({ worktree, isActive, focused }) => <ChangesContent selectedRow={worktree} isActive={isActive} focused={focused} worktreeKey={worktreeKey} />,
-      },
-    ];
+      });
+    }
     for (const s of sessionsForSelected) {
       base.push({
         id: s.id,
@@ -687,7 +735,7 @@ export function App({ opts }: AppProps) {
       });
     }
     return base;
-  }, [sessionsForSelected, worktreeKey]);
+  }, [selectedRow, sessionsForSelected, worktreeKey]);
 
   const { repoVerbs, rowVerbs } = useMemo(() => {
     const rv = new Map<string, VerbIndicator>();
@@ -998,6 +1046,15 @@ export function App({ opts }: AppProps) {
 
   useKeyboard(
     (key) => {
+      if (changesFocused) {
+        if ((key.ctrl && key.name === "g") || key.name === "escape") {
+          setChangesFocused(false);
+          return;
+        }
+        if (["j", "k", "down", "up", "s", "tab"].includes(key.name)) {
+          return;
+        }
+      }
       if (terminalFocused) {
         if (key.ctrl && key.name === "g") {
           setTerminalFocused(false);
@@ -1479,13 +1536,14 @@ export function App({ opts }: AppProps) {
 
   useEffect(() => {
     setTerminalFocused(false);
+    setChangesFocused(false);
   }, [selectedIndex]);
 
   return (
     <ThemeContext.Provider value={currentTheme}>
     <box flexDirection="column" width="100%" height="100%">
       <box flexDirection="row" width="100%" flexGrow={1}>
-        <box width={leftCols} height="100%" flexDirection="column" onMouseDown={() => setTerminalFocused(false)}>
+        <box width={leftCols} height="100%" flexDirection="column" onMouseDown={() => { setTerminalFocused(false); setChangesFocused(false); }}>
           <WorktreeTable
             blocks={displayBlocks}
             selectedIndex={selectedIndex}
@@ -1498,6 +1556,7 @@ export function App({ opts }: AppProps) {
             activeWorkspaceName={activeWorkspace?.name ?? null}
             onRowClick={(idx) => {
               setTerminalFocused(false);
+              setChangesFocused(false);
               setSelectedIndex(idx);
             }}
             onToggleSelect={(path) => setSelection((prev) => toggleSelection(prev, path))}
@@ -1509,13 +1568,15 @@ export function App({ opts }: AppProps) {
             selectedRow={selectedRow}
             tabs={tabsForSelected}
             activeId={activeTabId}
-            focused={terminalFocused && tabsForSelected.some((t) => t.id === activeTabId && t.id !== "details")}
+            focused={(terminalFocused || changesFocused) && activeTabId !== "details"}
             canAdd={sessionsForSelected.length < MAX_TERMINAL_SESSIONS}
             onSelect={handleSelectTab}
             onAdd={handleAddSession}
             onClose={handleCloseSession}
             allSessionsFlat={allSessionsFlat}
             terminalFocused={terminalFocused}
+            changesFocused={changesFocused}
+            onChangesFocus={() => { setChangesFocused(true); setTerminalFocused(false); }}
             activeTabId={activeTabId}
             recentSessionIds={mountedRecentSessionIds}
             terminalSessions={terminalSessions}
@@ -1523,9 +1584,11 @@ export function App({ opts }: AppProps) {
         </box>
       </box>
       {isFiltering && (
-        <box flexDirection="row" paddingX={1} border={true} borderColor="magenta">
+        <box flexDirection="row" paddingX={1} border={true} borderColor="magenta" width="100%">
           <text>filter: </text>
-          <input focused={true} value={filterText} placeholder="Type to filter..." onInput={(v: string) => setFilterText(v)} />
+          <box flexGrow={1}>
+            <input focused={true} value={filterText} placeholder="Type to filter..." onInput={(v: string) => setFilterText(v)} width="100%" />
+          </box>
         </box>
       )}
       <Footer

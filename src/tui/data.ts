@@ -10,6 +10,7 @@ import type { GlobalOptions, Config, RepoContext } from "../types.js";
 import type { WorktreeRow } from "./types.js";
 import type { ForgeAdapter, PrInfo } from "../lib/forge/types.js";
 import { readStackMetadata, type StackMetadata } from "../lib/stack.js";
+import { safeResolve } from "../lib/path-safety.js";
 
 export interface DataWarning {
   repoName: string;
@@ -213,14 +214,13 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
 
   let repos: RepoContext[];
   try {
-    repos = resolveRepos(config);
+    if (scope && scope.length > 0) {
+      repos = resolveRepos(config, scope);
+    } else {
+      repos = resolveRepos(config, Object.keys(config.repos));
+    }
   } catch (err: unknown) {
     throw new Error(`Failed to resolve repos: ${errorMessage(err)}`);
-  }
-
-  if (scope) {
-    const scopeSet = new Set(scope);
-    repos = repos.filter(r => scopeSet.has(r.name));
   }
 
   const semaphore = new Semaphore(4);
@@ -228,8 +228,10 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
 
   const processRepo = async (repo: RepoContext) => {
     await semaphore.acquire();
+    let mainBranch = config.default_main_branch;
+    let hasMain = false;
     try {
-      const mainBranch = await resolveMainBranch(repo, config);
+      mainBranch = await resolveMainBranch(repo, config);
       const wts = await getWorktreeList(repo.mainPath);
       let stackMetadata: StackMetadata = { version: 1, branches: {} };
       try {
@@ -246,7 +248,8 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
         if (wt.isBare) continue; // skip bare
         
         let branch = wt.branch;
-        const isMainCheckout = wt.path === repo.mainPath;
+        const isMainCheckout = safeResolve(wt.path) === safeResolve(repo.mainPath);
+        if (isMainCheckout) hasMain = true;
         
         if (isMainCheckout && !branch) {
           branch = mainBranch;
@@ -283,6 +286,7 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
 
         if (isMainCheckout) {
           allRows.push(row);
+          prRows.push(row);
           continue;
         }
 
@@ -355,8 +359,57 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
       if (forge && branches.length > 0) {
         prFetchJobs.push({ repo, forge, mainBranch, rows: prRows, branches, stackMetadata });
       }
+
+      if (!hasMain) {
+        allRows.push({
+          repoName: repo.name,
+          branch: mainBranch,
+          path: repo.mainPath,
+          commitShort: "",
+          isMainCheckout: true,
+          isLocked: false,
+          isPrunable: false,
+          isBare: false,
+          dirtyFiles: [],
+          ahead: null,
+          behind: null,
+          prNumber: null,
+          prState: null,
+          prChecks: null,
+          prUrl: null,
+          owner: null,
+          rebaseStatus: null,
+          depsStrategy: "none",
+          base: undefined,
+          baseChanged: false,
+        });
+      }
     } catch (err: unknown) {
       warnings.push({ repoName: repo.name, message: `Failed to process repo ${repo.name}: ${errorMessage(err)}` });
+      if (!hasMain) {
+        allRows.push({
+          repoName: repo.name,
+          branch: mainBranch,
+          path: repo.mainPath,
+          commitShort: "",
+          isMainCheckout: true,
+          isLocked: false,
+          isPrunable: false,
+          isBare: false,
+          dirtyFiles: [],
+          ahead: null,
+          behind: null,
+          prNumber: null,
+          prState: null,
+          prChecks: null,
+          prUrl: null,
+          owner: null,
+          rebaseStatus: null,
+          depsStrategy: "none",
+          base: undefined,
+          baseChanged: false,
+        });
+      }
     } finally {
       semaphore.release();
     }
