@@ -1,0 +1,10 @@
+$ vitest run test/workspace-cli.test.ts -t "remove unlinks"
+
+ RUN  v4.1.11 /Users/ogpoyraz/Repos/wtx-wt/feat/next-2
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 9 skipped (10)
+   Start at  07:20:13
+   Duration  1.68s (transform 15ms, setup 0ms, import 22ms, tests 1.54s, environment 0ms)
+

@@ -19,6 +19,7 @@ import { selectMergedCandidates } from "../lib/prune.js";
 import { isSafeWorktreeConfig, cleanupEmptyParents, safeResolve } from "../lib/path-safety.js";
 import { isInteractive, confirm, canProceedDeletion } from "../lib/prompts.js";
 import { getStackChildren, readStackMetadata, removeStackEntry } from "../lib/stack.js";
+import { findWorkspacesForMember, getWorkspaceRoot, removeMember } from "../lib/workspace.js";
 
 interface PruneOptions {
   repo?: string[];
@@ -36,6 +37,7 @@ export function registerPruneCommand(program: Command) {
     .action(async (options: PruneOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
+      const workspaceRoot = getWorkspaceRoot(config);
       const repoFilter = parseRepoFlag(options.repo);
       const repos = resolveRepos(config, repoFilter);
 
@@ -204,6 +206,19 @@ export function registerPruneCommand(program: Command) {
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           stepWarning("Stack metadata not removed", message);
+        }
+        try {
+          const affectedWorkspaces = await findWorkspacesForMember(workspaceRoot, repo.name, candidate.branch);
+          for (const workspace of affectedWorkspaces) {
+            try {
+              await removeMember({ workspacePath: path.join(workspaceRoot, workspace), repo: repo.name, branch: candidate.branch });
+              stepWarning(`Unlinked from workspace "${workspace}"`);
+            } catch (err: unknown) {
+              stepWarning(`Failed to unlink workspace "${workspace}"`, err instanceof Error ? err.message : String(err));
+            }
+          }
+        } catch (err: unknown) {
+          stepWarning("Workspace unlink failed", err instanceof Error ? err.message : String(err));
         }
         removedCount++;
       }

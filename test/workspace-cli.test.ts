@@ -15,10 +15,16 @@ interface Env {
   configDir: string;
   root: string;
   workspaceRoot: string;
+  binDir: string;
   configPath: string;
 }
 
-function makeConfig(root: string, workspaceRoot: string, repos: string[]): Config {
+function makeConfig(
+  root: string,
+  workspaceRoot: string,
+  repos: string[],
+  overrides: Partial<Record<string, Partial<Config["repos"][string]>>> = {}
+): Config {
   const repoConfigs: Config["repos"] = {};
   for (const name of repos) {
     repoConfigs[name] = {
@@ -32,6 +38,8 @@ function makeConfig(root: string, workspaceRoot: string, repos: string[]): Confi
       check_prs: false,
       forge_provider: "auto",
       pr_lookup_repo: null,
+      workspace_root: workspaceRoot,
+      ...(overrides[name] ?? {}),
     };
   }
   return {
@@ -55,7 +63,12 @@ function setupRepo(root: string, name: string): void {
   execSync("git init -q", { cwd: mainPath });
   execSync('git config user.name "Test"', { cwd: mainPath });
   execSync('git config user.email "test@example.com"', { cwd: mainPath });
-  execSync('git commit --allow-empty -q -m init', { cwd: mainPath });
+  fs.writeFileSync(path.join(mainPath, ".env"), `${name}=env\n`);
+  execSync("git add .env", { cwd: mainPath });
+  execSync('git commit -q -m init', { cwd: mainPath });
+  execSync("git branch -M main", { cwd: mainPath });
+  execSync(`git remote add origin ${mainPath}`, { cwd: mainPath });
+  execSync("git update-ref refs/remotes/origin/main HEAD", { cwd: mainPath });
 }
 
 function createWorktreeFor(env: Env, repo: string, branch: string): string {
@@ -71,9 +84,11 @@ function setup(): Env {
   const configDir = path.join(tmpDir, "cfg");
   const root = path.join(tmpDir, "repos");
   const workspaceRoot = path.join(tmpDir, "workspaces");
+  const binDir = path.join(tmpDir, "bin");
   fs.mkdirSync(path.join(configDir, "wtx"), { recursive: true });
   fs.mkdirSync(root, { recursive: true });
   fs.mkdirSync(workspaceRoot, { recursive: true });
+  fs.mkdirSync(binDir, { recursive: true });
 
   setupRepo(root, "alpha");
   setupRepo(root, "beta");
@@ -82,7 +97,11 @@ function setup(): Env {
   const configPath = path.join(configDir, "wtx", "config.json");
   fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
 
-  return { tmpDir, configDir, root, workspaceRoot, configPath };
+  return { tmpDir, configDir, root, workspaceRoot, binDir, configPath };
+}
+
+function writeConfig(env: Env, config: Config): void {
+  fs.writeFileSync(env.configPath, JSON.stringify(config, null, 2));
 }
 
 function runCli(env: Env, args: string[], opts: { input?: string; extraEnv?: NodeJS.ProcessEnv } = {}) {
@@ -93,6 +112,7 @@ function runCli(env: Env, args: string[], opts: { input?: string; extraEnv?: Nod
       WTX_NO_WIZARD: "1",
       WTX_YES: "0",
       NO_COLOR: "1",
+      PATH: opts.extraEnv?.PATH ?? process.env.PATH ?? "",
       ...(opts.extraEnv ?? {}),
     },
     input: opts.input,
@@ -147,6 +167,82 @@ describe("wtx workspace CLI", () => {
     expect(fs.existsSync(wtBeta)).toBe(true);
   }, 30000);
 
+  it("remove unlinks workspace members and keeps the workspace directory healthy", async () => {
+    const wtAlpha = createWorktreeFor(env, "alpha", "feat/remove");
+    createWorktreeFor(env, "beta", "feat/remove");
+
+    const create = runCli(env, ["workspace", "create", "drop", "--repo", "alpha,beta", "--branch", "feat/remove"]);
+    expect(create.status).toBe(0);
+
+    const remove = runCli(env, ["remove", "feat/remove", "--yes"]);
+    expect(remove.status).toBe(0);
+    expect(remove.stdout).toContain('Unlinked from workspace "drop"');
+
+    const wsPath = path.join(env.workspaceRoot, "drop");
+    expect(fs.existsSync(wsPath)).toBe(true);
+    expect(fs.existsSync(path.join(wsPath, "alpha"))).toBe(false);
+    expect(fs.existsSync(wtAlpha)).toBe(false);
+
+    const verify = runCli(env, ["workspace", "verify", "drop"]);
+    expect(verify.status).toBe(0);
+  }, 30000);
+
+  it("prune unlinks each removed worktree from workspaces", async () => {
+    createWorktreeFor(env, "alpha", "feat/prune");
+
+    const cfg = makeConfig(env.root, env.workspaceRoot, ["alpha", "beta"], {
+      alpha: { check_prs: true, forge_provider: "github" },
+      beta: { check_prs: false },
+    });
+    writeConfig(env, cfg);
+    execSync("git remote set-url origin git@github.com:example/alpha.git", { cwd: path.join(env.root, "alpha") });
+
+    const create = runCli(env, ["workspace", "create", "prune-demo", "--repo", "alpha", "--branch", "feat/prune"]);
+    expect(create.status).toBe(0);
+
+    const gh = path.join(env.binDir, "gh");
+    fs.writeFileSync(
+      gh,
+      "#!/bin/sh\nif [ \"$1\" = pr ] && [ \"$2\" = list ]; then\n  printf '%s' '[{\"number\":7,\"author\":null,\"title\":\"merged\",\"url\":\"https://github.com/example/alpha/pull/7\",\"state\":\"MERGED\",\"isDraft\":false,\"mergeable\":\"MERGEABLE\",\"statusCheckRollup\":null,\"reviewDecision\":null,\"headRefName\":\"feat/prune\",\"baseRefName\":\"main\",\"updatedAt\":\"2026-08-22T00:00:00Z\"}]'\nelse\n  echo unexpected gh invocation >&2\n  exit 1\nfi\n"
+    );
+    fs.chmodSync(gh, 0o755);
+
+    const prune = runCli(env, ["prune", "--repo", "alpha", "--yes"], { extraEnv: { PATH: `${env.binDir}:${process.env.PATH ?? ""}` } });
+    expect(prune.status).toBe(0);
+    expect(prune.stdout).toContain('Unlinked from workspace "prune-demo"');
+
+    const wsPath = path.join(env.workspaceRoot, "prune-demo");
+    expect(fs.existsSync(wsPath)).toBe(true);
+    expect(fs.existsSync(path.join(wsPath, "alpha"))).toBe(false);
+
+    const verify = runCli(env, ["workspace", "verify", "prune-demo"]);
+    expect(verify.status).toBe(0);
+  }, 30000);
+
+  it("rename updates workspace links and manifests to the new branch", async () => {
+    const wtAlpha = createWorktreeFor(env, "alpha", "feat/old-name");
+
+    const create = runCli(env, ["workspace", "create", "rename-demo", "--repo", "alpha", "--branch", "feat/old-name"]);
+    expect(create.status).toBe(0);
+
+    const rename = runCli(env, ["rename", "feat/old-name", "feat/new-name", "--repo", "alpha"]);
+    expect(rename.status).toBe(0);
+    expect(rename.stdout).toContain('Unlinked from workspace "rename-demo"');
+
+    const wsPath = path.join(env.workspaceRoot, "rename-demo");
+    const links = fs.readdirSync(wsPath).filter((entry) => fs.lstatSync(path.join(wsPath, entry)).isSymbolicLink());
+    expect(links.length).toBe(1);
+    expect(fs.realpathSync(path.join(wsPath, links[0]!))).toBe(fs.realpathSync(path.join(env.root, "alpha-wt", "feat/new-name")));
+    expect(fs.existsSync(path.join(env.root, "alpha-wt", "feat/old-name"))).toBe(false);
+    expect(fs.existsSync(wtAlpha)).toBe(false);
+
+    const manifest = JSON.parse(fs.readFileSync(path.join(wsPath, ".wtx-workspace.json"), "utf8"));
+    expect(manifest.members).toEqual([{ repo: "alpha", branch: "feat/new-name" }]);
+
+    const verify = runCli(env, ["workspace", "verify", "rename-demo"]);
+    expect(verify.status).toBe(0);
+  }, 30000);
+
   it("verify exits 1 and names broken members when a worktree is deleted", async () => {
     const wtAlpha = createWorktreeFor(env, "alpha", "feat/y");
     createWorktreeFor(env, "beta", "feat/y");
@@ -170,6 +266,64 @@ describe("wtx workspace CLI", () => {
     const after = fs.readdirSync(env.workspaceRoot);
     expect(after).toEqual(before);
     expect(fs.existsSync(path.join(env.workspaceRoot, "dry"))).toBe(false);
+  }, 30000);
+
+  it("creates missing member worktrees before linking the workspace", async () => {
+    const cfg = makeConfig(env.root, env.workspaceRoot, ["alpha", "beta"], {
+      alpha: { sync_files: [".env"], post_create: ["touch hook-alpha"] },
+      beta: { sync_files: [".env"], post_create: ["touch hook-beta"] },
+    });
+    writeConfig(env, cfg);
+
+    const create = runCli(env, ["workspace", "create", "fresh", "--repo", "alpha,beta", "--branch", "feat/new"]);
+    expect(create.status).toBe(0);
+
+    const alphaWt = path.join(env.root, "alpha-wt", "feat", "new");
+    const betaWt = path.join(env.root, "beta-wt", "feat", "new");
+    const wsPath = path.join(env.workspaceRoot, "fresh");
+
+    expect(fs.existsSync(alphaWt)).toBe(true);
+    expect(fs.existsSync(betaWt)).toBe(true);
+    expect(fs.readFileSync(path.join(alphaWt, ".env"), "utf8")).toBe("alpha=env\n");
+    expect(fs.readFileSync(path.join(betaWt, ".env"), "utf8")).toBe("beta=env\n");
+    expect(fs.existsSync(path.join(alphaWt, "hook-alpha"))).toBe(true);
+    expect(fs.existsSync(path.join(betaWt, "hook-beta"))).toBe(true);
+    expect(fs.realpathSync(path.join(wsPath, "alpha"))).toBe(fs.realpathSync(alphaWt));
+    expect(fs.realpathSync(path.join(wsPath, "beta"))).toBe(fs.realpathSync(betaWt));
+
+    const manifest = JSON.parse(fs.readFileSync(path.join(wsPath, ".wtx-workspace.json"), "utf8"));
+    expect(manifest.members).toEqual([
+      { repo: "alpha", branch: "feat/new" },
+      { repo: "beta", branch: "feat/new" },
+    ]);
+  }, 30000);
+
+  it("links only successful creates and writes a valid manifest after partial failure", async () => {
+    const cfg = makeConfig(env.root, env.workspaceRoot, ["alpha", "beta"], {
+      alpha: { sync_files: [".env"], post_create: ["touch hook-alpha"] },
+      beta: { sync_files: [".env"], post_create: ["sh -c 'exit 7'"] },
+    });
+    writeConfig(env, cfg);
+
+    const create = runCli(env, ["workspace", "create", "partial", "--repo", "alpha,beta", "--branch", "feat/partial"]);
+    expect(create.status).toBe(1);
+    expect(create.stdout + create.stderr).toContain("beta:feat/partial");
+
+    const alphaWt = path.join(env.root, "alpha-wt", "feat", "partial");
+    const betaWt = path.join(env.root, "beta-wt", "feat", "partial");
+    const wsPath = path.join(env.workspaceRoot, "partial");
+
+    expect(fs.existsSync(alphaWt)).toBe(true);
+    expect(fs.existsSync(betaWt)).toBe(true);
+    expect(fs.realpathSync(path.join(wsPath, "alpha"))).toBe(fs.realpathSync(alphaWt));
+    expect(fs.existsSync(path.join(wsPath, "beta"))).toBe(false);
+
+    const manifest = JSON.parse(fs.readFileSync(path.join(wsPath, ".wtx-workspace.json"), "utf8"));
+    expect(manifest).toEqual({
+      version: 1,
+      name: "partial",
+      members: [{ repo: "alpha", branch: "feat/partial" }],
+    });
   }, 30000);
 
   it("workspace remove refuses to proceed without --yes on non-interactive stdin", async () => {

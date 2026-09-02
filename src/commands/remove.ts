@@ -22,6 +22,7 @@ import {
 import { isSafeWorktreeConfig, cleanupEmptyParents, planEmptyParentRemoval } from "../lib/path-safety.js";
 import { isInteractive, confirm, canProceedDeletion } from "../lib/prompts.js";
 import { getStackChildren, readStackMetadata, removeStackEntry } from "../lib/stack.js";
+import { findWorkspacesForMember, getWorkspaceRoot, removeMember } from "../lib/workspace.js";
 
 interface RemoveOptions {
   repo?: string[];
@@ -97,6 +98,29 @@ async function finishCleanup(
   }
 }
 
+async function unlinkRemovedWorktreeFromWorkspaces(params: {
+  workspaceRoot: string;
+  repo: string;
+  branch: string;
+}): Promise<void> {
+  let affectedWorkspaces: string[];
+  try {
+    affectedWorkspaces = await findWorkspacesForMember(params.workspaceRoot, params.repo, params.branch);
+  } catch (err: unknown) {
+    stepWarning("Workspace unlink failed", errorMessage(err));
+    return;
+  }
+
+  for (const workspace of affectedWorkspaces) {
+    try {
+      await removeMember({ workspacePath: path.join(params.workspaceRoot, workspace), repo: params.repo, branch: params.branch });
+      stepWarning(`Unlinked from workspace "${workspace}"`);
+    } catch (err: unknown) {
+      stepWarning(`Failed to unlink workspace "${workspace}"`, errorMessage(err));
+    }
+  }
+}
+
 async function confirmDeletionIfNeeded(
   repo: { wtRoot: string; mainPath: string },
   wtPath: string,
@@ -141,6 +165,7 @@ export function registerRemoveCommand(program: Command) {
     .action(async (branch: string, options: RemoveOptions) => {
       const globalOpts = program.opts<GlobalOptions>();
       const config = loadConfig();
+      const workspaceRoot = getWorkspaceRoot(config);
       const repoFilter = parseRepoFlag(options.repo);
       
       const repos = resolveRepos(config, repoFilter);
@@ -170,6 +195,7 @@ export function registerRemoveCommand(program: Command) {
               removeExistingPath(candidatePath, globalOpts);
               await removeLocalBranchBestEffort(repo.mainPath, branch, globalOpts);
               await finishCleanup(repo, candidatePath, branch, globalOpts);
+              await unlinkRemovedWorktreeFromWorkspaces({ workspaceRoot, repo: repo.name, branch });
               stepSuccess("Worktree removed", candidatePath);
               successCount++;
               continue;
@@ -231,6 +257,7 @@ export function registerRemoveCommand(program: Command) {
             }
             await removeLocalBranchBestEffort(repo.mainPath, branch, globalOpts);
             await finishCleanup(repo, wtPath, branch, globalOpts);
+            await unlinkRemovedWorktreeFromWorkspaces({ workspaceRoot, repo: repo.name, branch });
             stepSuccess("Worktree removed", wtPath);
             if (children.length > 0) {
               stepWarning("Dependent base metadata retained", children.join(", "));
@@ -292,6 +319,7 @@ export function registerRemoveCommand(program: Command) {
           }
 
           await finishCleanup(repo, wtPath, branch, globalOpts);
+          await unlinkRemovedWorktreeFromWorkspaces({ workspaceRoot, repo: repo.name, branch });
           if (children.length > 0) {
             stepWarning("Dependent base metadata retained", children.join(", "));
           }

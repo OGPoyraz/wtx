@@ -36,12 +36,12 @@ export interface VerifyResult {
   cycles: string[];
 }
 
-function workspaceRootFor(config: Config): string {
+export function getWorkspaceRoot(config: Config): string {
   return path.resolve(expandTilde(config.workspace_root ?? path.join(config.root, "wtx-workspaces")));
 }
 
 function workspacePathFor(name: string, config: Config): string {
-  return path.join(workspaceRootFor(config), name);
+  return path.join(getWorkspaceRoot(config), name);
 }
 
 function validateWorkspaceName(name: string): void {
@@ -91,11 +91,10 @@ function assertNoPathNesting(workspacePath: string, members: WorkspaceMember[]):
 }
 
 async function writeManifest(workspacePath: string, manifest: WorkspaceManifest): Promise<void> {
-  await fs.promises.writeFile(
-    path.join(workspacePath, MANIFEST_FILE),
-    `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf8"
-  );
+  const manifestPath = path.join(workspacePath, MANIFEST_FILE);
+  const tmpPath = path.join(workspacePath, `${MANIFEST_FILE}.${process.pid}.${Date.now()}.tmp`);
+  await fs.promises.writeFile(tmpPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await fs.promises.rename(tmpPath, manifestPath);
 }
 
 async function readManifest(workspacePath: string): Promise<WorkspaceManifest> {
@@ -219,6 +218,18 @@ export async function listWorkspaces(workspaceRoot: string): Promise<WorkspaceIn
     if (err instanceof Error && "code" in err && err.code === "ENOENT") return [];
     throw err;
   }
+}
+
+export async function findWorkspacesForMember(
+  workspaceRoot: string,
+  repo: string,
+  branch: string
+): Promise<string[]> {
+  const workspaces = await listWorkspaces(workspaceRoot);
+  return workspaces
+    .filter((workspace) => workspace.members.some((member) => member.repo === repo && member.branch === branch))
+    .map((workspace) => workspace.name)
+    .sort();
 }
 
 async function verifyLink(linkPath: string, visited: Set<string>): Promise<"ok" | "broken" | "cycle"> {

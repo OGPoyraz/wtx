@@ -1,32 +1,4 @@
-# Decisions — wtx-next
-
-## [2026-09-02] Session init
-
-- Session perf: switch <100ms with 3 sessions; idle CPU <5%; zero dropped keystrokes under `yes` flood
-- Workspaces: symlink farm at `<root>/wtx-workspaces/<name>/`, overridable via `workspace_root` config key
-- Themes: 5 built-in presets (tokyonight, catppuccin-mocha, gruvbox-dark, nord, rose-pine-dawn) + custom override in config.json, live-switchable via `T` keybind
-- Changes explorer: READ-ONLY, 3 scopes (working-tree/staged/vs-base), no staging/discard
-- Workspace v1 command surface is CLOSED: create/ls/add/rm/remove/verify. Nothing else.
-- Config v2: literal(1) → literal(2) with migration + checked-in v1 fixture test
-- Session work: 4 INDEPENDENT commits (T7-T10), one per root cause, each revertable, each tested
-- T11 (mount only active+recent) lands LAST — riskiest, re-enters 0.8.10 hotfix territory
-- Demo GIF: OWNER-ASSIGNED — agents only prepare the placeholder path
-- package.json version is 0.1.0 but CHANGELOG is 0.8.10 — fix in T32
-# [2026-09-02] Task 12 session benchmark
-
-- Kept CPU and throughput checks reportable in the benchmark script, with hard exits only for `switchMs < 100` and `droppedKeystrokes === 0`; the vitest guard covers switch latency only to avoid flaky CI gating.
-- The benchmark uses mocked PTY sessions, not real shells, so switch latency measures deterministic app/session switch code rather than terminal process startup or OS scheduling noise.
-
-## [2026-09-02] Task 15 PR cache TTL + bounds
-
-- PR cache entries now store timestamps and are only used as offline/error fallback for 5 minutes; successful fetches still overwrite the cache on every lookup.
-- Cache eviction is oldest-first with a hard cap of 500 entries so long-lived TUI sessions do not accumulate unbounded stale PR metadata.
-
-## T20 changes library
-- Base scope resolves recorded stack metadata first and falls back to main/master only if no recorded base is available/resolvable.
-- Diff bodies are loaded only through getFileDiff; getChangedFiles uses --numstat/--name-status metadata only.
-
-## T22 changes scope selector
-- Scope cycling order is fixed as `worktree → staged → base`; the Changes tab accepts both `s` and `Tab` while focused.
-- The base header label strips `refs/heads/` and remote prefixes from recorded stack refs, rendering `base` scope as `vs <base>` with `main` fallback.
-- Switching scope clears selected-file diffs and selection, while cached file lists are restored without invalidating or re-fetching.
+## 2026-09-02
+- Keep workspace cleanup best-effort: remove/prune/rename must continue even if workspace updates partially fail.
+- Use manifest-driven workspace membership lookup instead of path heuristics when unlinking removed worktrees.
+- Rename updates workspace membership by removing the old branch and adding the new one for each affected workspace.

@@ -18,6 +18,7 @@ export interface RenameOutcome {
   lostDirtyFiles: string[];
   resyncedFiles: string[];
   keptLocalSyncFiles: string[];
+  updatedWorkspaces: string[];
   workspaceWarnings: string[];
 }
 
@@ -88,12 +89,14 @@ export async function renameWorktree(params: {
   oldBranch: string;
   newBranch: string;
   opts: GlobalOptions;
+  workspaceRoot?: string;
 }): Promise<RenameOutcome> {
   const { repo, oldBranch, newBranch, opts } = params;
 
   const planned = await planRename(repo, oldBranch, newBranch, opts);
   const cleanedDirs: string[] = [];
   const dirtyBefore = await getDirtyEntries(planned.worktreePath);
+  const updatedWorkspaces: string[] = [];
   const workspaceWarnings: string[] = [];
 
   if (opts.dryRun) {
@@ -108,6 +111,7 @@ export async function renameWorktree(params: {
       lostDirtyFiles: [],
       resyncedFiles: [],
       keptLocalSyncFiles: [],
+      updatedWorkspaces,
       workspaceWarnings,
     };
   }
@@ -159,11 +163,15 @@ export async function renameWorktree(params: {
     keptLocalSyncFiles.push(entry);
   }
 
-  const workspaceRoot = path.resolve(
-    repo.config.workspace_root ?? path.join(path.dirname(repo.mainPath), "wtx-workspaces")
-  );
+  const workspaceRoot = params.workspaceRoot ?? path.join(path.dirname(repo.mainPath), "wtx-workspaces");
 
-  const affectedWorkspaces = await findWorkspacesForMember(workspaceRoot, repo.name, oldBranch);
+  let affectedWorkspaces: string[] = [];
+  try {
+    affectedWorkspaces = await findWorkspacesForMember(workspaceRoot, repo.name, oldBranch);
+  } catch (err: unknown) {
+    workspaceWarnings.push(`workspace lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   for (const workspaceName of affectedWorkspaces) {
     const workspacePath = path.join(workspaceRoot, workspaceName);
     try {
@@ -172,6 +180,7 @@ export async function renameWorktree(params: {
         workspacePath,
         member: { repo: repo.name, branch: newBranch, path: planned.newPath },
       });
+      updatedWorkspaces.push(workspaceName);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       workspaceWarnings.push(`workspace "${workspaceName}": ${message}`);
@@ -189,6 +198,7 @@ export async function renameWorktree(params: {
     lostDirtyFiles,
     resyncedFiles,
     keptLocalSyncFiles,
+    updatedWorkspaces,
     workspaceWarnings,
   };
 }

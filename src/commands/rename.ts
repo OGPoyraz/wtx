@@ -15,6 +15,7 @@ import { validateSafeBranchName } from "../lib/git.js";
 import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
 import { planRename, renameWorktree } from "../lib/rename-worktree.js";
 import { renameStackEntry } from "../lib/stack.js";
+import { getWorkspaceRoot } from "../lib/workspace.js";
 
 interface RenameOptions {
   repo?: string[];
@@ -66,7 +67,7 @@ export function registerRenameCommand(program: Command) {
         }
 
         stepProgress(`Renaming ${oldBranch} → ${newBranch}...`);
-        const outcome = await renameWorktree({ repo, oldBranch, newBranch, opts: globalOpts });
+        const outcome = await renameWorktree({ repo, oldBranch, newBranch, opts: globalOpts, workspaceRoot: getWorkspaceRoot(config) });
 
         for (const dir of outcome.cleanedDirs) {
           stepSuccess("Cleaned up empty directory", path.relative(repo.wtRoot, dir) + "/");
@@ -85,6 +86,12 @@ export function registerRenameCommand(program: Command) {
         }
         for (const entry of outcome.keptLocalSyncFiles) {
           indented(`Kept local version of ${entry} — it has uncommitted edits`);
+        }
+        for (const workspace of outcome.updatedWorkspaces) {
+          stepWarning(`Unlinked from workspace "${workspace}"`, "relinked to the renamed branch");
+        }
+        for (const warning of outcome.workspaceWarnings) {
+          stepWarning("Workspace updated", warning);
         }
 
         if (outcome.upstream) {
