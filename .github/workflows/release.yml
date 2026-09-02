@@ -56,7 +56,7 @@ jobs:
 
       - name: Set version and build for npm
         run: |
-          npm version ${{ needs.release.outputs.version }} --no-git-tag-version
+          npm version ${{ needs.release.outputs.version }} --allow-same-version --no-git-tag-version
           bun run build:npm
 
       - uses: actions/setup-node@v4
