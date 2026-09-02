@@ -35,7 +35,12 @@ export const tokens: ThemeTokens = {
 export const ThemeContext = createContext<ThemeTokens>(tokens);
 
 export function useTheme(): ThemeTokens {
-  return useContext(ThemeContext);
+  try {
+    const ctx = useContext(ThemeContext);
+    return ctx ?? tokens;
+  } catch {
+    return tokens;
+  }
 }
 
 export function chunk(text: string, opts?: { fg?: string; bg?: string; attributes?: number }): TextChunk {

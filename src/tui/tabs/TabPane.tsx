@@ -1,4 +1,4 @@
-import { tokens } from "../theme.js";
+import { useTheme } from "../theme.js";
 import { TabBar } from "./TabBar.js";
 import type { TabDef } from "./types.js";
 import type { WorktreeRow } from "../types.js";
@@ -41,7 +41,8 @@ export function TabPane({
   recentSessionIds,
   terminalSessions,
 }: TabPaneProps) {
-  const borderColor = focused ? tokens.accent : tokens.border;
+  const theme = useTheme();
+  const borderColor = focused ? theme.accent : theme.border;
   const mountedSessions = allSessionsFlat?.filter((s) => activeTabId === s.id || recentSessionIds?.has(s.id));
 
   const nonSessionTabs = tabs.filter((t) => !t.closable);
@@ -78,7 +79,7 @@ export function TabPane({
             />
           </box>
         ))}
-        {nonSessionTabs.length === 0 && (!mountedSessions || mountedSessions.length === 0) && <text fg={tokens.dim}>No tab</text>}
+        {nonSessionTabs.length === 0 && (!mountedSessions || mountedSessions.length === 0) && <text fg={theme.dim}>No tab</text>}
       </box>
     </box>
   );

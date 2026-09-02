@@ -50,7 +50,7 @@ describe("terminal rendering hotfix behavior", () => {
 
     expect(terminalView).toContain("const spawnError = session.spawnError;");
     expect(terminalView).toContain("spawnError && (");
-    expect(terminalView).toContain("fg={tokens.error}");
+    expect(terminalView).toContain("fg={theme.error}");
   });
 
   it("does not clear the embedded terminal destructively when sessions mount or switch", () => {
