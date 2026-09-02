@@ -17,6 +17,7 @@ interface TabPaneProps {
   allSessionsFlat?: TerminalSession[];
   terminalFocused?: boolean;
   activeTabId?: string;
+  recentSessionIds?: Set<string>;
   terminalSessions?: {
     sendInput: (repo: string, branch: string, path: string, id: string, data: string | Uint8Array) => void;
     resizeSession: (repo: string, branch: string, path: string, id: string, cols: number, rows: number) => void;
@@ -37,9 +38,11 @@ export function TabPane({
   allSessionsFlat,
   terminalFocused,
   activeTabId,
+  recentSessionIds,
   terminalSessions,
 }: TabPaneProps) {
   const borderColor = focused ? tokens.accent : tokens.border;
+  const mountedSessions = allSessionsFlat?.filter((s) => activeTabId === s.id || recentSessionIds?.has(s.id));
 
   return (
     <box
@@ -60,7 +63,7 @@ export function TabPane({
             {t.render({ worktree: selectedRow, isActive: t.id === activeId })}
           </box>
         ))}
-        {allSessionsFlat?.map((s) => (
+        {mountedSessions?.map((s) => (
           <box key={s.id} flexGrow={1} width="100%" height="100%" flexDirection="column" visible={activeTabId === s.id}>
             <TerminalView
               session={s}
@@ -73,7 +76,7 @@ export function TabPane({
             />
           </box>
         ))}
-        {tabs.length === 0 && (!allSessionsFlat || allSessionsFlat.length === 0) && <text fg={tokens.dim}>No tab</text>}
+        {tabs.length === 0 && (!mountedSessions || mountedSessions.length === 0) && <text fg={tokens.dim}>No tab</text>}
       </box>
     </box>
   );

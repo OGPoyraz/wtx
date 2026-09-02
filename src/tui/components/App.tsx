@@ -61,6 +61,7 @@ const VERBS: Record<BusyKind, string> = {
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export const TERMINAL_RESIZE_SETTLE_MS = 75;
+export const RECENT_TERMINAL_SESSION_LIMIT = 2;
 
 const DEPS_CHOICES: ChoiceOption[] = [
   { value: "auto", label: "Auto (default)", desc: "Safe-link when manifests match main, real install otherwise" },
@@ -200,6 +201,18 @@ export function activateTerminalSession(
   return Boolean(activeSession);
 }
 
+export function updateRecentTerminalSessions(
+  recent: readonly string[],
+  activeTabId: string | undefined,
+  nextTabId: string,
+  sessionIds: readonly string[]
+): string[] {
+  if (activeTabId === undefined || activeTabId === nextTabId || !sessionIds.includes(activeTabId)) return [...recent];
+
+  const next = [activeTabId, ...recent.filter((id) => id !== activeTabId && id !== nextTabId)];
+  return next.slice(0, RECENT_TERMINAL_SESSION_LIMIT);
+}
+
 export function resizeTerminalSessionsToPane(
   sessionsByKey: Map<string, ResizableTerminalSession[]>,
   resizeSession: (repoName: string, branch: string, path: string, id: string, cols: number, rows: number) => void,
@@ -296,6 +309,7 @@ export function App({ opts }: AppProps) {
   const [isResizing, setIsResizing] = useState(false);
   const terminalSessions = useTerminalSessions();
   const [activeTabByWorktree, setActiveTabByWorktree] = useState<Map<string, string>>(() => new Map());
+  const [recentTerminalSessionIds, setRecentTerminalSessionIds] = useState<string[]>([]);
   const [terminalFocused, setTerminalFocused] = useState(false);
   const { width: termW, height: termH } = useTerminalDimensions();
   const totalWidth = termW || renderer.width || 80;
@@ -452,6 +466,7 @@ export function App({ opts }: AppProps) {
     (id: string) => {
       if (!worktreeKey) return;
       const isSession = activateTerminalSession(sessionsForSelected, activeTabId, id, asFullRepaintRenderer(renderer));
+      setRecentTerminalSessionIds((prev) => updateRecentTerminalSessions(prev, activeTabId, id, sessionsForSelected.map((s) => s.id)));
       setActiveTabByWorktree((prev) => {
         const next = new Map(prev);
         next.set(worktreeKey, id);
@@ -478,6 +493,7 @@ export function App({ opts }: AppProps) {
       return;
     }
     const key = terminalSessions.getKey(selectedRow.repoName, selectedRow.branch, selectedRow.path);
+    setRecentTerminalSessionIds((prev) => updateRecentTerminalSessions(prev, activeTabId, session.id, sessionsForSelected.map((s) => s.id)));
     setActiveTabByWorktree((prev) => {
       const next = new Map(prev);
       next.set(key, session.id);
@@ -485,7 +501,7 @@ export function App({ opts }: AppProps) {
     });
     setTerminalFocused(true);
     flash(`Session ${session.label} created`, 2000);
-  }, [selectedRow, terminalSessions, flash, totalWidth, splitRatio, totalHeight]);
+  }, [selectedRow, terminalSessions, flash, totalWidth, splitRatio, totalHeight, activeTabId, sessionsForSelected]);
 
   const handleCloseSession = useCallback(
     (id: string) => {
@@ -499,6 +515,7 @@ export function App({ opts }: AppProps) {
         return next;
       });
       setTerminalFocused(false);
+      setRecentTerminalSessionIds((prev) => prev.filter((sessionId) => sessionId !== id));
       flash("Session closed", 2000);
     },
     [selectedRow, terminalSessions, flash]
@@ -515,6 +532,16 @@ export function App({ opts }: AppProps) {
     () => Array.from(terminalSessions.sessionsByKey.values()).flat(),
     [terminalSessions.sessionsByKey]
   );
+
+  const mountedRecentSessionIds = useMemo(() => new Set(recentTerminalSessionIds), [recentTerminalSessionIds]);
+
+  useEffect(() => {
+    const liveSessionIds = new Set(allSessionsFlat.map((s) => s.id));
+    setRecentTerminalSessionIds((prev) => {
+      const next = prev.filter((id) => liveSessionIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [allSessionsFlat]);
 
   const tabsForSelected: TabDef[] = useMemo(() => {
     const base: TabDef[] = [
@@ -1328,6 +1355,7 @@ export function App({ opts }: AppProps) {
             allSessionsFlat={allSessionsFlat}
             terminalFocused={terminalFocused}
             activeTabId={activeTabId}
+            recentSessionIds={mountedRecentSessionIds}
             terminalSessions={terminalSessions}
           />
         </box>

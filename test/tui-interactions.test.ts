@@ -1,21 +1,28 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import type { ReactElement } from "react";
-import { activateTerminalSession, createTerminalResizeScheduler, invalidateTerminalSessions, resolveFilteringKey, TERMINAL_RESIZE_SETTLE_MS } from "../src/tui/components/App.js";
+import { activateTerminalSession, createTerminalResizeScheduler, invalidateTerminalSessions, resolveFilteringKey, TERMINAL_RESIZE_SETTLE_MS, updateRecentTerminalSessions } from "../src/tui/components/App.js";
 import { TabPane } from "../src/tui/tabs/TabPane.js";
 import { resolveActionLauncher } from "../src/tui/actions.js";
 import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort, sortRowsHierarchically, clampSplitRatio, MIN_PANE_COLS } from "../src/tui/utils.js";
 import type { TabDef } from "../src/tui/tabs/types.js";
 import type { WorktreeRow, RepoBlock } from "../src/tui/types.js";
+import type { TerminalSession } from "../src/tui/hooks/useTerminalSessions.js";
 import { readFileSync } from "node:fs";
 
 type ResizeCall = [repoName: string, branch: string, path: string, id: string, cols: number, rows: number];
 
-function ptySession(id: string, cols = 80, rows = 24, terminal: unknown = {}) {
+function ptySession(id: string, cols = 80, rows = 24, terminal: unknown = {}): TerminalSession {
   return {
+    label: `Session ${id}`,
+    worktreeKey: "repo:branch",
     repoName: "repo",
     branch: "branch",
     worktreePath: `/tmp/repo/${id}`,
     id,
+    lines: [],
+    inputBuffer: "",
+    exited: null,
+    proc: {},
     cols,
     rows,
     usePty: true,
@@ -354,6 +361,68 @@ describe("terminal switch repaint recovery", () => {
     }
 
     expect(terminal.invalidate).toHaveBeenCalledTimes(invalidationsAfterSwitch);
+  });
+});
+
+describe("terminal session mount policy", () => {
+  it("mounts only the active session plus two recent sessions", () => {
+    const sessions = ["one", "two", "three", "four", "five"].map((id) => ptySession(id));
+
+    const pane = TabPane({
+      selectedRow: null,
+      tabs: [],
+      activeId: "five",
+      focused: false,
+      canAdd: false,
+      onSelect: () => {},
+      allSessionsFlat: sessions,
+      activeTabId: "five",
+      recentSessionIds: new Set(["two", "four"]),
+      terminalSessions: {
+        sendInput: () => {},
+        resizeSession: () => {},
+        registerListener: () => {},
+        unregisterListener: () => {},
+      },
+    }) as ReactElement<{ children: unknown }>;
+
+    const body = (pane.props.children as unknown[])[1] as ReactElement<{ children: unknown[] }>;
+    const terminalBoxes = body.props.children[1] as ReactElement<{ visible?: boolean }>[];
+
+    expect(terminalBoxes).toHaveLength(3);
+    expect(terminalBoxes.map((child) => child.key)).toEqual(["two", "four", "five"]);
+    expect(terminalBoxes.filter((child) => child.props.visible)).toHaveLength(1);
+  });
+
+  it("tracks the two most recently active terminal sessions", () => {
+    const sessionIds = ["one", "two", "three", "four", "five"];
+    let recent = updateRecentTerminalSessions([], "one", "two", sessionIds);
+    recent = updateRecentTerminalSessions(recent, "two", "three", sessionIds);
+    recent = updateRecentTerminalSessions(recent, "three", "four", sessionIds);
+
+    expect(recent).toEqual(["three", "two"]);
+    expect(updateRecentTerminalSessions(recent, "details", "five", sessionIds)).toEqual(recent);
+  });
+
+  it("keeps PTY process and emulator ownership in the session hook rather than the view", () => {
+    const source = readFileSync(new URL("../src/tui/hooks/useTerminalSessions.ts", import.meta.url), "utf8");
+
+    expect(source).toContain("proc: null");
+    expect(source).toContain("terminal: null");
+    expect(source).toContain("session.proc = proc");
+    expect(source).toContain("session.terminal = proc.terminal");
+    expect(source).toContain("const unregisterListener = useCallback((id: string) => {\n    listenersRef.current.delete(id);\n  }, []);");
+  });
+
+  it("unmounts only unregister the listener and leave process teardown to explicit session removal", () => {
+    const source = readFileSync(new URL("../src/tui/hooks/useTerminalSessions.ts", import.meta.url), "utf8");
+    const unregisterBlock = source.match(/const unregisterListener = useCallback[\s\S]*?\n  }, \[\]\);/)?.[0] ?? "";
+    const removeBlock = source.match(/const removeSession = useCallback[\s\S]*?\n  }, \[\]\);/)?.[0] ?? "";
+
+    expect(unregisterBlock).toContain("listenersRef.current.delete(id)");
+    expect(unregisterBlock).not.toContain("kill");
+    expect(unregisterBlock).not.toContain("close");
+    expect(removeBlock).toContain("sess.proc.kill()");
   });
 });
 
