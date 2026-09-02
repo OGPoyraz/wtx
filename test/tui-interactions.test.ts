@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { resolveFilteringKey } from "../src/tui/components/App.js";
 import { resolveActionLauncher } from "../src/tui/actions.js";
 import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort, sortRowsHierarchically, clampSplitRatio, MIN_PANE_COLS } from "../src/tui/utils.js";
 import type { WorktreeRow, RepoBlock } from "../src/tui/types.js";
@@ -188,5 +189,63 @@ describe("InputModal controlled value", () => {
     expect(source).toContain('const [value, setValue] = useState(initialValue ?? "")');
     expect(source).toContain('value={value}');
     expect(source).not.toContain('value={initialValue ?? ""}');
+  });
+});
+
+describe("TUI filter input", () => {
+  it("binds rendered filter value to filterText while onInput updates state", () => {
+    const source = readFileSync(new URL("../src/tui/components/App.tsx", import.meta.url), "utf8");
+    const filterInput = source.match(/<input\s+focused=\{true\}[\s\S]*?onInput=\{\(v: string\) => setFilterText\(v\)\}[\s\S]*?\/>/)?.[0] ?? "";
+
+    expect(filterInput).toContain("value={filterText}");
+  });
+
+  it("lets printable filter keys reach the focused input and build filterText", () => {
+    let filterText = "";
+
+    for (const keyName of ["f", "e", "a", "t"]) {
+      const action = resolveFilteringKey({ isFiltering: true, filterText, selectedIndex: 3 }, keyName);
+      if (action.deliverToInput) filterText += keyName;
+      expect(action.skipAppShortcuts).toBe(true);
+      expect(action.handledByApp).toBe(false);
+    }
+
+    expect(filterText).toBe("feat");
+  });
+
+  it("escape clears the filter, resets selection, and exits filtering", () => {
+    const action = resolveFilteringKey({ isFiltering: true, filterText: "feat", selectedIndex: 4 }, "escape");
+
+    expect(action).toEqual({
+      handledByApp: true,
+      skipAppShortcuts: true,
+      deliverToInput: false,
+      next: { isFiltering: false, filterText: "", selectedIndex: 0 },
+    });
+  });
+
+  it("return exits filtering while preserving filterText", () => {
+    const action = resolveFilteringKey({ isFiltering: true, filterText: "feat", selectedIndex: 4 }, "return");
+
+    expect(action).toEqual({
+      handledByApp: true,
+      skipAppShortcuts: true,
+      deliverToInput: false,
+      next: { isFiltering: false, filterText: "feat", selectedIndex: 4 },
+    });
+  });
+
+  it("keeps d and q as input text while filtering instead of triggering app shortcuts", () => {
+    let filterText = "";
+    const triggeredActions: string[] = [];
+
+    for (const keyName of ["d", "q"]) {
+      const action = resolveFilteringKey({ isFiltering: true, filterText, selectedIndex: 1 }, keyName);
+      if (!action.skipAppShortcuts) triggeredActions.push(keyName === "d" ? "remove" : "quit");
+      if (action.deliverToInput) filterText += keyName;
+    }
+
+    expect(triggeredActions).toEqual([]);
+    expect(filterText).toBe("dq");
   });
 });

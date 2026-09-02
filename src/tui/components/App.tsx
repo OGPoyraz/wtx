@@ -65,6 +65,45 @@ const DEPS_CHOICES: ChoiceOption[] = [
   { value: "symlink", label: "Symlink", desc: "Share main checkout's node_modules via symlink" },
 ];
 
+interface FilterState {
+  isFiltering: boolean;
+  filterText: string;
+  selectedIndex: number;
+}
+
+interface FilteringKeyAction {
+  handledByApp: boolean;
+  skipAppShortcuts: boolean;
+  deliverToInput: boolean;
+  next?: FilterState;
+}
+
+export function resolveFilteringKey(state: FilterState, keyName: string): FilteringKeyAction {
+  if (!state.isFiltering) {
+    return { handledByApp: false, skipAppShortcuts: false, deliverToInput: false };
+  }
+
+  if (keyName === "escape") {
+    return {
+      handledByApp: true,
+      skipAppShortcuts: true,
+      deliverToInput: false,
+      next: { isFiltering: false, filterText: "", selectedIndex: 0 },
+    };
+  }
+
+  if (keyName === "return") {
+    return {
+      handledByApp: true,
+      skipAppShortcuts: true,
+      deliverToInput: false,
+      next: { ...state, isFiltering: false },
+    };
+  }
+
+  return { handledByApp: false, skipAppShortcuts: true, deliverToInput: true };
+}
+
 function getWorktreePathFor(repoName: string, branch: string): string {
   try {
     const config = loadConfig();
@@ -744,14 +783,18 @@ export function App({ opts }: AppProps) {
       }
 
       if (isFiltering) {
-        if (key.name === "escape") {
-          setIsFiltering(false);
-          setFilterText("");
-          setSelectedIndex(0);
-        } else if (key.name === "return") {
-          setIsFiltering(false);
+        const action = resolveFilteringKey({ isFiltering, filterText, selectedIndex }, key.name);
+        if (action.next) {
+          setIsFiltering(action.next.isFiltering);
+          setFilterText(action.next.filterText);
+          setSelectedIndex(action.next.selectedIndex);
         }
-        return;
+        if (action.handledByApp) {
+          key.stopPropagation();
+        }
+        if (action.skipAppShortcuts) {
+          return;
+        }
       }
 
       if (failedLogs.length > 0) {
@@ -1160,7 +1203,7 @@ export function App({ opts }: AppProps) {
       {isFiltering && (
         <box flexDirection="row" paddingX={1} border={true} borderColor="magenta">
           <text>filter: </text>
-          <input focused={true} placeholder="Type to filter..." onInput={(v: string) => setFilterText(v)} />
+          <input focused={true} value={filterText} placeholder="Type to filter..." onInput={(v: string) => setFilterText(v)} />
         </box>
       )}
       <Footer
