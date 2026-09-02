@@ -24,6 +24,7 @@ import { registerTerminalCommand } from "./commands/terminal.js";
 import { registerMcpCommand } from "./commands/mcp.js";
 import { registerHistoryCommand } from "./commands/history.js";
 import { registerStackCommand } from "./commands/stack.js";
+import { registerWorkspaceCommand } from "./commands/workspace.js";
 import { loadConfig } from "./lib/config.js";
 import { getWorktreePath, resolveRepos } from "./lib/resolver.js";
 import { setQuiet } from "./lib/log.js";
@@ -56,14 +57,19 @@ const MUTATING_COMMANDS = new Set([
 ]);
 
 const MUTATING_CONFIG_SUBCOMMANDS = new Set(["set", "add-repo", "remove-repo"]);
+const MUTATING_WORKSPACE_SUBCOMMANDS = new Set(["create", "add", "rm", "remove"]);
 
 function shouldLogCommand(actionCmd: Command, opts: Record<string, unknown>): boolean {
   const name = actionCmd.name();
+  const parentName = actionCmd.parent?.name();
+  if (parentName === "workspace") {
+    return MUTATING_WORKSPACE_SUBCOMMANDS.has(name);
+  }
   if (MUTATING_COMMANDS.has(name)) {
     if (name === "deps") return Boolean(opts.install || opts.symlink);
     return true;
   }
-  if (actionCmd.parent?.name() === "config" && MUTATING_CONFIG_SUBCOMMANDS.has(name)) {
+  if (parentName === "config" && MUTATING_CONFIG_SUBCOMMANDS.has(name)) {
     return true;
   }
   return false;
@@ -137,6 +143,7 @@ registerTerminalCommand(program);
 registerMcpCommand(program);
 registerHistoryCommand(program);
 registerStackCommand(program);
+registerWorkspaceCommand(program);
 
 program
   .command("_resolve-path <repo> <branch>", { hidden: true })
