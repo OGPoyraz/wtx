@@ -1,2 +1,0 @@
-$ bun run src/index.ts -- --version
-0.9.0

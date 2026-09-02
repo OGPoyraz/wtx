@@ -1,8 +1,0 @@
-docs/configuration.md#dependency-syncing
-docs/cli.md#stacked-branches
-docs/configuration.md#template-variables
-docs/workspaces.md
-docs/terminal.md
-docs/agents.md
-docs/cli.md
-docs/configuration.md

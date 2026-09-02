@@ -1,5 +1,0 @@
-grep -rn '"Worktrees"' src/
-src/tui/components/WorktreeTable.tsx:178:      title="Worktrees"
-
-grep -rn '"Worktrees"' test/
-(no output)

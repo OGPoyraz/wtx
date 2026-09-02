@@ -1,3 +1,0 @@
-bun run test test/terminal-session-characterization.test.ts -> PASS
-maxScrollback mutation check: 10000 -> 100 caused FAIL, revert restored PASS
-bun run typecheck -> PASS

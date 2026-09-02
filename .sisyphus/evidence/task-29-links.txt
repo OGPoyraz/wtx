@@ -1,5 +1,0 @@
-docs/terminal.md
-docs/cli.md
-docs/configuration.md
-docs/workspaces.md
-docs/agents.md

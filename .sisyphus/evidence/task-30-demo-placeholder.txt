@@ -1,3 +1,0 @@
-   Start at  07:44:19
-   Duration  15.03s (transform 1.16s, setup 0ms, import 3.78s, tests 33.03s, environment 2ms)
-

@@ -1,6 +1,0 @@
-Command: bun run test test/tui-interactions.test.ts
-
-Result: PASS
-
- Test Files  1 passed (1)
-      Tests  24 passed (24)
