@@ -12,8 +12,12 @@ interface ChangesContentProps {
   focused?: boolean;
 }
 
-export function ChangesContent({ selectedRow, isActive, focused }: ChangesContentProps) {
-  const theme = useTheme();
+export function useChangesTabModel(
+  isActive: boolean,
+  selectedRow: WorktreeRow | null,
+  getChangedFilesImpl = getChangedFiles,
+  getFileDiffImpl = getFileDiff
+) {
   const [files, setFiles] = useState<ChangedFile[] | null>(null);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -23,6 +27,93 @@ export function ChangesContent({ selectedRow, isActive, focused }: ChangesConten
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isActive || !selectedRow) return;
+
+    let canceled = false;
+    setLoadingList(true);
+    setListError(null);
+
+    getChangedFilesImpl({
+      repoPath: selectedRow.path,
+      branch: selectedRow.branch,
+      scope: "worktree",
+    })
+      .then((res) => {
+        if (canceled) return;
+        setFiles(res);
+        setSelectedIndex(0);
+        setLoadingList(false);
+      })
+      .catch((err) => {
+        if (canceled) return;
+        setListError(String(err));
+        setLoadingList(false);
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [isActive, selectedRow?.path, selectedRow?.branch, getChangedFilesImpl]);
+
+  const selectedFile = files?.[selectedIndex];
+  useEffect(() => {
+    if (!isActive || !selectedRow || !selectedFile) return;
+    if (diffs[selectedFile.path]) return;
+
+    let canceled = false;
+    setLoadingDiff(true);
+    setDiffError(null);
+
+    getFileDiffImpl({
+      repoPath: selectedRow.path,
+      branch: selectedRow.branch,
+      scope: "worktree",
+      filePath: selectedFile.path,
+    })
+      .then((res) => {
+        if (canceled) return;
+        setDiffs((prev) => ({ ...prev, [selectedFile.path]: res }));
+        setLoadingDiff(false);
+      })
+      .catch((err) => {
+        if (canceled) return;
+        setDiffError(String(err));
+        setLoadingDiff(false);
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [isActive, selectedRow?.path, selectedRow?.branch, selectedFile, diffs, getFileDiffImpl]);
+
+  return {
+    files,
+    loadingList,
+    listError,
+    selectedIndex,
+    setSelectedIndex,
+    diffs,
+    loadingDiff,
+    diffError,
+    selectedFile,
+  };
+}
+
+export function ChangesContent({ selectedRow, isActive, focused }: ChangesContentProps) {
+  const theme = useTheme();
+  const {
+    files,
+    loadingList,
+    listError,
+    selectedIndex,
+    setSelectedIndex,
+    diffs,
+    loadingDiff,
+    diffError,
+    selectedFile,
+  } = useChangesTabModel(isActive, selectedRow);
 
   const spinner = useSpinnerFrame(loadingList || loadingDiff);
   const listScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -47,66 +138,6 @@ export function ChangesContent({ selectedRow, isActive, focused }: ChangesConten
       return;
     }
   });
-
-  useEffect(() => {
-    if (!isActive || !selectedRow) return;
-
-    let canceled = false;
-    setLoadingList(true);
-    setListError(null);
-
-    getChangedFiles({
-      repoPath: selectedRow.path,
-      branch: selectedRow.branch,
-      scope: "worktree",
-    })
-      .then((res) => {
-        if (canceled) return;
-        setFiles(res);
-        setSelectedIndex(0);
-        setLoadingList(false);
-      })
-      .catch((err) => {
-        if (canceled) return;
-        setListError(String(err));
-        setLoadingList(false);
-      });
-
-    return () => {
-      canceled = true;
-    };
-  }, [isActive, selectedRow?.path, selectedRow?.branch]);
-
-  const selectedFile = files?.[selectedIndex];
-  useEffect(() => {
-    if (!isActive || !selectedRow || !selectedFile) return;
-    if (diffs[selectedFile.path]) return;
-
-    let canceled = false;
-    setLoadingDiff(true);
-    setDiffError(null);
-
-    getFileDiff({
-      repoPath: selectedRow.path,
-      branch: selectedRow.branch,
-      scope: "worktree",
-      filePath: selectedFile.path,
-    })
-      .then((res) => {
-        if (canceled) return;
-        setDiffs((prev) => ({ ...prev, [selectedFile.path]: res }));
-        setLoadingDiff(false);
-      })
-      .catch((err) => {
-        if (canceled) return;
-        setDiffError(String(err));
-        setLoadingDiff(false);
-      });
-
-    return () => {
-      canceled = true;
-    };
-  }, [isActive, selectedRow?.path, selectedRow?.branch, selectedFile, diffs]);
 
   useEffect(() => {
     if (listScrollRef.current?.scrollChildIntoView) {

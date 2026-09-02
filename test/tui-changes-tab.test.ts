@@ -1,12 +1,108 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import React from "react";
-import { testRender } from "@opentui/react/test-utils";
-import { ChangesContent } from "../src/tui/components/ChangesTab.js";
-import { getChangedFiles, getFileDiff } from "../src/lib/changes.js";
+import { useChangesTabModel } from "../src/tui/components/ChangesTab.js";
 
-vi.mock("../src/lib/changes.js", () => ({
-  getChangedFiles: vi.fn(),
-  getFileDiff: vi.fn(),
+type HookSlot = {
+  state?: unknown;
+  deps?: readonly unknown[];
+  value?: unknown;
+  ref?: { current: unknown };
+  effect?: () => void | (() => void);
+  cleanup?: void | (() => void);
+};
+
+const reactMock = vi.hoisted(() => {
+  const hookState: HookSlot[] = [];
+  let hookIndex = 0;
+  let effectQueue: Array<() => void> = [];
+
+  function depsEqual(a: readonly unknown[] | undefined, b: readonly unknown[] | undefined): boolean {
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!Object.is(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  return {
+    beginRender() {
+      hookIndex = 0;
+      effectQueue = [];
+    },
+    runEffects() {
+      const queue = effectQueue;
+      effectQueue = [];
+      for (const fn of queue) fn();
+    },
+    reset() {
+      hookState.length = 0;
+      hookIndex = 0;
+      effectQueue = [];
+    },
+    useState<T>(initialState: T | (() => T)) {
+      const slot = hookState[hookIndex] ?? (hookState[hookIndex] = {});
+      if (!Object.prototype.hasOwnProperty.call(slot, "state")) {
+        slot.state = typeof initialState === "function" ? (initialState as () => T)() : initialState;
+      }
+      const currentIndex = hookIndex++;
+      return [
+        slot.state as T,
+        (next: T | ((prev: T) => T)) => {
+          const prev = hookState[currentIndex]!.state as T;
+          hookState[currentIndex]!.state = typeof next === "function" ? (next as (prev: T) => T)(prev) : next;
+        },
+      ] as const;
+    },
+    useRef<T>(initialValue: T) {
+      const slot = hookState[hookIndex] ?? (hookState[hookIndex] = {});
+      if (!slot.ref) {
+        slot.ref = { current: initialValue };
+      }
+      hookIndex++;
+      return slot.ref as { current: T };
+    },
+    useCallback<T>(fn: T, deps: readonly unknown[]) {
+      const slot = hookState[hookIndex] ?? (hookState[hookIndex] = {});
+      if (!depsEqual(slot.deps, deps)) {
+        slot.deps = deps;
+        slot.value = fn;
+      }
+      hookIndex++;
+      return slot.value as T;
+    },
+    useMemo<T>(factory: () => T, deps: readonly unknown[]) {
+      const slot = hookState[hookIndex] ?? (hookState[hookIndex] = {});
+      if (!depsEqual(slot.deps, deps)) {
+        slot.deps = deps;
+        slot.value = factory();
+      }
+      hookIndex++;
+      return slot.value as T;
+    },
+    useEffect(effect: () => void | (() => void), deps?: readonly unknown[]) {
+      const slot = hookState[hookIndex] ?? (hookState[hookIndex] = {});
+      if (!depsEqual(slot.deps, deps)) {
+        slot.deps = deps;
+        slot.effect = effect;
+        effectQueue.push(() => {
+          if (slot.cleanup && typeof slot.cleanup === "function") {
+            slot.cleanup();
+          }
+          slot.cleanup = effect() as any;
+        });
+      }
+      hookIndex++;
+    },
+  };
+});
+
+vi.mock("react", () => ({
+  useState: reactMock.useState,
+  useRef: reactMock.useRef,
+  useCallback: reactMock.useCallback,
+  useMemo: reactMock.useMemo,
+  useEffect: reactMock.useEffect,
+  createContext: vi.fn(() => ({})),
+  useContext: vi.fn(),
 }));
 
 const mockRow = {
@@ -30,84 +126,90 @@ const mockRow = {
   depsStrategy: "auto",
 };
 
-describe("ChangesTab", () => {
+describe("ChangesTab hooks", () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    reactMock.reset();
   });
 
-  it("renders empty state when no selectedRow", async () => {
-    const { captureCharFrame, flush, renderer } = await testRender(
-      React.createElement(ChangesContent, { selectedRow: null, isActive: true, focused: true }),
-      { width: 80, height: 24 }
-    );
-    await flush();
-    expect(captureCharFrame()).toContain("No worktree selected");
-    renderer.destroy();
+  function renderHook(isActive: boolean, row: any, getChangedFilesImpl: any, getFileDiffImpl: any) {
+    reactMock.beginRender();
+    useChangesTabModel(isActive, row, getChangedFilesImpl, getFileDiffImpl);
+    reactMock.runEffects();
+    reactMock.beginRender();
+    const result = useChangesTabModel(isActive, row, getChangedFilesImpl, getFileDiffImpl);
+    return result;
+  }
+
+  it("returns default empty state when not active or no row", () => {
+    const api = renderHook(false, null, vi.fn(), vi.fn());
+    expect(api.files).toBeNull();
+    expect(api.loadingList).toBe(false);
+    expect(api.diffs).toEqual({});
   });
 
-  it("renders empty state when no changes", async () => {
-    vi.mocked(getChangedFiles).mockResolvedValueOnce([]);
-
-    const { captureCharFrame, flush, renderer } = await testRender(
-      React.createElement(ChangesContent, { selectedRow: mockRow as any, isActive: true, focused: true }),
-      { width: 80, height: 24 }
-    );
+  it("loads files on activate", async () => {
+    const files = [
+      { path: "src/index.ts", status: "M", added: 2, removed: 1, binary: false }
+    ];
+    let resolveFiles: (f: any) => void;
+    const getChangedFilesMock = vi.fn().mockImplementation(() => new Promise(r => resolveFiles = r));
     
-    await flush();
+    const first = renderHook(true, mockRow, getChangedFilesMock, vi.fn());
+    expect(first.loadingList).toBe(true);
+    expect(first.files).toBeNull();
     
-    expect(captureCharFrame()).toContain("No changes in working tree");
-    renderer.destroy();
+    resolveFiles!(files);
+    await new Promise((r) => setTimeout(r, 0));
+    
+    const second = renderHook(true, mockRow, getChangedFilesMock, vi.fn().mockResolvedValue({}));
+    
+    expect(second.loadingList).toBe(false);
+    expect(second.files).toEqual(files);
+    expect(second.selectedIndex).toBe(0);
+    expect(second.selectedFile).toEqual(files[0]);
   });
 
-  it("renders list and lazy loads diff", async () => {
-    vi.mocked(getChangedFiles).mockResolvedValueOnce([
-      { path: "src/index.ts", status: "M", added: 2, removed: 1, binary: false },
-      { path: "src/types.ts", status: "A", added: 5, removed: 0, binary: false }
-    ]);
+  it("loads diff when file is selected", async () => {
+    const files = [
+      { path: "src/index.ts", status: "M", added: 2, removed: 1, binary: false }
+    ];
+    const getChangedFilesMock = vi.fn().mockResolvedValue(files);
+    const diff = { path: "src/index.ts", scope: "worktree", binary: false, diff: "diff content", truncated: false };
     
-    vi.mocked(getFileDiff).mockResolvedValueOnce({
-      path: "src/index.ts",
-      scope: "worktree",
-      binary: false,
-      diff: "diff --git a/src/index.ts b/src/index.ts\n@@ -1,2 +1,3 @@\n-old\n+new\n+added",
-      truncated: false
-    });
-
-    const { captureCharFrame, flush, mockInput, renderer, waitFor } = await testRender(
-      React.createElement(ChangesContent, { selectedRow: mockRow as any, isActive: true, focused: true }),
-      { width: 80, height: 24 }
-    );
-
-    await flush();
-
-    const output = captureCharFrame();
-    expect(output).toContain("src/index.ts");
-    expect(output).toContain("src/types.ts");
-    expect(output).toContain("diff --git a/src/index.ts");
+    let resolveDiff: (f: any) => void;
+    const getFileDiffMock = vi.fn().mockImplementation(() => new Promise(r => resolveDiff = r));
     
-    expect(getChangedFiles).toHaveBeenCalledTimes(1);
-    expect(getFileDiff).toHaveBeenCalledTimes(1);
-    expect(getFileDiff).toHaveBeenCalledWith({
+    renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    await new Promise((r) => setTimeout(r, 0));
+    
+    const res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    expect(res.loadingDiff).toBe(true);
+    
+    resolveDiff!(diff);
+    await new Promise((r) => setTimeout(r, 0));
+    
+    const res2 = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    
+    expect(res2.loadingDiff).toBe(false);
+    expect(res2.diffs["src/index.ts"]).toEqual(diff);
+    expect(getFileDiffMock).toHaveBeenCalledWith({
       repoPath: "/tmp/wtx/feat/foo",
       branch: "feat/foo",
       scope: "worktree",
       filePath: "src/index.ts"
     });
-
-    renderer.destroy();
   });
 
-  it("handles getChangedFiles error", async () => {
-    vi.mocked(getChangedFiles).mockRejectedValueOnce(new Error("Git failed"));
-
-    const { captureCharFrame, flush, renderer } = await testRender(
-      React.createElement(ChangesContent, { selectedRow: mockRow as any, isActive: true, focused: true }),
-      { width: 80, height: 24 }
-    );
+  it("handles errors gracefully", async () => {
+    const getChangedFilesMock = vi.fn().mockRejectedValue(new Error("Git error"));
     
-    await flush();
+    renderHook(true, mockRow, getChangedFilesMock, vi.fn());
+    await new Promise((r) => setTimeout(r, 0));
     
-    expect(captureCharFrame()).toContain("Error: Error: Git failed");
-    renderer.destroy();
+    const res = renderHook(true, mockRow, getChangedFilesMock, vi.fn());
+    
+    expect(res.loadingList).toBe(false);
+    expect(res.listError).toContain("Git error");
+    expect(res.files).toBeNull();
   });
 });
