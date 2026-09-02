@@ -10,6 +10,7 @@ import type { GlobalOptions, Config, RepoContext } from "../types.js";
 import type { WorktreeRow } from "./types.js";
 import type { ForgeAdapter, PrInfo } from "../lib/forge/types.js";
 import { readStackMetadata, type StackMetadata } from "../lib/stack.js";
+import { safeResolve } from "../lib/path-safety.js";
 
 export interface DataWarning {
   repoName: string;
@@ -227,8 +228,8 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
 
   const processRepo = async (repo: RepoContext) => {
     await semaphore.acquire();
-    const startRows = allRows.length;
     let mainBranch = config.default_main_branch;
+    let hasMain = false;
     try {
       mainBranch = await resolveMainBranch(repo, config);
       const wts = await getWorktreeList(repo.mainPath);
@@ -247,7 +248,8 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
         if (wt.isBare) continue; // skip bare
         
         let branch = wt.branch;
-        const isMainCheckout = wt.path === repo.mainPath;
+        const isMainCheckout = safeResolve(wt.path) === safeResolve(repo.mainPath);
+        if (isMainCheckout) hasMain = true;
         
         if (isMainCheckout && !branch) {
           branch = mainBranch;
@@ -357,7 +359,7 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
         prFetchJobs.push({ repo, forge, mainBranch, rows: prRows, branches, stackMetadata });
       }
 
-      if (allRows.length === startRows) {
+      if (!hasMain) {
         allRows.push({
           repoName: repo.name,
           branch: mainBranch,
@@ -383,7 +385,7 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
       }
     } catch (err: unknown) {
       warnings.push({ repoName: repo.name, message: `Failed to process repo ${repo.name}: ${errorMessage(err)}` });
-      if (allRows.length === startRows) {
+      if (!hasMain) {
         allRows.push({
           repoName: repo.name,
           branch: mainBranch,
