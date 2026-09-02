@@ -6,3 +6,4 @@
 - Real-git workspace tests need GitHub-shaped remotes plus `insteadOf` rewrites to keep forge/PR code paths offline but still resolvable.
 - Standard OSS hygiene files (CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, ISSUE_TEMPLATES, PR_TEMPLATE) are essential for repository health and contributor onboarding.
 - Followed the project's strict rule against 'Co-authored-by' trailers, explicitly documenting it in CONTRIBUTING.md and the PR template.
+- Demo placeholder landing spot is ready with an empty `demo/.gitkeep`; README already contains the owner-provided GIF comment and `demo/wtx.gif` reference.
