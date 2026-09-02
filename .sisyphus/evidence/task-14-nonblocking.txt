@@ -1,0 +1,10 @@
+$ vitest run
+
+ RUN  v4.1.11 /Users/ogpoyraz/Repos/wtx-wt/feat/next-2
+
+
+ Test Files  30 passed (30)
+      Tests  328 passed (328)
+   Start at  06:18:32
+   Duration  3.62s (transform 1.01s, setup 0ms, import 3.46s, tests 10.65s, environment 1ms)
+
