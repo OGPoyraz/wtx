@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchWorktreeData } from "../data.js";
-import type { DataWarning } from "../data.js";
+import type { DataWarning, TuiDataResult } from "../data.js";
 import { loadConfig } from "../../lib/config.js";
 import type { GlobalOptions } from "../../types.js";
 import type { RepoBlock, WorktreeRow } from "../types.js";
@@ -23,6 +23,25 @@ function loadFavorites(): string[] {
   }
 }
 
+function blocksFromData(data: TuiDataResult): RepoBlock[] {
+  const byRepo = new Map<string, WorktreeRow[]>();
+  for (const row of data.rows) {
+    let arr = byRepo.get(row.repoName);
+    if (!arr) {
+      arr = [];
+      byRepo.set(row.repoName, arr);
+    }
+    arr.push(row);
+  }
+
+  const blocks: RepoBlock[] = [];
+  for (const [repoName, rows] of byRepo.entries()) {
+    blocks.push({ repoName, rows: sortRowsHierarchically(rows) });
+  }
+  blocks.sort((a, b) => a.repoName.localeCompare(b.repoName));
+  return blocks;
+}
+
 export function useWorktrees(opts: GlobalOptions) {
   const [blocks, setBlocks] = useState<RepoBlock[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,28 +62,25 @@ export function useWorktrees(opts: GlobalOptions) {
       const data = await fetchWorktreeData(opts, scope);
       if (seq !== seqRef.current) return;
 
-      const byRepo = new Map<string, WorktreeRow[]>();
-      for (const row of data.rows) {
-        let arr = byRepo.get(row.repoName);
-        if (!arr) {
-          arr = [];
-          byRepo.set(row.repoName, arr);
-        }
-        arr.push(row);
-      }
-
-      const newBlocks: RepoBlock[] = [];
-      for (const [repoName, rows] of byRepo.entries()) {
-        newBlocks.push({ repoName, rows: sortRowsHierarchically(rows) });
-      }
-      newBlocks.sort((a, b) => a.repoName.localeCompare(b.repoName));
-
       const scopeSet = scope ? new Set(scope) : undefined;
       const currentFavorites = loadFavorites();
       setFavorites(currentFavorites);
-      setBlocks(prev => mergeBlocks(prev, newBlocks, scopeSet, currentFavorites));
+      setBlocks(prev => mergeBlocks(prev, blocksFromData(data), scopeSet, currentFavorites));
       setWarnings(prev => mergeWarnings(prev, data.warnings, scopeSet));
       setLastRefreshed(new Date().toLocaleTimeString());
+      void data.streamPrData((update) => {
+        if (seq !== seqRef.current) return;
+        const updateScope = new Set([update.repoName]);
+        const nextFavorites = loadFavorites();
+        setFavorites(nextFavorites);
+        setBlocks(prev => mergeBlocks(
+          prev,
+          [{ repoName: update.repoName, rows: sortRowsHierarchically(update.rows) }],
+          updateScope,
+          nextFavorites
+        ));
+        setWarnings(prev => mergeWarnings(prev, update.warnings, updateScope));
+      });
     } catch (err: any) {
       if (seq === seqRef.current) setError(err.message);
     } finally {

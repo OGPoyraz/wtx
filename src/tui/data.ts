@@ -8,7 +8,7 @@ import { resolveOwnership } from "../lib/owner.js";
 import { derivePrDisplay } from "../lib/forge/types.js";
 import type { GlobalOptions, Config, RepoContext } from "../types.js";
 import type { WorktreeRow } from "./types.js";
-import type { PrInfo } from "../lib/forge/types.js";
+import type { ForgeAdapter, PrInfo } from "../lib/forge/types.js";
 import { readStackMetadata, type StackMetadata } from "../lib/stack.js";
 
 export interface DataWarning {
@@ -19,25 +19,168 @@ export interface DataWarning {
 export interface TuiDataResult {
   rows: WorktreeRow[];
   warnings: DataWarning[];
+  streamPrData: (onUpdate: (update: TuiPrDataUpdate) => void) => Promise<void>;
+}
+
+export interface TuiPrDataUpdate {
+  repoName: string;
+  rows: WorktreeRow[];
+  warnings: DataWarning[];
 }
 
 const prCache = new Map<string, PrInfo>();
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function writePrFields(row: WorktreeRow, pr: PrInfo | undefined): WorktreeRow {
+  const next: WorktreeRow = {
+    ...row,
+    prNumber: null,
+    prState: null,
+    prChecks: null,
+    prUrl: null,
+  };
+
+  if (!pr) return next;
+
+  next.prNumber = pr.number;
+  next.prUrl = pr.url;
+  const display = derivePrDisplay(pr);
+  next.prState = display.primary;
+  if (pr.checks.total > 0) {
+    next.prChecks = `${pr.checks.passed}/${pr.checks.total}`;
+  }
+  if (pr.unresolvedThreads > 0) {
+    next.prChecks = (next.prChecks ? `${next.prChecks} · ` : "") + `${pr.unresolvedThreads} thread${pr.unresolvedThreads > 1 ? "s" : ""}`;
+  }
+  if (!next.base) {
+    next.base = pr.baseRefName;
+  }
+  return next;
+}
+
+interface PrFetchJob {
+  repo: RepoContext;
+  forge: ForgeAdapter;
+  mainBranch: string;
+  rows: WorktreeRow[];
+  branches: string[];
+  stackMetadata: StackMetadata;
+}
+
+async function enrichRowWithPrData(
+  row: WorktreeRow,
+  repo: RepoContext,
+  mainBranch: string,
+  stackMetadata: StackMetadata,
+  prMap: Map<string, PrInfo>,
+  config: Config,
+  opts: GlobalOptions
+): Promise<WorktreeRow> {
+  if (row.isMainCheckout || row.branch === "(detached)") {
+    return { ...row, prState: null };
+  }
+
+  const pr = prMap.get(row.branch);
+  const stackEntry = stackMetadata.branches[row.branch];
+  const base = stackEntry?.baseRef ?? pr?.baseRefName;
+  const comparisonBase = stackEntry?.explicit
+    ? stackEntry.baseRef
+    : pr?.baseRefName && pr.baseRefName !== mainBranch
+      ? pr.baseRefName
+      : `origin/${mainBranch}`;
+
+  let next = writePrFields({ ...row, base }, pr);
+
+  if (pr?.baseRefName && !stackEntry?.explicit) {
+    try {
+      const stdout = await gitExec(
+        ["-C", row.path, "rev-list", "--left-right", "--count", `${comparisonBase}...HEAD`],
+        { dryRun: opts.dryRun }
+      );
+      if (stdout) {
+        const parts = stdout.trim().split(/\s+/);
+        if (parts.length === 2) {
+          next = {
+            ...next,
+            behind: parseInt(parts[0]!, 10),
+            ahead: parseInt(parts[1]!, 10),
+          };
+        }
+      }
+    } catch {
+      // keep the initially rendered comparison values
+    }
+  }
+
+  if (config.user) {
+    try {
+      const owner = await resolveOwnership({
+        configUser: config.user,
+        mainPath: repo.mainPath,
+        branch: row.branch,
+        prAuthorLogin: pr?.authorLogin,
+        verbose: opts.verbose,
+      });
+      next = { ...next, owner: owner && !owner.mine ? owner.author : null };
+    } catch {
+      // keep the initially rendered owner value
+    }
+  }
+
+  return next;
+}
+
+async function fetchPrUpdateForRepo(
+  job: PrFetchJob,
+  config: Config,
+  opts: GlobalOptions
+): Promise<TuiPrDataUpdate> {
+  const warnings: DataWarning[] = [];
+  let prMap = new Map<string, PrInfo>();
+
+  if (job.branches.length > 0) {
+    try {
+      prMap = await job.forge.findForBranches({ cwd: job.repo.mainPath, branches: job.branches, verbose: opts.verbose });
+      for (const [br, pr] of prMap.entries()) {
+        prCache.set(`${job.repo.name}/${br}`, pr);
+      }
+    } catch (err: unknown) {
+      warnings.push({ repoName: job.repo.name, message: `PR lookup failed for ${job.repo.name}: ${errorMessage(err)}` });
+      for (const br of job.branches) {
+        const cached = prCache.get(`${job.repo.name}/${br}`);
+        if (cached) {
+          prMap.set(br, cached);
+        }
+      }
+    }
+  }
+
+  const rows = await Promise.all(
+    job.rows.map(row => enrichRowWithPrData(row, job.repo, job.mainBranch, job.stackMetadata, prMap, config, opts))
+  );
+
+  return { repoName: job.repo.name, rows, warnings };
+}
+
 export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): Promise<TuiDataResult> {
   const warnings: DataWarning[] = [];
+  const prFetchJobs: PrFetchJob[] = [];
   let config: Config;
 
   try {
     config = loadConfig();
-  } catch (err: any) {
-    throw new Error(`Failed to load config: ${err.message}`);
+  } catch (err: unknown) {
+    throw new Error(`Failed to load config: ${errorMessage(err)}`);
   }
 
   let repos: RepoContext[];
   try {
     repos = resolveRepos(config);
-  } catch (err: any) {
-    throw new Error(`Failed to resolve repos: ${err.message}`);
+  } catch (err: unknown) {
+    throw new Error(`Failed to resolve repos: ${errorMessage(err)}`);
   }
 
   if (scope) {
@@ -57,31 +200,12 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
       try {
         stackMetadata = await readStackMetadata(repo.mainPath, opts);
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        warnings.push({ repoName: repo.name, message });
+        warnings.push({ repoName: repo.name, message: errorMessage(err) });
       }
-      
+
       const forge = resolveForge(repo);
       const branches = wts.map(w => w.branch).filter(Boolean);
-      
-      let prMap = new Map<string, PrInfo>();
-      if (forge && branches.length > 0) {
-        try {
-          prMap = await forge.findForBranches({ cwd: repo.mainPath, branches, verbose: opts.verbose });
-          for (const [br, pr] of prMap.entries()) {
-            prCache.set(`${repo.name}/${br}`, pr);
-          }
-        } catch (err: any) {
-          warnings.push({ repoName: repo.name, message: `PR lookup failed for ${repo.name}: ${err.message}` });
-          // use cache fallback
-          for (const br of branches) {
-            const cached = prCache.get(`${repo.name}/${br}`);
-            if (cached) {
-              prMap.set(br, cached);
-            }
-          }
-        }
-      }
+      const prRows: WorktreeRow[] = [];
 
       for (const wt of wts) {
         if (wt.isBare) continue; // skip bare
@@ -94,13 +218,10 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
         }
 
         const stackEntry = branch ? stackMetadata.branches[branch] : undefined;
-        const pr = branch ? prMap.get(branch) : undefined;
-        const base = stackEntry?.baseRef ?? pr?.baseRefName;
+        const base = stackEntry?.baseRef;
         const comparisonBase = stackEntry?.explicit
           ? stackEntry.baseRef
-          : pr?.baseRefName && pr.baseRefName !== mainBranch
-            ? pr.baseRefName
-            : `origin/${mainBranch}`;
+          : `origin/${mainBranch}`;
 
         const row: WorktreeRow = {
           repoName: repo.name,
@@ -115,7 +236,7 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
           ahead: null,
           behind: null,
           prNumber: null,
-          prState: null,
+          prState: forge && branch && !isMainCheckout ? "FETCHING" : null,
           prChecks: null,
           prUrl: null,
           owner: null,
@@ -179,7 +300,7 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
                   configUser: config.user,
                   mainPath: repo.mainPath,
                   branch,
-                  prAuthorLogin: pr?.authorLogin,
+                  prAuthorLogin: null,
                   verbose: opts.verbose,
                 });
                 if (owner && !owner.mine) {
@@ -192,25 +313,15 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
           })()
         ]);
 
-        if (branch) {
-          if (pr) {
-            row.prNumber = pr.number;
-            row.prUrl = pr.url;
-            const display = derivePrDisplay(pr);
-            row.prState = display.primary;
-            if (pr.checks.total > 0) {
-              row.prChecks = `${pr.checks.passed}/${pr.checks.total}`;
-            }
-            if (pr.unresolvedThreads > 0) {
-              row.prChecks = (row.prChecks ? `${row.prChecks} · ` : "") + `${pr.unresolvedThreads} thread${pr.unresolvedThreads > 1 ? "s" : ""}`;
-            }
-          }
-        }
-
         allRows.push(row);
+        prRows.push(row);
       }
-    } catch (err: any) {
-      warnings.push({ repoName: repo.name, message: `Failed to process repo ${repo.name}: ${err.message}` });
+
+      if (forge && branches.length > 0) {
+        prFetchJobs.push({ repo, forge, mainBranch, rows: prRows, branches, stackMetadata });
+      }
+    } catch (err: unknown) {
+      warnings.push({ repoName: repo.name, message: `Failed to process repo ${repo.name}: ${errorMessage(err)}` });
     } finally {
       semaphore.release();
     }
@@ -221,5 +332,11 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
   return {
     rows: allRows,
     warnings,
+    streamPrData: async (onUpdate) => {
+      await Promise.allSettled(prFetchJobs.map(async (job) => {
+        const update = await fetchPrUpdateForRepo(job, config, opts);
+        onUpdate(update);
+      }));
+    },
   };
 }

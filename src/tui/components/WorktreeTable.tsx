@@ -137,6 +137,9 @@ function WorktreeItem({
             </text>
           </box>
         )}
+        {row.prNumber === null && row.prState === "FETCHING" && (
+          <text fg={tokens.dim}>{secondary ? " · " : ""}PR …</text>
+        )}
         <text>
           {baseChangedSegment && <span fg={tokens.warning}>{baseChangedSegment}</span>}
           {rebaseSegment && <span fg={tokens.error}>{rebaseSegment}</span>}
