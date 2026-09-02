@@ -565,7 +565,7 @@ export function App({ opts }: AppProps) {
   }, [worktreeKey, activeTabByWorktree]);
 
   useEffect(() => {
-    if (selectedRow?.isMainCheckout && activeTabId === "changes") {
+    if (activeTabId === "changes" && selectedRow && (selectedRow.isMainCheckout || selectedRow.dirtyFiles.length === 0)) {
       setActiveTabByWorktree((prev) => {
         const next = new Map(prev);
         next.set(worktreeKey, "details");
@@ -581,7 +581,7 @@ export function App({ opts }: AppProps) {
       });
       setTerminalFocused(false);
     } else if (sessionsForSelected.length > 0) {
-      const exists = sessionsForSelected.some((s) => s.id === activeTabId) || activeTabId === "details" || (!selectedRow?.isMainCheckout && activeTabId === "changes");
+      const exists = sessionsForSelected.some((s) => s.id === activeTabId) || activeTabId === "details" || (selectedRow && !selectedRow.isMainCheckout && selectedRow.dirtyFiles.length > 0 && activeTabId === "changes");
       if (!exists) {
         setActiveTabByWorktree((prev) => {
           const next = new Map(prev);
@@ -622,7 +622,7 @@ export function App({ opts }: AppProps) {
         return next;
       });
       setTerminalFocused(isSession);
-      setChangesFocused(id === "changes" && !selectedRow?.isMainCheckout);
+      setChangesFocused(id === "changes" && selectedRow != null && !selectedRow.isMainCheckout && selectedRow.dirtyFiles.length > 0);
     },
     [activeTabId, renderer, worktreeKey, sessionsForSelected, selectedRow]
   );
@@ -719,7 +719,7 @@ export function App({ opts }: AppProps) {
         render: ({ worktree }) => <DetailsContent selectedRow={worktree} />,
       },
     ];
-    if (!selectedRow?.isMainCheckout) {
+    if (selectedRow != null && !selectedRow.isMainCheckout && selectedRow.dirtyFiles.length > 0) {
       base.push({
         id: "changes",
         label: "Changes",

@@ -47,10 +47,11 @@ const HELP_GROUPS: HelpGroup[] = [
     ],
   },
   {
-    title: "Changes Explorer",
+    title: "Changes Explorer (only for dirty worktrees)",
     entries: [
-      ["s / Tab", "Cycle scope: worktree → staged → base (when Changes focused)"],
-      ["j / k", "Navigate files in Changes (when focused)"],
+      ["click Changes", "Focus pane — j/k navigates files, s/Tab cycles scope"],
+      ["s / Tab", "Cycle scope: worktree (dirty+untracked) → staged → base (vs base branch)"],
+      ["j / k, ↑/↓", "Navigate files (when Changes focused, Ctrl+G/Esc to unfocus)"],
     ],
   },
   {
