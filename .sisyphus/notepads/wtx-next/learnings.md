@@ -56,3 +56,22 @@
 - Characterization suite stays source-text based because OpenTUI native test rendering is unavailable in this runtime.
 - Kept four behavior blocks aligned to the hotfix spec: paste, rendering, scroll, logs.
 - maxScrollback mutation check confirmed the scroll budget assertion is live and reverts cleanly.
+
+### [2026-09-02] Task 2 config v2 migration
+- Config schema now parses v2 while preserving v1 and missing-version configs through a pre-validation zod preprocessor.
+- `loadConfig()` logs `migrated config to v2` with `stepProgress`, so quiet mode suppresses migration notices.
+- v1 fixture coverage lives in `test/fixtures/config-v1-*.json` and asserts legacy `pr`/`forge`/`pr_repo` migration composes with the version bump.
+
+### [2026-09-02] Task 4 filter input
+- OpenTUI global keyboard listeners can return without consuming an event; only `stopPropagation()` prevents the focused renderable from receiving it.
+- Filter mode should stop propagation for app-owned escape/return only; printable shortcut keys like `d` and `q` must simply skip app shortcuts and fall through to the focused input.
+- The TUI filter input follows the controlled input pattern: `value={filterText}` paired with `onInput={setFilterText}`.
+
+### [2026-09-02] Task 5 left pane title
+- `WorktreeTable` title was updated from `Worktrees` to `Repositories` because the pane renders repo blocks, not individual worktrees.
+- Source sweep found no stale `"Worktrees"` pane-title matches in `src/` or `test/` after the change.
+- `src/tui/components/HelpOverlay.tsx` did not need wording changes for this label.
+
+### [2026-09-02] Task 6 generic tab visibility
+- `TabPane` must treat `TabDef.id` generically; hardcoding `details` in the visibility check hides any future registered tab.
+- Headless TUI tests can inspect the rendered element tree directly to assert `visible` flags without needing a browser.

@@ -1,0 +1,15 @@
+Command: bun run test test/tui-interactions.test.ts
+
+Result: FAILED
+
+ RUN  v4.1.11 /Users/ogpoyraz/Repos/wtx-wt/feat/next-2
+
+ ❯ test/tui-interactions.test.ts (24 tests | 2 failed) 7ms
+     × shows non-details tabs when they are active 3ms
+     × keeps the details tab visible when it is active 0ms
+
+ FAIL  test/tui-interactions.test.ts > TUI Interactions > shows non-details tabs when they are active
+AssertionError: expected undefined to be true // Object.is equality
+
+ FAIL  test/tui-interactions.test.ts > TUI Interactions > keeps the details tab visible when it is active
+AssertionError: expected undefined to be true // Object.is equality

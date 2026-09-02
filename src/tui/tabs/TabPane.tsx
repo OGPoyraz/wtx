@@ -56,7 +56,7 @@ export function TabPane({
       <TabBar tabs={tabs} activeId={activeId} canAdd={canAdd} onSelect={onSelect} onAdd={onAdd} onClose={onClose} />
       <box flexGrow={1} width="100%" flexDirection="column">
         {tabs.map((t) => (
-          <box key={t.id} flexGrow={1} width="100%" flexDirection="column" visible={t.id === activeId && t.id === "details"}>
+          <box key={t.id} flexGrow={1} width="100%" flexDirection="column" visible={t.id === activeId}>
             {t.render({ worktree: selectedRow, isActive: t.id === activeId })}
           </box>
         ))}

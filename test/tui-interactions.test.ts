@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
+import type { ReactElement } from "react";
 import { resolveFilteringKey } from "../src/tui/components/App.js";
+import { TabPane } from "../src/tui/tabs/TabPane.js";
 import { resolveActionLauncher } from "../src/tui/actions.js";
 import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort, sortRowsHierarchically, clampSplitRatio, MIN_PANE_COLS } from "../src/tui/utils.js";
+import type { TabDef } from "../src/tui/tabs/types.js";
 import type { WorktreeRow, RepoBlock } from "../src/tui/types.js";
 import { readFileSync } from "node:fs";
 
@@ -28,6 +31,60 @@ const mockRow: WorktreeRow = {
 };
 
 describe("TUI Interactions", () => {
+  it("shows non-details tabs when they are active", () => {
+    const tabs: TabDef[] = [
+      {
+        id: "changes",
+        label: "Changes",
+        render: () => null,
+      },
+      {
+        id: "details",
+        label: "Details",
+        render: () => null,
+      },
+    ];
+
+    const pane = TabPane({
+      selectedRow: null,
+      tabs,
+      activeId: "changes",
+      focused: false,
+      canAdd: false,
+      onSelect: () => {},
+    }) as ReactElement<{ children: unknown }>;
+
+    const body = (pane.props.children as unknown[])[1] as ReactElement<{ children: unknown[] }>;
+    const tabBoxes = (body.props.children[0] as ReactElement<{ visible?: boolean }>[])?.filter((child) => child?.key === "changes" || child?.key === "details");
+
+    expect(tabBoxes.find((child) => child.key === "changes")?.props.visible).toBe(true);
+    expect(tabBoxes.find((child) => child.key === "details")?.props.visible).toBe(false);
+  });
+
+  it("keeps the details tab visible when it is active", () => {
+    const tabs: TabDef[] = [
+      {
+        id: "details",
+        label: "Details",
+        render: () => null,
+      },
+    ];
+
+    const pane = TabPane({
+      selectedRow: null,
+      tabs,
+      activeId: "details",
+      focused: false,
+      canAdd: false,
+      onSelect: () => {},
+    }) as ReactElement<{ children: unknown }>;
+
+    const body = (pane.props.children as unknown[])[1] as ReactElement<{ children: unknown[] }>;
+    const detailsBox = (body.props.children[0] as ReactElement<{ visible?: boolean }>[])?.find((child) => child.key === "details");
+
+    expect(detailsBox?.props.visible).toBe(true);
+  });
+
   it("matchesFilter finds matches correctly", () => {
     expect(matchesFilter(mockRow, "")).toBe(true);
     expect(matchesFilter(mockRow, "feat")).toBe(true);
