@@ -1,0 +1,8 @@
+Task 23 verify evidence
+
+- verify(workspacePath) returns VerifyResult and never throws for missing/unreadable workspaces.
+- verify reports dangling symlinks by workspace member folder name.
+- verify follows symlink chains with a visited set and reports cycles without infinite recursion.
+- lsp_diagnostics reported no diagnostics for src/lib/workspace.ts.
+- lsp_diagnostics reported no diagnostics for test/workspace.test.ts.
+- bun run typecheck exited 0.

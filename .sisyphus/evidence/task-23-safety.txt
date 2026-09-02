@@ -1,0 +1,9 @@
+Task 23 safety evidence
+
+- Reused src/lib/path-safety.ts safeResolve() and isWithin() for workspace/member path boundary checks.
+- createWorkspace rejects empty workspace names.
+- createWorkspace rejects workspace names containing path separators or '..'.
+- createWorkspace rejects workspace paths inside any member path.
+- createWorkspace rejects member paths inside the workspace directory.
+- removeMember unlinks only workspace symlinks and does not delete member worktree directories.
+- Focused safety coverage lives in test/workspace.test.ts and passed with bun run test test/workspace.test.ts.

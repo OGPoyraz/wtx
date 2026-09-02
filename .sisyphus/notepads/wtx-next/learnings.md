@@ -130,3 +130,13 @@
 - `useTerminalSessions.createSession()` now records a readable `spawnError` when PTY creation throws so the session stays mounted instead of failing silently.
 - `TerminalView` renders `session.spawnError` inline with error styling and keeps the pane alive for non-PTY fallback content.
 - Tests cover both the hook state path (`ENOENT`) and the view-level error surfacing so the failure stays visible in the terminal pane.
+
+### [2026-09-02] Task 23 workspace core
+- Workspace safety should reuse `safeResolve()` + `isWithin()` for both directions: workspace inside member and member inside workspace.
+- Workspace symlink names are derived artifacts; AGENTS.md should be regenerated from actual symlink names, not manifest repo names.
+- `verify()` can avoid infinite symlink loops by checking a visited set on each resolved symlink path before following the next target.
+
+## T20 changes library
+- Added src/lib/changes.ts as a read-only git diff engine using gitExec for rev-parse, diff, numstat, name-status, and submodule checks.
+- Real-git tmpdir tests in test/changes.test.ts cover worktree, staged, base, binary, empty, large truncation, cache invalidation, and readonly status preservation.
+- Evidence captured in .sisyphus/evidence/task-20-scopes.txt, task-20-readonly.txt, and task-20-edge-cases.txt.

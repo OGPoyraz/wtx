@@ -1,0 +1,8 @@
+Task 23 symlink farm evidence
+
+- Added src/lib/workspace.ts with pure workspace functions and no WorkspaceManager class.
+- createWorkspace writes <workspace_root>/<name>/ with absolute symlinks to member paths.
+- Symlink names default to <repo>; collisions fall back to <repo>-<branch> with branch separators normalized to dashes.
+- Manifest is written as .wtx-workspace.json with { version: 1, name, members: [{ repo, branch }] }.
+- AGENTS.md is a real file listing actual symlink folder names.
+- Focused test: bun run test test/workspace.test.ts passed (6 tests).
