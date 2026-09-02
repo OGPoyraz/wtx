@@ -1,7 +1,23 @@
 import { RGBA } from "@opentui/core";
 import type { TextChunk } from "@opentui/core";
+import { createContext, useContext } from "react";
 
-export const tokens = {
+export interface ThemeTokens {
+  fg: string;
+  bright: string;
+  dim: string;
+  border: string;
+  borderActive: string;
+  accent: string;
+  success: string;
+  warning: string;
+  error: string;
+  selectionBg: string;
+  panelBg: string;
+  scrim: string;
+}
+
+export const tokens: ThemeTokens = {
   fg: "#a9b1d6",
   bright: "#c0caf5",
   dim: "#565f89",
@@ -15,6 +31,12 @@ export const tokens = {
   panelBg: "#24283b",
   scrim: "#1a1b2699",
 };
+
+export const ThemeContext = createContext<ThemeTokens>(tokens);
+
+export function useTheme(): ThemeTokens {
+  return useContext(ThemeContext);
+}
 
 export function chunk(text: string, opts?: { fg?: string; bg?: string; attributes?: number }): TextChunk {
   const c: TextChunk = { __isChunk: true, text };
