@@ -1,12 +1,27 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import type { ReactElement } from "react";
-import { resolveFilteringKey } from "../src/tui/components/App.js";
+import { createTerminalResizeScheduler, resolveFilteringKey, TERMINAL_RESIZE_SETTLE_MS } from "../src/tui/components/App.js";
 import { TabPane } from "../src/tui/tabs/TabPane.js";
 import { resolveActionLauncher } from "../src/tui/actions.js";
 import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort, sortRowsHierarchically, clampSplitRatio, MIN_PANE_COLS } from "../src/tui/utils.js";
 import type { TabDef } from "../src/tui/tabs/types.js";
 import type { WorktreeRow, RepoBlock } from "../src/tui/types.js";
 import { readFileSync } from "node:fs";
+
+type ResizeCall = [repoName: string, branch: string, path: string, id: string, cols: number, rows: number];
+
+function ptySession(id: string, cols = 80, rows = 24) {
+  return {
+    repoName: "repo",
+    branch: "branch",
+    worktreePath: `/tmp/repo/${id}`,
+    id,
+    cols,
+    rows,
+    usePty: true,
+    terminal: {},
+  };
+}
 
 const mockRow: WorktreeRow = {
   repoName: "wtx",
@@ -29,6 +44,10 @@ const mockRow: WorktreeRow = {
   depsStrategy: "npm",
   base: "main",
 };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("TUI Interactions", () => {
   it("shows non-details tabs when they are active", () => {
@@ -236,6 +255,53 @@ describe("clampSplitRatio", () => {
   it("keeps ratio within bounds for various widths", () => {
     expect(clampSplitRatio(80, 0.6)).toBeGreaterThanOrEqual(MIN_PANE_COLS / 80);
     expect(clampSplitRatio(80, 0.6)).toBeLessThanOrEqual((80 - MIN_PANE_COLS - 3) / 80);
+  });
+});
+
+describe("terminal resize throttling", () => {
+  it("coalesces rapid pane dimension changes and keeps the final dimensions", () => {
+    vi.useFakeTimers();
+    const sessions = [ptySession("one"), ptySession("two")];
+    const sessionsByKey = new Map([["repo:branch", sessions]]);
+    const resizeSession = vi.fn((...args: ResizeCall) => {
+      const id = args[3];
+      const cols = args[4];
+      const rows = args[5];
+      const session = sessions.find((s) => s.id === id);
+      if (session) {
+        session.cols = cols;
+        session.rows = rows;
+      }
+    });
+    const scheduler = createTerminalResizeScheduler(() => sessionsByKey, resizeSession);
+
+    for (let i = 0; i < 20; i++) {
+      scheduler.schedule(100 + i, 30 + i);
+      vi.advanceTimersByTime(TERMINAL_RESIZE_SETTLE_MS - 1);
+    }
+
+    expect(resizeSession).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(TERMINAL_RESIZE_SETTLE_MS);
+
+    for (const session of sessions) {
+      const calls = resizeSession.mock.calls.filter((call) => call[3] === session.id);
+      expect(calls.length).toBeLessThanOrEqual(2);
+      expect(calls.at(-1)?.slice(4, 6)).toEqual([119, 49]);
+    }
+  });
+
+  it("resizes a single pane dimension change after the throttle window", () => {
+    vi.useFakeTimers();
+    const sessions = [ptySession("one")];
+    const sessionsByKey = new Map([["repo:branch", sessions]]);
+    const resizeSession = vi.fn<(...args: ResizeCall) => void>();
+    const scheduler = createTerminalResizeScheduler(() => sessionsByKey, resizeSession);
+
+    scheduler.schedule(120, 40);
+    vi.advanceTimersByTime(TERMINAL_RESIZE_SETTLE_MS);
+
+    expect(resizeSession).toHaveBeenCalledTimes(1);
+    expect(resizeSession).toHaveBeenCalledWith("repo", "branch", "/tmp/repo/one", "one", 120, 40);
   });
 });
 

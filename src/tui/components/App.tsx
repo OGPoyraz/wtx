@@ -59,6 +59,8 @@ const VERBS: Record<BusyKind, string> = {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+export const TERMINAL_RESIZE_SETTLE_MS = 75;
+
 const DEPS_CHOICES: ChoiceOption[] = [
   { value: "auto", label: "Auto (default)", desc: "Safe-link when manifests match main, real install otherwise" },
   { value: "install", label: "Install", desc: "Real install in the worktree (uses the repo's install_script when configured)" },
@@ -132,6 +134,70 @@ interface FailedAction {
   title: string;
   lines: { text: string; type: "out" | "err" }[];
   exitCode: number;
+}
+
+interface ResizableTerminalSession {
+  repoName: string;
+  branch: string;
+  worktreePath: string;
+  id: string;
+  cols: number;
+  rows: number;
+  usePty: boolean;
+  terminal: unknown;
+}
+
+export function resizeTerminalSessionsToPane(
+  sessionsByKey: Map<string, ResizableTerminalSession[]>,
+  resizeSession: (repoName: string, branch: string, path: string, id: string, cols: number, rows: number) => void,
+  paneCols: number,
+  paneRows: number
+): number {
+  let resized = 0;
+
+  for (const sessions of sessionsByKey.values()) {
+    for (const s of sessions) {
+      if (s.usePty && s.terminal && (s.cols !== paneCols || s.rows !== paneRows)) {
+        resizeSession(s.repoName, s.branch, s.worktreePath, s.id, paneCols, paneRows);
+        resized += 1;
+      }
+    }
+  }
+
+  return resized;
+}
+
+export function createTerminalResizeScheduler(
+  getSessionsByKey: () => Map<string, ResizableTerminalSession[]>,
+  resizeSession: (repoName: string, branch: string, path: string, id: string, cols: number, rows: number) => void,
+  onSettled: () => void = () => {},
+  delayMs = TERMINAL_RESIZE_SETTLE_MS
+) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let latest: { cols: number; rows: number } | null = null;
+
+  const flush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (!latest) return;
+
+    const { cols, rows } = latest;
+    latest = null;
+    resizeTerminalSessionsToPane(getSessionsByKey(), resizeSession, cols, rows);
+    // T10 hook point: settled terminal resizes should invalidate embedded terminals here.
+    onSettled();
+  };
+
+  return {
+    schedule(cols: number, rows: number) {
+      latest = { cols, rows };
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(flush, delayMs);
+    },
+    flush,
+  };
 }
 
 export function App({ opts }: AppProps) {
@@ -1149,16 +1215,25 @@ export function App({ opts }: AppProps) {
   const rightCols = Math.max(20, totalWidth - leftCols - DIVIDER_WIDTH);
   const paneCols = Math.max(20, rightCols - 4);
   const paneRows = Math.max(10, totalHeight - 10);
+  const terminalResizeStateRef = useRef({
+    sessionsByKey: terminalSessions.sessionsByKey,
+    resizeSession: terminalSessions.resizeSession,
+  });
+  terminalResizeStateRef.current.sessionsByKey = terminalSessions.sessionsByKey;
+  terminalResizeStateRef.current.resizeSession = terminalSessions.resizeSession;
+  const terminalResizeSchedulerRef = useRef<ReturnType<typeof createTerminalResizeScheduler> | null>(null);
+  if (!terminalResizeSchedulerRef.current) {
+    terminalResizeSchedulerRef.current = createTerminalResizeScheduler(
+      () => terminalResizeStateRef.current.sessionsByKey,
+      (...args) => terminalResizeStateRef.current.resizeSession(...args)
+    );
+  }
 
   useEffect(() => {
-    for (const sessions of terminalSessions.sessionsByKey.values()) {
-      for (const s of sessions) {
-        if (s.usePty && s.terminal && (s.cols !== paneCols || s.rows !== paneRows)) {
-          terminalSessions.resizeSession(s.repoName, s.branch, s.worktreePath, s.id, paneCols, paneRows);
-        }
-      }
-    }
-  }, [paneCols, paneRows, terminalSessions]);
+    terminalResizeSchedulerRef.current?.schedule(paneCols, paneRows);
+  }, [paneCols, paneRows]);
+
+  useEffect(() => () => terminalResizeSchedulerRef.current?.flush(), []);
 
   useEffect(() => {
     setTerminalFocused(false);
