@@ -1,5 +1,20 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 
+type BunProc = ReturnType<typeof Bun.spawn>;
+type BunTerminal = BunProc["terminal"];
+
+function hasDirectStdinWrite(proc: BunProc | null): proc is BunProc & {
+  stdin: { write: (data: string) => void };
+} {
+  return !!proc && typeof proc.stdin === "object" && proc.stdin !== null && "write" in proc.stdin;
+}
+
+function hasWritableStreamStdin(proc: BunProc | null): proc is BunProc & {
+  stdin: WritableStream<Uint8Array<ArrayBufferLike>>;
+} {
+  return !!proc && proc.stdin instanceof WritableStream;
+}
+
 export interface TerminalSession {
   id: string;
   label: string;
@@ -10,8 +25,8 @@ export interface TerminalSession {
   lines: string[];
   inputBuffer: string;
   exited: number | null;
-  proc: any | null;
-  terminal: any | null;
+  proc: BunProc | null;
+  terminal: BunTerminal | null;
   cols: number;
   rows: number;
   usePty: boolean;
@@ -296,16 +311,14 @@ export function useTerminalSessions() {
           }
           return;
         }
-        const proc = sess.proc as any;
+        const proc = sess.proc;
         const str = typeof data === "string" ? data : new TextDecoder().decode(data as Uint8Array);
-        if (proc.stdin && typeof proc.stdin.write === "function") {
+        if (hasDirectStdinWrite(proc)) {
           proc.stdin.write(str);
-        } else if (proc.stdin instanceof WritableStream) {
-          const writer = (proc.stdin as WritableStream<Uint8Array>).getWriter();
+        } else if (hasWritableStreamStdin(proc)) {
+          const writer = proc.stdin.getWriter();
           writer.write(new TextEncoder().encode(str));
           writer.releaseLock();
-        } else {
-          proc.stdin?.write?.(str);
         }
       } catch {}
       if (!sess.usePty) {

@@ -96,6 +96,12 @@ mock.module("react", () => ({
   useEffect() {
     hookIndex++;
   },
+  createContext<T>(defaultValue: T) {
+    return { _defaultValue: defaultValue };
+  },
+  useContext<T>(ctx: { _defaultValue: T }) {
+    return ctx._defaultValue;
+  },
 }));
 
 mock.module("@opentui/react", () => ({
@@ -200,7 +206,7 @@ async function main(): Promise<void> {
   });
 
   const noisySession = sessionsForWorktree[2]!;
-  const noisyWriter = ptyDataHandlers.get(noisySession.terminal as MockPty);
+  const noisyWriter = ptyDataHandlers.get(noisySession.terminal as unknown as MockPty);
   if (!noisyWriter) throw new Error("benchmark noisy session missing PTY data handler");
 
   for (let i = 0; i < KEYSTROKE_COUNT; i++) {
