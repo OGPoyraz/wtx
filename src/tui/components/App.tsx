@@ -911,7 +911,7 @@ export function App({ opts }: AppProps) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedRow, selection, warnings, busyRepos, busyRowPaths, doRefresh, flash, blocks, terminalSessions]
+    [selectedRow, selection, combinedWarnings, busyRepos, busyRowPaths, doRefresh, flash, blocks, terminalSessions]
   );
 
   useKeyboard(
@@ -994,6 +994,8 @@ export function App({ opts }: AppProps) {
       }
 
       if (configOpen) return;
+
+      if (workspacePickerOpen) return;
 
       if (createModal) {
         if (key.name === "escape") {
@@ -1246,6 +1248,20 @@ export function App({ opts }: AppProps) {
         return;
       }
 
+      if (key.name === "W" || (key.name === "w" && key.shift)) {
+        if (activeWorkspace) {
+          setActiveWorkspace(null);
+          flash("Workspace scope cleared");
+          return;
+        }
+        if (workspaces.length === 0) {
+          flash("No workspaces defined");
+          return;
+        }
+        setWorkspacePickerOpen(true);
+        return;
+      }
+
       if (key.name === "f") {
         const targets = getSelectedRows();
         if (targets.length > 0) startFetch(targets);
@@ -1396,6 +1412,8 @@ export function App({ opts }: AppProps) {
             repoVerbs={repoVerbs}
             rowVerbs={rowVerbs}
             favorites={favorites}
+            workspaceMemberSet={workspaceMemberSet}
+            activeWorkspaceName={activeWorkspace?.name ?? null}
             onRowClick={(idx) => {
               setTerminalFocused(false);
               setSelectedIndex(idx);
@@ -1444,11 +1462,31 @@ export function App({ opts }: AppProps) {
         onErrorClick={() => setModal({ type: "warnings" })}
       />
 
+      {workspacePickerOpen && (
+        <ChoiceModal
+          title={`Select Workspace (${workspaces.length})`}
+          options={workspaces.map((w) => ({
+            value: w.name,
+            label: w.name,
+            desc: `${w.members.length} member${w.members.length === 1 ? "" : "s"}`,
+          }))}
+          onSubmit={(name) => {
+            const chosen = workspaces.find((w) => w.name === name);
+            setWorkspacePickerOpen(false);
+            if (chosen) {
+              setActiveWorkspace(chosen);
+              flash(`Workspace scope: ${chosen.name}`);
+            }
+          }}
+          onCancel={() => setWorkspacePickerOpen(false)}
+        />
+      )}
+
       {modal.type === "help" && <HelpOverlay />}
       {modal.type === "history" && <HistoryOverlay />}
       {modal.type === "warnings" && (
         <WarningsOverlay
-          warnings={warnings}
+          warnings={combinedWarnings}
           onAcknowledge={() => {
             clearWarnings();
             setModal({ type: "none" });

@@ -17,6 +17,53 @@ export function matchesFilter(entry: WorktreeRow, term: string): boolean {
   return false;
 }
 
+export interface WorkspaceMemberRef {
+  repo: string;
+  branch: string;
+}
+
+export function workspaceMemberKey(repo: string, branch: string): string {
+  return `${repo}\u0000${branch}`;
+}
+
+export function buildWorkspaceMemberSet(members: readonly WorkspaceMemberRef[]): Set<string> {
+  const set = new Set<string>();
+  for (const m of members) set.add(workspaceMemberKey(m.repo, m.branch));
+  return set;
+}
+
+export function matchesWorkspace(entry: WorktreeRow, memberSet: Set<string> | null): boolean {
+  if (!memberSet) return true;
+  return memberSet.has(workspaceMemberKey(entry.repoName, entry.branch));
+}
+
+export function filterBlocksByWorkspace(
+  blocks: RepoBlock[],
+  memberSet: Set<string> | null
+): RepoBlock[] {
+  if (!memberSet) return blocks;
+  return blocks
+    .map((b) => ({ ...b, rows: b.rows.filter((r) => matchesWorkspace(r, memberSet)) }))
+    .filter((b) => b.rows.length > 0);
+}
+
+export function computeBrokenMemberWarnings(
+  workspaceName: string,
+  members: readonly WorkspaceMemberRef[],
+  presentKeys: Set<string>
+): DataWarning[] {
+  const warnings: DataWarning[] = [];
+  for (const m of members) {
+    if (!presentKeys.has(workspaceMemberKey(m.repo, m.branch))) {
+      warnings.push({
+        repoName: m.repo,
+        message: `Workspace "${workspaceName}" member ${m.repo}:${m.branch} is missing (worktree not found)`,
+      });
+    }
+  }
+  return warnings;
+}
+
 export function toggleSelection(current: Set<string>, path: string): Set<string> {
   const next = new Set(current);
   if (next.has(path)) {
