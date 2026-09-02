@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-09-02
+
+### Fixed
+
+- TUI: Details tab now follows theme (was stuck on tokyonight, `ReferenceError: tokens` on open)
+- TUI: main worktree rows persist after refresh / PR stream (safeResolve + hasMain fallback, prRows includes main)
+- TUI: filter bar first two chars clipped by narrow auto-size — now `width=100%` with `flexGrow` wrapper like TerminalView
+- TUI: Changes shows untracked files (worktree scope via `ls-files --others`) and synthesizes new-file diff, bypasses HEAD-only cache
+- TUI: Changes hidden for `main` checkouts and clean worktrees (`dirtyFiles.length===0`), focusable like Terminal (`click`/`Ctrl+G`/`Esc`, `j/k`/`s`/`Tab` when focused, border accent)
+- TUI: Help overlay theme-aware, width 100, grouped by feature (Navigation, Worktree Lifecycle, Favorites/Workspaces, Terminal, Changes Explorer, View/System)
+
+### Changed
+
+- TUI: Help grouped and widened, Overlay uses theme for scrim/panelBg
+
 ## [0.9.1] - 2026-09-02
 
 ### Fixed
