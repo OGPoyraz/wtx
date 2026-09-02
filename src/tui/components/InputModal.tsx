@@ -15,14 +15,17 @@ export function InputModal({ title, placeholder, initialValue, errorMessage, onS
 
   return (
     <Overlay title={title} borderColor={tokens.accent}>
-      <box flexDirection="column">
-        <input
-          focused={true}
-          value={value}
-          placeholder={placeholder}
-          onInput={(val: string) => setValue(val)}
-          onSubmit={() => onSubmit(value)}
-        />
+      <box flexDirection="column" width="100%">
+        <box flexGrow={1} width="100%">
+          <input
+            focused={true}
+            value={value}
+            placeholder={placeholder}
+            onInput={(val: string) => setValue(val)}
+            onSubmit={() => onSubmit(value)}
+            width="100%"
+          />
+        </box>
         {errorMessage ? (
           <text fg={tokens.error} style={{ marginTop: 1 }}>
             {errorMessage}

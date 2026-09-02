@@ -1584,9 +1584,11 @@ export function App({ opts }: AppProps) {
         </box>
       </box>
       {isFiltering && (
-        <box flexDirection="row" paddingX={1} border={true} borderColor="magenta">
+        <box flexDirection="row" paddingX={1} border={true} borderColor="magenta" width="100%">
           <text>filter: </text>
-          <input focused={true} value={filterText} placeholder="Type to filter..." onInput={(v: string) => setFilterText(v)} />
+          <box flexGrow={1}>
+            <input focused={true} value={filterText} placeholder="Type to filter..." onInput={(v: string) => setFilterText(v)} width="100%" />
+          </box>
         </box>
       )}
       <Footer
