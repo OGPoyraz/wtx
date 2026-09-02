@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Terminal sessions: multiple PTY sessions per worktree with tab switching
+- Favorites: pin repositories to the top with `F` keybind (★ marker)
+- Themes: 5 built-in presets (tokyonight, catppuccin-mocha, gruvbox-dark, nord, rosé-pine-dawn), cycle with `T`
+- Changes explorer: read-only diff tab with worktree/staged/base scopes, `s` cycles scope
+- Workspaces: symlink farm for multi-repo agent context (`wtx workspace create/ls/add/rm/remove/verify`)
+- Workspace cross-repo create: one command creates worktrees across all member repos
+- Workspace TUI integration: `W` keybind scopes dashboard to workspace members
+- `docs/` reference split: terminal, CLI, configuration, workspaces, agents
+- OSS hygiene: CONTRIBUTING.md, SECURITY.md, CODE_OF_CONDUCT.md, issue/PR templates
+
+### Changed
+
+- Config schema migrated to v2: `favorites`, `workspace_root`, `tui.theme`, `tui.custom_theme` fields added; legacy `pr`/`forge`/`pr_repo` keys auto-migrated
+- Left pane relabeled from "Worktrees" to "Repositories"
+- PR fetching decoupled from worktree render critical path (streams in separately)
+- PR cache bounded with TTL (5 min) and max entries (500)
+- Terminal session mount policy: LRU (active + 2 recent) instead of all-mounted
+
+### Fixed
+
+- Filter input now controlled (typed characters appear correctly)
+- InputModal value binding fixed (typed text was discarded)
+- Generic tab visibility: all tabs (not just Details) now show correctly
+- Session switch glitch: resize throttled, invalidate/repaint on switch, replay flood removed
+- PTY spawn failures surfaced inline instead of silent blank pane
+
 ## [0.8.10] - 2026-09-01
 
 ### Fixed
