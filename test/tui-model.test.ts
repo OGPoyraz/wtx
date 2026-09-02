@@ -1,12 +1,16 @@
 import { describe, it, expect } from "vitest";
+import fs from "fs";
 import {
   mergeBlocks,
   mergeWarnings,
   makePlaceholderRow,
   withCreatePlaceholders,
   rowSort,
+  sortBlocks,
 } from "../src/tui/utils.js";
 import type { RepoBlock, WorktreeRow } from "../src/tui/types.js";
+import { createTempConfig } from "./setup.js";
+import { loadConfig, saveConfig, getConfigPath } from "../src/lib/config.js";
 
 function row(repoName: string, branch: string, isMain = false): WorktreeRow {
   return {
@@ -84,6 +88,139 @@ describe("mergeWarnings", () => {
     const prev = [{ repoName: "a", message: "old" }];
     const next = [{ repoName: "a", message: "new" }];
     expect(mergeWarnings(prev, next)).toEqual(next);
+  });
+});
+
+describe("sortBlocks favorites", () => {
+  it("pins favorites to the top in configured order, remainder alphabetical", () => {
+    const blocks = [
+      block("alpha", [row("alpha", "main", true)]),
+      block("beta", [row("beta", "main", true)]),
+      block("gamma", [row("gamma", "main", true)]),
+    ];
+    const sorted = sortBlocks(blocks, ["gamma"]);
+    expect(sorted.map(b => b.repoName)).toEqual(["gamma", "alpha", "beta"]);
+  });
+
+  it("preserves multi-favorite order and alphabetizes rest", () => {
+    const blocks = [
+      block("alpha", [row("alpha", "main", true)]),
+      block("beta", [row("beta", "main", true)]),
+      block("delta", [row("delta", "main", true)]),
+      block("gamma", [row("gamma", "main", true)]),
+    ];
+    const sorted = sortBlocks(blocks, ["gamma", "alpha"]);
+    expect(sorted.map(b => b.repoName)).toEqual(["gamma", "alpha", "beta", "delta"]);
+  });
+
+  it("keeps alphabetical order when no favorites given", () => {
+    const blocks = [
+      block("gamma", [row("gamma", "main", true)]),
+      block("alpha", [row("alpha", "main", true)]),
+      block("beta", [row("beta", "main", true)]),
+    ];
+    const sorted = sortBlocks(blocks);
+    expect(sorted.map(b => b.repoName)).toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  it("ignores unknown favorite entries", () => {
+    const blocks = [
+      block("alpha", [row("alpha", "main", true)]),
+      block("beta", [row("beta", "main", true)]),
+    ];
+    const sorted = sortBlocks(blocks, ["missing", "beta"]);
+    expect(sorted.map(b => b.repoName)).toEqual(["beta", "alpha"]);
+  });
+});
+
+describe("mergeBlocks favorites", () => {
+  it("applies favorite ordering when merging without scope", () => {
+    const prev: RepoBlock[] = [];
+    const next = [
+      block("alpha", [row("alpha", "main", true)]),
+      block("beta", [row("beta", "main", true)]),
+      block("gamma", [row("gamma", "main", true)]),
+    ];
+    const merged = mergeBlocks(prev, next, undefined, ["gamma"]);
+    expect(merged.map(b => b.repoName)).toEqual(["gamma", "alpha", "beta"]);
+  });
+
+  it("applies favorite ordering when merging scoped updates", () => {
+    const prev = [
+      block("alpha", [row("alpha", "old")]),
+      block("beta", [row("beta", "main", true)]),
+      block("gamma", [row("gamma", "main", true)]),
+    ];
+    const next = [block("alpha", [row("alpha", "new")])];
+    const merged = mergeBlocks(prev, next, new Set(["alpha"]), ["gamma"]);
+    expect(merged.map(b => b.repoName)).toEqual(["gamma", "alpha", "beta"]);
+    const alphaRow = merged.find(b => b.repoName === "alpha")?.rows[0];
+    expect(alphaRow?.branch).toBe("new");
+  });
+});
+
+describe("favorites config toggle", () => {
+  it("adds a repo to favorites via saveConfig without touching other fields", () => {
+    const { path: configPath } = createTempConfig({
+      ide: "vscode",
+      repos: {
+        alpha: {
+          main_branch: "auto",
+          fetch_main_on_create: true,
+          install_script: null,
+          check_prs: true,
+          forge_provider: "auto",
+          pr_lookup_repo: null,
+          deps: { manager: "auto", strategy: "auto" },
+        },
+      },
+    });
+
+    const loaded = loadConfig();
+    expect(loaded.favorites).toEqual([]);
+
+    saveConfig({ ...loaded, favorites: [...loaded.favorites, "alpha"] });
+
+    const stored = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    expect(stored.favorites).toEqual(["alpha"]);
+    expect(stored.ide).toBe("vscode");
+    expect(Object.keys(stored.repos)).toEqual(["alpha"]);
+    expect(configPath).toBe(getConfigPath());
+  });
+
+  it("removes a repo from favorites via saveConfig", () => {
+    const { path: configPath } = createTempConfig({
+      favorites: ["gamma", "alpha"],
+      repos: {
+        alpha: {
+          main_branch: "auto",
+          fetch_main_on_create: true,
+          install_script: null,
+          check_prs: true,
+          forge_provider: "auto",
+          pr_lookup_repo: null,
+          deps: { manager: "auto", strategy: "auto" },
+        },
+        gamma: {
+          main_branch: "auto",
+          fetch_main_on_create: true,
+          install_script: null,
+          check_prs: true,
+          forge_provider: "auto",
+          pr_lookup_repo: null,
+          deps: { manager: "auto", strategy: "auto" },
+        },
+      },
+    });
+
+    const loaded = loadConfig();
+    expect(loaded.favorites).toEqual(["gamma", "alpha"]);
+
+    saveConfig({ ...loaded, favorites: loaded.favorites.filter(n => n !== "gamma") });
+
+    const stored = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    expect(stored.favorites).toEqual(["alpha"]);
+    expect(Object.keys(stored.repos).sort()).toEqual(["alpha", "gamma"]);
   });
 });
 

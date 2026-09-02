@@ -15,6 +15,14 @@ function initialPendingRepos(): string[] {
   }
 }
 
+function loadFavorites(): string[] {
+  try {
+    return loadConfig().favorites;
+  } catch {
+    return [];
+  }
+}
+
 export function useWorktrees(opts: GlobalOptions) {
   const [blocks, setBlocks] = useState<RepoBlock[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +31,7 @@ export function useWorktrees(opts: GlobalOptions) {
   const [warnings, setWarnings] = useState<DataWarning[]>([]);
   const [lastRefreshed, setLastRefreshed] = useState<string>("");
   const [pendingRepos, setPendingRepos] = useState<string[]>(initialPendingRepos);
+  const [favorites, setFavorites] = useState<string[]>(loadFavorites);
   const seqRef = useRef(0);
 
   const refresh = useCallback(async (scope?: string[]) => {
@@ -51,7 +60,9 @@ export function useWorktrees(opts: GlobalOptions) {
       newBlocks.sort((a, b) => a.repoName.localeCompare(b.repoName));
 
       const scopeSet = scope ? new Set(scope) : undefined;
-      setBlocks(prev => mergeBlocks(prev, newBlocks, scopeSet));
+      const currentFavorites = loadFavorites();
+      setFavorites(currentFavorites);
+      setBlocks(prev => mergeBlocks(prev, newBlocks, scopeSet, currentFavorites));
       setWarnings(prev => mergeWarnings(prev, data.warnings, scopeSet));
       setLastRefreshed(new Date().toLocaleTimeString());
     } catch (err: any) {
@@ -67,9 +78,14 @@ export function useWorktrees(opts: GlobalOptions) {
 
   const clearWarnings = useCallback(() => setWarnings([]), []);
 
+  const applyFavorites = useCallback((next: string[]) => {
+    setFavorites(next);
+    setBlocks(prev => mergeBlocks([], prev, undefined, next));
+  }, []);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  return { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, refresh, clearWarnings };
+  return { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, favorites, refresh, clearWarnings, applyFavorites };
 }

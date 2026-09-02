@@ -18,6 +18,7 @@ interface WorktreeTableProps {
   frame: string;
   repoVerbs: Map<string, VerbIndicator>;
   rowVerbs: Map<string, VerbIndicator>;
+  favorites?: string[];
   onRowClick?: (index: number) => void;
   onToggleSelect?: (path: string) => void;
 }
@@ -145,7 +146,8 @@ function WorktreeItem({
   );
 }
 
-export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), frame, repoVerbs, rowVerbs, onRowClick, onToggleSelect }: WorktreeTableProps) {
+export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), frame, repoVerbs, rowVerbs, favorites = [], onRowClick, onToggleSelect }: WorktreeTableProps) {
+  const favoriteSet = new Set(favorites);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   useEffect(() => {
@@ -191,6 +193,7 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
             <box key={block.repoName} flexDirection="column" style={{ marginBottom: 1 }}>
               <box style={{ marginTop: headerSeen === 0 ? 0 : 1 }}>
                 <text>
+                  {favoriteSet.has(block.repoName) && <span fg={tokens.accent}>{"★ "}</span>}
                   <span fg={tokens.bright}>{block.repoName}</span>
                   {block.rows.length > 0 && (
                     <span fg={tokens.dim}>{` · ${block.rows.filter(r => !r.isPendingCreate).length}`}</span>

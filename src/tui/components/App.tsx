@@ -25,7 +25,7 @@ import { ConfigOverlay } from "./ConfigOverlay.js";
 import { WarningsOverlay } from "./WarningsOverlay.js";
 import { matchesFilter, toggleSelection, withCreatePlaceholders, sortBlocks, clampSplitRatio, DIVIDER_WIDTH } from "../utils.js";
 import { copyTextToClipboard, readTextFromClipboard } from "../platform.js";
-import { loadConfig } from "../../lib/config.js";
+import { loadConfig, saveConfig } from "../../lib/config.js";
 import { useSpinnerFrame } from "../hooks/useSpinnerFrame.js";
 import { MAX_TERMINAL_SESSIONS, useTerminalSessions } from "../hooks/useTerminalSessions.js";
 
@@ -268,7 +268,7 @@ export function createTerminalResizeScheduler(
 
 export function App({ opts }: AppProps) {
   const renderer = useRenderer();
-  const { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, refresh, clearWarnings } = useWorktrees(opts);
+  const { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, favorites, refresh, clearWarnings, applyFavorites } = useWorktrees(opts);
 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -345,6 +345,22 @@ export function App({ opts }: AppProps) {
     setActionMessage(message);
     messageTimer.current = setTimeout(() => setActionMessage(undefined), ms);
   }, []);
+
+  const toggleFavorite = useCallback((repoName: string) => {
+    try {
+      const cfg = loadConfig();
+      const current = cfg.favorites;
+      const isFavorite = current.includes(repoName);
+      const nextFavorites = isFavorite
+        ? current.filter((n) => n !== repoName)
+        : [...current, repoName];
+      saveConfig({ ...cfg, favorites: nextFavorites });
+      applyFavorites(nextFavorites);
+      flash(isFavorite ? `Unpinned ${repoName}` : `Pinned ${repoName}`);
+    } catch (err) {
+      flash(`Failed to toggle favorite: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [applyFavorites, flash]);
 
   // Terminals intercept Cmd+C before it reaches the app; copy when drag selection completes.
   const copySelectedText = useCallback(
@@ -1191,6 +1207,16 @@ export function App({ opts }: AppProps) {
         return;
       }
 
+      if (key.name === "F" || (key.name === "f" && key.shift)) {
+        const target = selectedRow ?? getSelectedRows()[0];
+        if (!target) {
+          flash("No repo selected");
+          return;
+        }
+        toggleFavorite(target.repoName);
+        return;
+      }
+
       if (key.name === "f") {
         const targets = getSelectedRows();
         if (targets.length > 0) startFetch(targets);
@@ -1334,6 +1360,7 @@ export function App({ opts }: AppProps) {
             frame={spinnerFrame}
             repoVerbs={repoVerbs}
             rowVerbs={rowVerbs}
+            favorites={favorites}
             onRowClick={(idx) => {
               setTerminalFocused(false);
               setSelectedIndex(idx);

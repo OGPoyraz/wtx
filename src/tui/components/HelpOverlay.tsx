@@ -8,6 +8,7 @@ const HELP_ENTRIES: [string, string][] = [
   ["c", "Open configuration"],
   ["n", "Create new worktree (pick dependency strategy)"],
   ["f", "Fetch main for selected repo(s)"],
+  ["F (shift+f)", "Pin/unpin selected repo (favorites float to top)"],
   ["p", "Pull latest changes for selected branch(es)"],
   ["P (shift+p)", "Pull PR by link (force-override if exists)"],
   ["b", "Rebase selected onto base (or main)"],

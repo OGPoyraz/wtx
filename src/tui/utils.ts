@@ -71,8 +71,19 @@ export function sortRowsHierarchically(rows: WorktreeRow[]): WorktreeRow[] {
   }));
 }
 
-export function sortBlocks(blocks: RepoBlock[]): RepoBlock[] {
-  return [...blocks].sort((a, b) => a.repoName.localeCompare(b.repoName));
+export function sortBlocks(blocks: RepoBlock[], favorites: string[] = []): RepoBlock[] {
+  const favoriteRank = new Map<string, number>();
+  favorites.forEach((name, idx) => {
+    if (!favoriteRank.has(name)) favoriteRank.set(name, idx);
+  });
+  return [...blocks].sort((a, b) => {
+    const aRank = favoriteRank.get(a.repoName);
+    const bRank = favoriteRank.get(b.repoName);
+    if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
+    if (aRank !== undefined) return -1;
+    if (bRank !== undefined) return 1;
+    return a.repoName.localeCompare(b.repoName);
+  });
 }
 
 export function wrapText(text: string, width: number): string[] {
@@ -111,10 +122,10 @@ export function clampSplitRatio(totalWidth: number, ratio: number, dividerWidth 
   return Math.max(minRatio, Math.min(maxRatio, ratio));
 }
 
-export function mergeBlocks(prev: RepoBlock[], next: RepoBlock[], scope?: Set<string>): RepoBlock[] {
-  if (!scope) return sortBlocks(next);
+export function mergeBlocks(prev: RepoBlock[], next: RepoBlock[], scope?: Set<string>, favorites: string[] = []): RepoBlock[] {
+  if (!scope) return sortBlocks(next, favorites);
   const kept = prev.filter(b => !scope.has(b.repoName));
-  return sortBlocks([...kept, ...next]);
+  return sortBlocks([...kept, ...next], favorites);
 }
 
 export function mergeWarnings(prev: DataWarning[], next: DataWarning[], scope?: Set<string>): DataWarning[] {
