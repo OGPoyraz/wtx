@@ -1,6 +1,6 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import type { ReactElement } from "react";
-import { createTerminalResizeScheduler, resolveFilteringKey, TERMINAL_RESIZE_SETTLE_MS } from "../src/tui/components/App.js";
+import { activateTerminalSession, createTerminalResizeScheduler, invalidateTerminalSessions, resolveFilteringKey, TERMINAL_RESIZE_SETTLE_MS } from "../src/tui/components/App.js";
 import { TabPane } from "../src/tui/tabs/TabPane.js";
 import { resolveActionLauncher } from "../src/tui/actions.js";
 import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort, sortRowsHierarchically, clampSplitRatio, MIN_PANE_COLS } from "../src/tui/utils.js";
@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 
 type ResizeCall = [repoName: string, branch: string, path: string, id: string, cols: number, rows: number];
 
-function ptySession(id: string, cols = 80, rows = 24) {
+function ptySession(id: string, cols = 80, rows = 24, terminal: unknown = {}) {
   return {
     repoName: "repo",
     branch: "branch",
@@ -19,7 +19,7 @@ function ptySession(id: string, cols = 80, rows = 24) {
     cols,
     rows,
     usePty: true,
-    terminal: {},
+    terminal,
   };
 }
 
@@ -302,6 +302,58 @@ describe("terminal resize throttling", () => {
 
     expect(resizeSession).toHaveBeenCalledTimes(1);
     expect(resizeSession).toHaveBeenCalledWith("repo", "branch", "/tmp/repo/one", "one", 120, 40);
+  });
+
+  it("invalidates terminals after resize settles", () => {
+    vi.useFakeTimers();
+    const terminal = { invalidate: vi.fn() };
+    const sessions = [ptySession("one", 80, 24, terminal)];
+    const sessionsByKey = new Map([["repo:branch", sessions]]);
+    const resizeSession = vi.fn<(...args: ResizeCall) => void>();
+    const scheduler = createTerminalResizeScheduler(
+      () => sessionsByKey,
+      resizeSession,
+      () => invalidateTerminalSessions(sessionsByKey)
+    );
+
+    scheduler.schedule(120, 40);
+    vi.advanceTimersByTime(TERMINAL_RESIZE_SETTLE_MS - 1);
+    expect(terminal.invalidate).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+
+    expect(terminal.invalidate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("terminal switch repaint recovery", () => {
+  it("invalidates the newly active terminal exactly once and requests a full repaint", () => {
+    const previousTerminal = { invalidate: vi.fn() };
+    const nextTerminal = { invalidate: vi.fn() };
+    const renderer = { forceFullRepaintRequested: false };
+    const sessions = [ptySession("one", 80, 24, previousTerminal), ptySession("two", 80, 24, nextTerminal)];
+
+    const isSession = activateTerminalSession(sessions, "one", "two", renderer);
+
+    expect(isSession).toBe(true);
+    expect(previousTerminal.invalidate).not.toHaveBeenCalled();
+    expect(nextTerminal.invalidate).toHaveBeenCalledTimes(1);
+    expect(renderer.forceFullRepaintRequested).toBe(true);
+  });
+
+  it("does not invalidate terminals on unrelated re-renders", () => {
+    const terminal = { invalidate: vi.fn() };
+    const renderer = { forceFullRepaintRequested: false };
+    const sessions = [ptySession("one", 80, 24, terminal)];
+
+    activateTerminalSession(sessions, "none", "one", renderer);
+    const invalidationsAfterSwitch = terminal.invalidate.mock.calls.length;
+
+    for (let i = 0; i < 5; i++) {
+      activateTerminalSession(sessions, "one", "one", renderer);
+    }
+
+    expect(terminal.invalidate).toHaveBeenCalledTimes(invalidationsAfterSwitch);
   });
 });
 

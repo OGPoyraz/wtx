@@ -90,7 +90,7 @@ export function TerminalView({ session, focused, onFocus, onSend, onResize, regi
     if (!session.usePty || !session.terminal) return;
     if (!termRef.current) return;
     try {
-      termRef.current.invalidate?.();
+      termRef.current?.invalidate?.();
     } catch {}
   }, [session.cols, session.rows, session.usePty]);
 

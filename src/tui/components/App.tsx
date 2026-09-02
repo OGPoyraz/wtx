@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { existsSync } from "node:fs";
 import { useKeyboard, usePaste, useRenderer, useSelectionHandler, useTerminalDimensions } from "@opentui/react";
+import type { CliRenderer } from "@opentui/core";
 import type { GlobalOptions } from "../../types.js";
 import { useWorktrees } from "../hooks/useWorktrees.js";
 import { WorktreeTable } from "./WorktreeTable.js";
@@ -136,7 +137,19 @@ interface FailedAction {
   exitCode: number;
 }
 
-interface ResizableTerminalSession {
+interface InvalidatableTerminal {
+  invalidate?: () => void;
+}
+
+interface FullRepaintRenderer {
+  forceFullRepaintRequested: boolean;
+}
+
+function asFullRepaintRenderer(renderer: CliRenderer): FullRepaintRenderer {
+  return renderer as unknown as FullRepaintRenderer;
+}
+
+export interface ResizableTerminalSession {
   repoName: string;
   branch: string;
   worktreePath: string;
@@ -145,6 +158,46 @@ interface ResizableTerminalSession {
   rows: number;
   usePty: boolean;
   terminal: unknown;
+}
+
+export function invalidateTerminalSession(session: Pick<ResizableTerminalSession, "usePty" | "terminal"> | undefined): boolean {
+  if (!session?.usePty || !session.terminal) return false;
+  const terminal = session.terminal as InvalidatableTerminal;
+  if (typeof terminal.invalidate !== "function") return false;
+  try {
+    terminal.invalidate();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function invalidateTerminalSessions(sessionsByKey: Map<string, ResizableTerminalSession[]>): number {
+  let invalidated = 0;
+  for (const sessions of sessionsByKey.values()) {
+    for (const session of sessions) {
+      if (invalidateTerminalSession(session)) invalidated += 1;
+    }
+  }
+  return invalidated;
+}
+
+export function requestFullRepaint(renderer: FullRepaintRenderer): void {
+  renderer.forceFullRepaintRequested = true;
+}
+
+export function activateTerminalSession(
+  sessions: ResizableTerminalSession[],
+  activeTabId: string | undefined,
+  nextTabId: string,
+  renderer: FullRepaintRenderer
+): boolean {
+  const activeSession = sessions.find((s) => s.id === nextTabId);
+  if (activeSession && activeTabId !== nextTabId) {
+    invalidateTerminalSession(activeSession);
+    requestFullRepaint(renderer);
+  }
+  return Boolean(activeSession);
 }
 
 export function resizeTerminalSessionsToPane(
@@ -246,7 +299,7 @@ export function App({ opts }: AppProps) {
   const [terminalFocused, setTerminalFocused] = useState(false);
   const { width: termW, height: termH } = useTerminalDimensions();
   const totalWidth = termW || renderer.width || 80;
-  const totalHeight = termH || (renderer as any).height || 24;
+  const totalHeight = termH || renderer.terminalHeight || 24;
 
   useEffect(() => {
     if (termW) setSplitRatio((prev) => clampSplitRatio(termW, prev));
@@ -398,15 +451,15 @@ export function App({ opts }: AppProps) {
   const handleSelectTab = useCallback(
     (id: string) => {
       if (!worktreeKey) return;
+      const isSession = activateTerminalSession(sessionsForSelected, activeTabId, id, asFullRepaintRenderer(renderer));
       setActiveTabByWorktree((prev) => {
         const next = new Map(prev);
         next.set(worktreeKey, id);
         return next;
       });
-      const isSession = sessionsForSelected.some((s) => s.id === id);
       setTerminalFocused(isSession);
     },
-    [worktreeKey, sessionsForSelected]
+    [activeTabId, renderer, worktreeKey, sessionsForSelected]
   );
 
   const handleAddSession = useCallback(() => {
@@ -1225,7 +1278,11 @@ export function App({ opts }: AppProps) {
   if (!terminalResizeSchedulerRef.current) {
     terminalResizeSchedulerRef.current = createTerminalResizeScheduler(
       () => terminalResizeStateRef.current.sessionsByKey,
-      (...args) => terminalResizeStateRef.current.resizeSession(...args)
+      (...args) => terminalResizeStateRef.current.resizeSession(...args),
+      () => {
+        invalidateTerminalSessions(terminalResizeStateRef.current.sessionsByKey);
+        requestFullRepaint(asFullRepaintRenderer(renderer));
+      }
     );
   }
 
