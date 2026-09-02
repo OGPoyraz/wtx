@@ -487,7 +487,13 @@ export function App({ opts }: AppProps) {
           ...b,
           rows: b.rows.filter(r => matchesFilter(r, filterText) && matchesWorkspace(r, workspaceMemberSet)),
         }))
-        .filter(b => b.rows.length > 0 || (workspaceMemberSet === null && pendingRepos.includes(b.repoName))),
+        .filter(b => {
+          if (b.rows.length > 0) return true;
+          if (workspaceMemberSet !== null) return false;
+          if (pendingRepos.includes(b.repoName)) return true;
+          if (!filterText) return true;
+          return matchesFilter({ repoName: b.repoName, branch: "" } as WorktreeRow, filterText);
+        }),
     [blocks, filterText, pendingRepos, workspaceMemberSet]
   );
 

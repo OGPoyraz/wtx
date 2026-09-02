@@ -227,8 +227,10 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
 
   const processRepo = async (repo: RepoContext) => {
     await semaphore.acquire();
+    const startRows = allRows.length;
+    let mainBranch = config.default_main_branch;
     try {
-      const mainBranch = await resolveMainBranch(repo, config);
+      mainBranch = await resolveMainBranch(repo, config);
       const wts = await getWorktreeList(repo.mainPath);
       let stackMetadata: StackMetadata = { version: 1, branches: {} };
       try {
@@ -354,8 +356,57 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
       if (forge && branches.length > 0) {
         prFetchJobs.push({ repo, forge, mainBranch, rows: prRows, branches, stackMetadata });
       }
+
+      if (allRows.length === startRows) {
+        allRows.push({
+          repoName: repo.name,
+          branch: mainBranch,
+          path: repo.mainPath,
+          commitShort: "",
+          isMainCheckout: true,
+          isLocked: false,
+          isPrunable: false,
+          isBare: false,
+          dirtyFiles: [],
+          ahead: null,
+          behind: null,
+          prNumber: null,
+          prState: null,
+          prChecks: null,
+          prUrl: null,
+          owner: null,
+          rebaseStatus: null,
+          depsStrategy: "none",
+          base: undefined,
+          baseChanged: false,
+        });
+      }
     } catch (err: unknown) {
       warnings.push({ repoName: repo.name, message: `Failed to process repo ${repo.name}: ${errorMessage(err)}` });
+      if (allRows.length === startRows) {
+        allRows.push({
+          repoName: repo.name,
+          branch: mainBranch,
+          path: repo.mainPath,
+          commitShort: "",
+          isMainCheckout: true,
+          isLocked: false,
+          isPrunable: false,
+          isBare: false,
+          dirtyFiles: [],
+          ahead: null,
+          behind: null,
+          prNumber: null,
+          prState: null,
+          prChecks: null,
+          prUrl: null,
+          owner: null,
+          rebaseStatus: null,
+          depsStrategy: "none",
+          base: undefined,
+          baseChanged: false,
+        });
+      }
     } finally {
       semaphore.release();
     }
