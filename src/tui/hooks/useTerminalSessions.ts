@@ -43,7 +43,6 @@ export function useTerminalSessions() {
   const [sessionsByKey, setSessionsByKey] = useState<Map<string, TerminalSession[]>>(() => new Map());
   const procsRef = useRef<Map<string, any>>(new Map());
   const listenersRef = useRef<Map<string, (data: Uint8Array) => void>>(new Map());
-  const rawBuffersRef = useRef<Map<string, Uint8Array[]>>(new Map());
 
   const getSessions = useCallback(
     (repoName: string, branch: string, path: string): TerminalSession[] => {
@@ -122,19 +121,11 @@ export function useTerminalSessions() {
           const text = new TextDecoder().decode(data);
           if (text.includes("page_list") || text.includes("x icon") || text.includes("received and ignored")) {
             const reset = new TextEncoder().encode("\x1b[0m");
-            const buf = rawBuffersRef.current.get(id) ?? [];
-            buf.push(reset);
-            if (buf.length > 2000) buf.shift();
-            rawBuffersRef.current.set(id, buf);
             const listener = listenersRef.current.get(id);
             if (listener) listener(reset);
             return;
           }
         }
-        const buf = rawBuffersRef.current.get(id) ?? [];
-        buf.push(data);
-        if (buf.length > 2000) buf.shift();
-        rawBuffersRef.current.set(id, buf);
         const listener = listenersRef.current.get(id);
         if (listener) {
           listener(data);
@@ -276,7 +267,6 @@ export function useTerminalSessions() {
         } catch {}
         procsRef.current.delete(id);
         listenersRef.current.delete(id);
-        rawBuffersRef.current.delete(id);
       }
       const filtered = list.filter((s) => s.id !== id);
       const relabeled = relabelTerminalSessions(filtered);
@@ -365,14 +355,6 @@ export function useTerminalSessions() {
 
   const registerListener = useCallback((id: string, fn: (data: Uint8Array) => void) => {
     listenersRef.current.set(id, fn);
-    const buf = rawBuffersRef.current.get(id);
-    if (buf) {
-      for (const chunk of buf) {
-        try {
-          fn(chunk);
-        } catch {}
-      }
-    }
   }, []);
 
   const unregisterListener = useCallback((id: string) => {
@@ -388,7 +370,6 @@ export function useTerminalSessions() {
     }
     procsRef.current.clear();
     listenersRef.current.clear();
-    rawBuffersRef.current.clear();
   }, []);
 
   useEffect(() => {
@@ -408,7 +389,6 @@ export function useTerminalSessions() {
           } catch {}
           procsRef.current.delete(s.id);
           listenersRef.current.delete(s.id);
-          rawBuffersRef.current.delete(s.id);
         }
       }
       next.delete(key);

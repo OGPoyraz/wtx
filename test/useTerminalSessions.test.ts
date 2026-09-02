@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_TERMINAL_SESSIONS, nextTerminalSessionLabel, relabelTerminalSessions, useTerminalSessions, worktreeKeyFor, type TerminalSession } from "../src/tui/hooks/useTerminalSessions.js";
 
 type HookSlot = {
@@ -22,6 +22,10 @@ const reactMock = vi.hoisted(() => {
 
   return {
     beginRender() {
+      hookIndex = 0;
+    },
+    reset() {
+      hookState.length = 0;
       hookIndex = 0;
     },
     useState<T>(initialState: T | (() => T)) {
@@ -78,6 +82,76 @@ vi.mock("react", () => ({
   useEffect: reactMock.useEffect,
 }));
 
+type MockPty = {
+  close: ReturnType<typeof vi.fn>;
+  resize: ReturnType<typeof vi.fn>;
+  write: ReturnType<typeof vi.fn>;
+};
+
+type MockSpawnOptions = {
+  terminal?: {
+    data?: (terminal: MockPty, data: Uint8Array) => void;
+  };
+};
+
+type MockBun = {
+  spawn: ReturnType<typeof vi.fn<(_: string[], opts: MockSpawnOptions) => { terminal: MockPty; exited: Promise<number>; kill: ReturnType<typeof vi.fn> }>>;
+};
+
+const originalBun = Object.getOwnPropertyDescriptor(globalThis, "Bun");
+
+function Probe() {
+  reactMock.beginRender();
+  return useTerminalSessions();
+}
+
+function installPtySpawnMock() {
+  const terminal: MockPty = {
+    close: vi.fn(),
+    resize: vi.fn(),
+    write: vi.fn(),
+  };
+  const proc = {
+    terminal,
+    exited: new Promise<number>(() => {}),
+    kill: vi.fn(),
+  };
+  let onData: ((data: Uint8Array) => void) | null = null;
+  const spawn: MockBun["spawn"] = vi.fn((_, opts) => {
+    onData = opts.terminal?.data ? (data: Uint8Array) => opts.terminal?.data?.(terminal, data) : null;
+    return proc;
+  });
+
+  Object.defineProperty(globalThis, "Bun", {
+    configurable: true,
+    value: { spawn },
+  });
+
+  return {
+    proc,
+    terminal,
+    writePty(data: Uint8Array) {
+      onData?.(data);
+    },
+  };
+}
+
+function restoreBun() {
+  if (originalBun) {
+    Object.defineProperty(globalThis, "Bun", originalBun);
+  } else {
+    Reflect.deleteProperty(globalThis, "Bun");
+  }
+}
+
+beforeEach(() => {
+  reactMock.reset();
+});
+
+afterEach(() => {
+  restoreBun();
+});
+
 function session(id: string, label: string): TerminalSession {
   return {
     id,
@@ -118,14 +192,49 @@ describe("useTerminalSessions helpers", () => {
   });
 
   it("keeps the returned API reference stable across no-op session re-renders", () => {
-    function Probe() {
-      reactMock.beginRender();
-      return useTerminalSessions();
-    }
-
     const first = Probe();
     const second = Probe();
 
     expect(Object.is(first, second)).toBe(true);
+  });
+
+  it("does not replay buffered PTY chunks when a listener re-registers", () => {
+    const pty = installPtySpawnMock();
+    const api = Probe();
+    const created = api.createSession("repo", "branch", "/tmp/repo/branch").session;
+    expect(created?.usePty).toBe(true);
+    if (!created) throw new Error("expected session");
+
+    const firstWrite = vi.fn();
+    api.registerListener(created.id, firstWrite);
+    const chunks = Array.from({ length: 100 }, (_, index) => new TextEncoder().encode(`chunk-${index}\n`));
+    for (const chunk of chunks) pty.writePty(chunk);
+    expect(firstWrite).toHaveBeenCalledTimes(100);
+
+    api.unregisterListener(created.id);
+    const secondWrite = vi.fn();
+    api.registerListener(created.id, secondWrite);
+
+    expect(secondWrite).toHaveBeenCalledTimes(0);
+  });
+
+  it("keeps the PTY terminal instance across a simulated tab switch", () => {
+    const pty = installPtySpawnMock();
+    const api = Probe();
+    const created = api.createSession("repo", "branch", "/tmp/repo/branch").session;
+    if (!created) throw new Error("expected session");
+
+    const terminalWrite = vi.fn();
+    api.registerListener(created.id, terminalWrite);
+    pty.writePty(new TextEncoder().encode("visible scrollback\n"));
+    api.unregisterListener(created.id);
+    api.registerListener(created.id, terminalWrite);
+
+    const rerendered = Probe();
+    const [sessionAfterSwitch] = rerendered.getSessions("repo", "branch", "/tmp/repo/branch");
+
+    expect(sessionAfterSwitch?.terminal).toBe(pty.terminal);
+    expect(sessionAfterSwitch?.usePty).toBe(true);
+    expect(terminalWrite).toHaveBeenCalledTimes(1);
   });
 });
