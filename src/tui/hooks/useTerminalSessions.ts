@@ -57,7 +57,7 @@ export function relabelTerminalSessions(sessions: TerminalSession[]): TerminalSe
 
 export function useTerminalSessions() {
   const [sessionsByKey, setSessionsByKey] = useState<Map<string, TerminalSession[]>>(() => new Map());
-  const procsRef = useRef<Map<string, any>>(new Map());
+  const procsRef = useRef<Map<string, ReturnType<typeof Bun.spawn>>>(new Map());
   const listenersRef = useRef<Map<string, (data: Uint8Array) => void>>(new Map());
 
   const getSessions = useCallback(
@@ -205,7 +205,7 @@ export function useTerminalSessions() {
         session.lines = [session.spawnError];
         session.usePty = false;
         try {
-          const proc: any = Bun.spawn([shell], {
+          const proc = Bun.spawn([shell], {
             cwd: path || process.cwd(),
             stdin: "pipe",
             stdout: "pipe",

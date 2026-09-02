@@ -9,7 +9,7 @@
 <!-- DEMO GIF: owner-provided. Drop the file at demo/wtx.gif and this will render. -->
 ![wtx demo](demo/wtx.gif)
 
-`wtx` is a multi-repo git worktree manager built for parallel development. It creates isolated environments across every repository you maintain, ensuring working dependencies, synced `.env` files, and deterministic ports with a single command.
+`wtx` is a multi-repo git worktree manager with a TUI terminal dashboard built for parallel development. It creates isolated environments across every repository you maintain, ensuring working dependencies, synced `.env` files, and deterministic ports with a single command.
 
 ---
 
