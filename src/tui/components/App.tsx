@@ -340,6 +340,7 @@ export function App({ opts }: AppProps) {
   const [activeTabByWorktree, setActiveTabByWorktree] = useState<Map<string, string>>(() => new Map());
   const [recentTerminalSessionIds, setRecentTerminalSessionIds] = useState<string[]>([]);
   const [terminalFocused, setTerminalFocused] = useState(false);
+  const [changesFocused, setChangesFocused] = useState(false);
   const { width: termW, height: termH } = useTerminalDimensions();
   const totalWidth = termW || renderer.width || 80;
   const totalHeight = termH || renderer.terminalHeight || 24;
@@ -591,6 +592,15 @@ export function App({ opts }: AppProps) {
     }
   }, [sessionsForSelected, activeTabId, worktreeKey, selectedRow]);
 
+  useEffect(() => {
+    setChangesFocused(false);
+    setTerminalFocused(false);
+  }, [worktreeKey]);
+
+  useEffect(() => {
+    if (activeTabId !== "changes") setChangesFocused(false);
+  }, [activeTabId]);
+
   usePaste((event) => {
     if (!terminalFocused) return;
     const activeSession = sessionsForSelected.find((s) => s.id === activeTabId);
@@ -612,8 +622,9 @@ export function App({ opts }: AppProps) {
         return next;
       });
       setTerminalFocused(isSession);
+      setChangesFocused(id === "changes" && !selectedRow?.isMainCheckout);
     },
-    [activeTabId, renderer, worktreeKey, sessionsForSelected]
+    [activeTabId, renderer, worktreeKey, sessionsForSelected, selectedRow]
   );
 
   const handleAddSession = useCallback(() => {
@@ -639,6 +650,7 @@ export function App({ opts }: AppProps) {
       return next;
     });
     setTerminalFocused(true);
+    setChangesFocused(false);
     flash(`Session ${session.label} created`, 2000);
   }, [selectedRow, terminalSessions, flash, totalWidth, splitRatio, totalHeight, activeTabId, sessionsForSelected]);
 
@@ -1034,6 +1046,15 @@ export function App({ opts }: AppProps) {
 
   useKeyboard(
     (key) => {
+      if (changesFocused) {
+        if ((key.ctrl && key.name === "g") || key.name === "escape") {
+          setChangesFocused(false);
+          return;
+        }
+        if (["j", "k", "down", "up", "s", "tab"].includes(key.name)) {
+          return;
+        }
+      }
       if (terminalFocused) {
         if (key.ctrl && key.name === "g") {
           setTerminalFocused(false);
@@ -1515,13 +1536,14 @@ export function App({ opts }: AppProps) {
 
   useEffect(() => {
     setTerminalFocused(false);
+    setChangesFocused(false);
   }, [selectedIndex]);
 
   return (
     <ThemeContext.Provider value={currentTheme}>
     <box flexDirection="column" width="100%" height="100%">
       <box flexDirection="row" width="100%" flexGrow={1}>
-        <box width={leftCols} height="100%" flexDirection="column" onMouseDown={() => setTerminalFocused(false)}>
+        <box width={leftCols} height="100%" flexDirection="column" onMouseDown={() => { setTerminalFocused(false); setChangesFocused(false); }}>
           <WorktreeTable
             blocks={displayBlocks}
             selectedIndex={selectedIndex}
@@ -1534,6 +1556,7 @@ export function App({ opts }: AppProps) {
             activeWorkspaceName={activeWorkspace?.name ?? null}
             onRowClick={(idx) => {
               setTerminalFocused(false);
+              setChangesFocused(false);
               setSelectedIndex(idx);
             }}
             onToggleSelect={(path) => setSelection((prev) => toggleSelection(prev, path))}
@@ -1545,13 +1568,15 @@ export function App({ opts }: AppProps) {
             selectedRow={selectedRow}
             tabs={tabsForSelected}
             activeId={activeTabId}
-            focused={terminalFocused && tabsForSelected.some((t) => t.id === activeTabId && t.id !== "details")}
+            focused={(terminalFocused || changesFocused) && activeTabId !== "details"}
             canAdd={sessionsForSelected.length < MAX_TERMINAL_SESSIONS}
             onSelect={handleSelectTab}
             onAdd={handleAddSession}
             onClose={handleCloseSession}
             allSessionsFlat={allSessionsFlat}
             terminalFocused={terminalFocused}
+            changesFocused={changesFocused}
+            onChangesFocus={() => { setChangesFocused(true); setTerminalFocused(false); }}
             activeTabId={activeTabId}
             recentSessionIds={mountedRecentSessionIds}
             terminalSessions={terminalSessions}

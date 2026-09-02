@@ -16,6 +16,8 @@ interface TabPaneProps {
   onClose?: (id: string) => void;
   allSessionsFlat?: TerminalSession[];
   terminalFocused?: boolean;
+  changesFocused?: boolean;
+  onChangesFocus?: () => void;
   activeTabId?: string;
   recentSessionIds?: Set<string>;
   terminalSessions?: {
@@ -37,6 +39,8 @@ export function TabPane({
   onClose,
   allSessionsFlat,
   terminalFocused,
+  changesFocused,
+  onChangesFocus,
   activeTabId,
   recentSessionIds,
   terminalSessions,
@@ -61,11 +65,23 @@ export function TabPane({
     >
       <TabBar tabs={tabs} activeId={activeId} canAdd={canAdd} onSelect={onSelect} onAdd={onAdd} onClose={onClose} />
       <box flexGrow={1} width="100%" flexDirection="column">
-        {nonSessionTabs.map((t) => (
-          <box key={t.id} flexGrow={1} width="100%" flexDirection="column" visible={t.id === activeId}>
-            {t.render({ worktree: selectedRow, isActive: t.id === activeId, focused: !terminalFocused && t.id === activeId })}
-          </box>
-        ))}
+        {nonSessionTabs.map((t) => {
+          const isChanges = t.id === "changes";
+          const tabFocused = isChanges ? !!changesFocused : !terminalFocused && !changesFocused && t.id === activeId;
+          const content = t.render({ worktree: selectedRow, isActive: t.id === activeId, focused: tabFocused } as any);
+          if (isChanges) {
+            return (
+              <box key={t.id} flexGrow={1} width="100%" flexDirection="column" visible={t.id === activeId} onMouseDown={() => onChangesFocus?.()}>
+                {content}
+              </box>
+            );
+          }
+          return (
+            <box key={t.id} flexGrow={1} width="100%" flexDirection="column" visible={t.id === activeId}>
+              {content}
+            </box>
+          );
+        })}
         {mountedSessions?.map((s) => (
           <box key={s.id} flexGrow={1} width="100%" height="100%" flexDirection="column" visible={activeTabId === s.id}>
             <TerminalView
