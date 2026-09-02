@@ -28,6 +28,8 @@ import { copyTextToClipboard, readTextFromClipboard } from "../platform.js";
 import { loadConfig, saveConfig } from "../../lib/config.js";
 import { useSpinnerFrame } from "../hooks/useSpinnerFrame.js";
 import { MAX_TERMINAL_SESSIONS, useTerminalSessions } from "../hooks/useTerminalSessions.js";
+import { ThemeContext } from "../theme.js";
+import { THEMES, resolveThemeName, nextThemeName, DEFAULT_THEME_NAME } from "../themes/index.js";
 
 export interface AppProps {
   opts: GlobalOptions;
@@ -306,6 +308,15 @@ export function App({ opts }: AppProps) {
     } catch {}
     return 3 / 10;
   });
+  const [themeName, setThemeName] = useState<string>(() => {
+    try {
+      const cfg = loadConfig();
+      return resolveThemeName(cfg.tui?.theme);
+    } catch {
+      return DEFAULT_THEME_NAME;
+    }
+  });
+  const currentTheme = THEMES[themeName] ?? THEMES[DEFAULT_THEME_NAME]!;
   const [isResizing, setIsResizing] = useState(false);
   const terminalSessions = useTerminalSessions();
   const [activeTabByWorktree, setActiveTabByWorktree] = useState<Map<string, string>>(() => new Map());
@@ -345,6 +356,18 @@ export function App({ opts }: AppProps) {
     setActionMessage(message);
     messageTimer.current = setTimeout(() => setActionMessage(undefined), ms);
   }, []);
+
+  const cycleTheme = useCallback(() => {
+    const next = nextThemeName(themeName);
+    setThemeName(next);
+    try {
+      const cfg = loadConfig();
+      saveConfig({ ...cfg, tui: { ...cfg.tui, theme: next } });
+      flash(`Theme: ${next}`);
+    } catch (err) {
+      flash(`Failed to save theme: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [themeName, flash]);
 
   const toggleFavorite = useCallback((repoName: string) => {
     try {
@@ -1300,6 +1323,11 @@ export function App({ opts }: AppProps) {
         return;
       }
 
+      if (key.name === "T" || (key.name === "t" && key.shift)) {
+        cycleTheme();
+        return;
+      }
+
       if (key.name === "t") {
         if (!selectedRow) {
           flash("No worktree selected");
@@ -1350,6 +1378,7 @@ export function App({ opts }: AppProps) {
   }, [selectedIndex]);
 
   return (
+    <ThemeContext.Provider value={currentTheme}>
     <box flexDirection="column" width="100%" height="100%">
       <box flexDirection="row" width="100%" flexGrow={1}>
         <box width={leftCols} height="100%" flexDirection="column" onMouseDown={() => setTerminalFocused(false)}>
@@ -1681,5 +1710,6 @@ export function App({ opts }: AppProps) {
         />
       )}
     </box>
+    </ThemeContext.Provider>
   );
 }
