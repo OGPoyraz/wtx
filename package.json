@@ -19,7 +19,8 @@
     "prepublishOnly": "bun run build:npm",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bench:session": "bun run bench/session-switch.ts"
   },
   "keywords": [
     "git",

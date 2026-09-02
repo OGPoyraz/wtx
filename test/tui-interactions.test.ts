@@ -334,6 +334,17 @@ describe("terminal resize throttling", () => {
 });
 
 describe("terminal switch repaint recovery", () => {
+  it("keeps headless terminal switch latency below the regression target", () => {
+    const renderer = { forceFullRepaintRequested: false };
+    const sessions = [ptySession("one"), ptySession("two"), ptySession("three")];
+
+    const start = performance.now();
+    activateTerminalSession(sessions, "one", "two", renderer);
+    const switchMs = performance.now() - start;
+
+    expect(switchMs).toBeLessThan(100);
+  });
+
   it("invalidates the newly active terminal exactly once and requests a full repaint", () => {
     const previousTerminal = { invalidate: vi.fn() };
     const nextTerminal = { invalidate: vi.fn() };
