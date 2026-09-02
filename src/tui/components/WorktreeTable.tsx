@@ -175,7 +175,7 @@ export function WorktreeTable({ blocks, selectedIndex, selection = new Set(), fr
       borderColor={tokens.border}
       focusedBorderColor={tokens.border}
       focusable={false}
-      title="Worktrees"
+      title="Repositories"
       paddingX={1}
       focused={false}
       onMouseScroll={(e) => {
