@@ -67,7 +67,8 @@ function setupRepo(root: string, name: string): void {
   execSync("git add .env", { cwd: mainPath });
   execSync('git commit -q -m init', { cwd: mainPath });
   execSync("git branch -M main", { cwd: mainPath });
-  execSync(`git remote add origin ${mainPath}`, { cwd: mainPath });
+  execSync(`git remote add origin git@github.com:example/${name}.git`, { cwd: mainPath });
+  execSync(`git config --local url.${mainPath}.insteadOf git@github.com:example/${name}.git`, { cwd: mainPath });
   execSync("git update-ref refs/remotes/origin/main HEAD", { cwd: mainPath });
 }
 

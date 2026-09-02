@@ -89,6 +89,7 @@ export const RepoConfigSchema = z.preprocess(
     check_prs: z.boolean().default(true),
     forge_provider: z.enum(["auto", "github"]).default("auto"),
     pr_lookup_repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, { message: "must use 'owner/repo' format" }).nullable().default(null),
+    workspace_root: z.string().nullable().default(null),
     deps: DepsConfigSchema.default({ manager: "auto", strategy: "auto" }),
   })
 );
