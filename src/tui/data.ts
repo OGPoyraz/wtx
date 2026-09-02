@@ -286,6 +286,7 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
 
         if (isMainCheckout) {
           allRows.push(row);
+          prRows.push(row);
           continue;
         }
 
