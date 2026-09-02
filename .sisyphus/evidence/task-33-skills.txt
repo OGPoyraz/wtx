@@ -1,0 +1,3 @@
+skills/claude.md
+skills/cursor.md
+skills/opencode.md

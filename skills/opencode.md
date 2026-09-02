@@ -39,17 +39,35 @@ Shows pull request status for worktree branches across repositories. Requires th
 `wtx prune [--force]` removes worktrees whose branch has a merged PR. Dirty or locked worktrees are skipped without `--force`; repos with failed PR lookups are left untouched.
 
 ### `wtx pull <pr-link>`
-Fetches a GitHub PR by URL and creates its worktree. Requires the GitHub CLI (`gh`) to be installed and authenticated.
-- **Flags**: `-r, --repo <repo>`
-- Auto-detects the owning repo from the PR link, warns on merged or closed PRs, and skips existing branches or worktrees with a warning.
+Fetches a GitHub PR by URL and creates its worktree.
+- **Flags**: `-r, --repo <repo>`, `--force`
 - Supports fork PRs without adding persistent remotes.
 
-### `wtx terminal`
-Opens an interactive full-screen dashboard for browsing and acting on worktrees across all configured repos. Requires Bun runtime and a TTY; exits with guidance under Node.js or non-interactive shells.
+### `wtx pull-branch <branch>`
+Fetches a branch from origin and creates a worktree.
+- **Flags**: `-r, --repo <repos...>`
 
-- Lists worktrees as two-line entries: branch with status badge (clean / dirty count / locked / missing / rebasing), then commit hash, divergence vs its base (`↑n ↓n`), PR number/state/checks, base branch, and owner tags.
-- Keys: `r` refresh · `j/k` navigate · `n` create · `b` rebase · `d` remove · `s` sync · `o` open in IDE · `c` edit config · `?` help · `q` quit.
-- Actions run as child processes with output streamed inside the dashboard; destructive actions confirm first (`y/n`). The config editor (`c`) persists through atomic config writes and refreshes the view automatically.
+### `wtx rename <branch> <new-name>`
+Renames a worktree's branch and its directory.
+- **Flags**: `-r, --repo <repos...>`
+
+### `wtx terminal`
+Opens an interactive full-screen dashboard for browsing and acting on worktrees across all configured repos. Requires Bun runtime and a TTY.
+
+- Lists worktrees with status badges (dirty, missing, rebasing, etc.), commit info, divergence, PR status, and owner tags.
+- Navigation: `j/k` or arrows · `/` fuzzy-filter · `Space` multi-select.
+- Actions: `n` create · `p` pull · `P` pull PR · `b` rebase · `d` remove · `s` sync · `i` install · `m` rename · `o` open · `r` refresh · `f` fetch.
+- Layout: `c` config · `F` favorite repo · `W` workspace scope · `t` new terminal · `T` cycle theme · `s/Tab` cycle changes scope · `?` help.
+- Destructive actions confirm before running; output streams inside the dashboard.
+
+### `wtx workspace`
+Manage groups of worktrees as logical workspaces using symlinks.
+- **`wtx workspace create <name> --branch <branch>`**: Creates worktrees across repos and links them.
+- **`wtx workspace ls`**: Lists workspaces and their health status.
+- **`wtx workspace add <name> <repo> <branch>`**: Links an existing worktree into a workspace.
+- **`wtx workspace rm <name> <repo> <branch>`**: Unlinks a member from a workspace.
+- **`wtx workspace remove <name>`**: Deletes the workspace directory (preserves member worktrees).
+- **`wtx workspace verify <name>`**: Checks for broken member links.
 
 ### `wtx status`
 Shows git statuses for all worktrees.
@@ -61,6 +79,12 @@ Fetches the configured main branch for an independent worktree, or rebases onto 
 ### `wtx stack <branch>`
 Shows the recorded parent and descendant branches for a worktree.
 - **Flags**: `-r, --repo <repos...>`, `--json`
+
+### `wtx history`
+Shows a log of recent wtx actions.
+
+### `wtx mcp`
+Starts the wtx MCP server for integration with AI agents.
 
 ### `wtx sync <branch>`
 Re-copies `sync_files` from the main checkout to the worktree and runs `post_sync` hooks. Also checks for package lockfile differences if `node_modules` is symlinked.
@@ -85,21 +109,22 @@ Located at `~/.config/wtx/config.json`:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "root": "~/Repos",
   "postfix": "-wt",
   "ide": "cursor",
   "default_main_branch": "main",
-  "user": null,
+  "user": "myhandle",
+  "favorites": ["my-frontend"],
+  "workspace_root": "~/Workspaces",
+  "tui": {
+    "theme": "tokyonight"
+  },
   "repos": {
     "my-frontend": {
       "main_branch": "auto",
       "sync_files": [".env", ".env.local"],
-      "post_create": ["npm install", "npm run build"]
-    },
-    "my-backend": {
-      "main_branch": "master",
-      "post_sync": ["docker-compose restart"]
+      "post_create": ["npm install"]
     }
   }
 }
