@@ -116,3 +116,17 @@
 - Split PR lookup into a second pass: rows are emitted after repo/worktree resolution, then PR hydration streams in per repo and merges back through the hook.
 - `useWorktrees` sequence guard is sufficient for stale discard as long as streamed updates check `seq === seqRef.current` before mutating state.
 - The dashboard now needs a distinct PR-fetching state separate from “no PR”, so the table can show a loading marker while PR status is still pending.
+
+## T16 — Theme context extraction
+
+- `ThemeTokensSchema` in `src/types.ts` is a *user-facing partial override* for `custom_theme` (bg/fg/muted/accent/success/warning/error/border/selection).
+  The runtime palette in `src/tui/theme.ts` has more keys (bright/dim/borderActive/selectionBg/panelBg/scrim) because opentui components consume the full set directly.
+  So the runtime `ThemeTokens` type is defined structurally in `theme.ts`, not via `z.infer<typeof ThemeTokensSchema>`. Mapping from schema to runtime tokens is a T17/T18 concern.
+- `ThemeContext` default value = tokyonight tokens. Keeps `useTheme()` safe to call without a provider (matches current hardcoded behavior). T18 will add the provider in App.tsx.
+- Backward compat is trivial to preserve: keep exporting `tokens` as the same object literal. All 17 current consumers of `tokens.*` continue working with zero code change.
+- Test uses vitest directly (no React rendering) — asserts registry shape, key coverage, and referential-identity between `THEMES.tokyonight` and `tokyonightTokens`.
+
+## T19 — PTY spawn failures
+- `useTerminalSessions.createSession()` now records a readable `spawnError` when PTY creation throws so the session stays mounted instead of failing silently.
+- `TerminalView` renders `session.spawnError` inline with error styling and keeps the pane alive for non-PTY fallback content.
+- Tests cover both the hook state path (`ENOENT`) and the view-level error surfacing so the failure stays visible in the terminal pane.
