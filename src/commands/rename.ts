@@ -43,8 +43,8 @@ export function registerRenameCommand(program: Command) {
       let repos;
       try {
         repos = resolveRepos(config, repoFilter);
-      } catch (err: any) {
-        stepError("Failed to resolve repo", err.message);
+      } catch (err: unknown) {
+        stepError("Failed to resolve repo", err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
 
@@ -107,8 +107,8 @@ export function registerRenameCommand(program: Command) {
         }
 
         summary(`Done — renamed ${oldBranch} to ${newBranch}`);
-      } catch (err: any) {
-        stepError("Rename failed", err.message);
+      } catch (err: unknown) {
+        stepError("Rename failed", err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
     });

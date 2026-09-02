@@ -13,9 +13,12 @@ import {
   indented,
 } from "../lib/log.js";
 import { gitExec, getDirtyFiles, getWorktreeList } from "../lib/git.js";
+import type { Worktree } from "../lib/git.js";
 import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
+import type { RepoContext } from "../types.js";
 import { resolveForge } from "../lib/forge/index.js";
 import { selectMergedCandidates } from "../lib/prune.js";
+import type { PruneCandidate } from "../lib/prune.js";
 import { isSafeWorktreeConfig, cleanupEmptyParents, safeResolve } from "../lib/path-safety.js";
 import { isInteractive, confirm, canProceedDeletion } from "../lib/prompts.js";
 import { getStackChildren, readStackMetadata, removeStackEntry } from "../lib/stack.js";
@@ -25,6 +28,13 @@ interface PruneOptions {
   repo?: string[];
   force?: boolean;
   yes?: boolean;
+}
+
+interface PruneAction {
+  repo: RepoContext;
+  candidate: PruneCandidate;
+  label: string;
+  worktrees: Worktree[];
 }
 
 export function registerPruneCommand(program: Command) {
@@ -44,7 +54,7 @@ export function registerPruneCommand(program: Command) {
       let removedCount = 0;
       let skippedCount = 0;
 
-      const actionsToRun: { repo: any; candidate: any; label: string }[] = [];
+      const actionsToRun: PruneAction[] = [];
 
       for (const repo of repos) {
         repoHeader(repo.name);
@@ -129,7 +139,7 @@ export function registerPruneCommand(program: Command) {
               }
             }
 
-            actionsToRun.push({ repo, candidate, label });
+            actionsToRun.push({ repo, candidate, label, worktrees });
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -183,8 +193,8 @@ export function registerPruneCommand(program: Command) {
         try {
           await gitExec(args, globalOpts);
           stepSuccess("Worktree removed", label);
-        } catch (err: any) {
-          const msg = err.message || "";
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes("not a working tree") || msg.includes("already removed")) {
             stepWarning("Worktree already removed or invalid", msg);
             skippedCount++;

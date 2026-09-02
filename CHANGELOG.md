@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.10] - 2026-09-01
 
+
 ### Fixed
 
 - TUI: terminal paste — bracketed paste via `usePaste` with Super/Meta/Ctrl+V fallback through `pbpaste`/`wl-paste`/`xclip`/`xsel`

@@ -121,15 +121,16 @@ export async function renameWorktree(params: {
   try {
     fs.mkdirSync(path.dirname(planned.newPath), { recursive: true });
     await gitExec(["-C", repo.mainPath, "worktree", "move", planned.worktreePath, planned.newPath], opts);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     try {
       await gitExec(["-C", planned.worktreePath, "branch", "-m", newBranch, oldBranch], opts);
     } catch {
       throw new Error(
-        `Move failed (${err.message}) and branch rollback failed — manual fix needed: git branch -m ${newBranch} ${oldBranch}`
+        `Move failed (${message}) and branch rollback failed — manual fix needed: git branch -m ${newBranch} ${oldBranch}`
       );
     }
-    throw new Error(`Failed to move worktree (branch rename rolled back): ${err.message}`);
+    throw new Error(`Failed to move worktree (branch rename rolled back): ${message}`);
   }
 
   for (const dir of cleanupEmptyParents(repo.wtRoot, repo.mainPath, planned.worktreePath)) {
