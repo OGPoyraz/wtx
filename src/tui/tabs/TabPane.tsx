@@ -60,7 +60,7 @@ export function TabPane({
       <box flexGrow={1} width="100%" flexDirection="column">
         {tabs.map((t) => (
           <box key={t.id} flexGrow={1} width="100%" flexDirection="column" visible={t.id === activeId}>
-            {t.render({ worktree: selectedRow, isActive: t.id === activeId })}
+            {t.render({ worktree: selectedRow, isActive: t.id === activeId, focused: focused && t.id === activeId })}
           </box>
         ))}
         {mountedSessions?.map((s) => (

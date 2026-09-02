@@ -9,6 +9,7 @@ import type { VerbIndicator } from "./WorktreeTable.js";
 import { TabPane } from "../tabs/TabPane.js";
 import type { TabDef } from "../tabs/types.js";
 import { DetailsContent } from "./DetailsTab.js";
+import { ChangesContent } from "./ChangesTab.js";
 import { Footer } from "./Footer.js";
 import { Divider } from "./Divider.js";
 import { HelpOverlay } from "./HelpOverlay.js";
@@ -588,6 +589,11 @@ export function App({ opts }: AppProps) {
         id: "details",
         label: "Details",
         render: ({ worktree }) => <DetailsContent selectedRow={worktree} />,
+      },
+      {
+        id: "changes",
+        label: "Changes",
+        render: ({ worktree, isActive, focused }) => <ChangesContent selectedRow={worktree} isActive={isActive} focused={focused} />,
       },
     ];
     for (const s of sessionsForSelected) {
