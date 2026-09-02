@@ -7,6 +7,12 @@ import {
   withCreatePlaceholders,
   rowSort,
   sortBlocks,
+  matchesFilter,
+  matchesWorkspace,
+  buildWorkspaceMemberSet,
+  filterBlocksByWorkspace,
+  computeBrokenMemberWarnings,
+  workspaceMemberKey,
 } from "../src/tui/utils.js";
 import type { RepoBlock, WorktreeRow } from "../src/tui/types.js";
 import { createTempConfig } from "./setup.js";
@@ -253,5 +259,118 @@ describe("withCreatePlaceholders", () => {
     expect(placeholder.path).not.toBe(row("api", "feat/x").path);
     expect(placeholder.isPendingCreate).toBe(true);
     expect(placeholder.dirtyFiles).toEqual([]);
+  });
+});
+
+describe("workspace scoping", () => {
+  const members = [
+    { repo: "api", branch: "feat/x" },
+    { repo: "web", branch: "feat/y" },
+  ];
+
+  it("matchesWorkspace passes everything when set is null", () => {
+    expect(matchesWorkspace(row("api", "feat/x"), null)).toBe(true);
+    expect(matchesWorkspace(row("other", "main"), null)).toBe(true);
+  });
+
+  it("matchesWorkspace only accepts recorded repo/branch pairs", () => {
+    const set = buildWorkspaceMemberSet(members);
+    expect(matchesWorkspace(row("api", "feat/x"), set)).toBe(true);
+    expect(matchesWorkspace(row("web", "feat/y"), set)).toBe(true);
+    expect(matchesWorkspace(row("api", "feat/y"), set)).toBe(false);
+    expect(matchesWorkspace(row("web", "main"), set)).toBe(false);
+    expect(matchesWorkspace(row("other", "feat/x"), set)).toBe(false);
+  });
+
+  it("filterBlocksByWorkspace scopes list to workspace members", () => {
+    const blocks = [
+      block("api", [row("api", "main", true), row("api", "feat/x"), row("api", "feat/z")]),
+      block("web", [row("web", "main", true), row("web", "feat/y")]),
+      block("other", [row("other", "main", true)]),
+    ];
+    const set = buildWorkspaceMemberSet(members);
+    const filtered = filterBlocksByWorkspace(blocks, set);
+    expect(filtered.map(b => b.repoName).sort()).toEqual(["api", "web"]);
+    const apiRows = filtered.find(b => b.repoName === "api")!.rows.map(r => r.branch);
+    expect(apiRows).toEqual(["feat/x"]);
+    const webRows = filtered.find(b => b.repoName === "web")!.rows.map(r => r.branch);
+    expect(webRows).toEqual(["feat/y"]);
+  });
+
+  it("filterBlocksByWorkspace is identity when member set is null", () => {
+    const blocks = [
+      block("api", [row("api", "main", true), row("api", "feat/x")]),
+    ];
+    expect(filterBlocksByWorkspace(blocks, null)).toBe(blocks);
+  });
+
+  it("composes with text filter — both predicates must match", () => {
+    const blocks = [
+      block("api", [row("api", "main", true), row("api", "feat/x"), row("api", "feat/z")]),
+      block("web", [row("web", "main", true), row("web", "feat/y")]),
+    ];
+    const set = buildWorkspaceMemberSet(members);
+    const filterText = "feat";
+
+    const composed = blocks
+      .map(b => ({ ...b, rows: b.rows.filter(r => matchesFilter(r, filterText) && matchesWorkspace(r, set)) }))
+      .filter(b => b.rows.length > 0);
+
+    const branches = composed.flatMap(b => b.rows.map(r => `${r.repoName}:${r.branch}`)).sort();
+    expect(branches).toEqual(["api:feat/x", "web:feat/y"]);
+  });
+
+  it("text filter eliminates workspace members when text does not match", () => {
+    const blocks = [
+      block("api", [row("api", "feat/x")]),
+      block("web", [row("web", "feat/y")]),
+    ];
+    const set = buildWorkspaceMemberSet(members);
+    const filterText = "no-match";
+
+    const composed = blocks
+      .map(b => ({ ...b, rows: b.rows.filter(r => matchesFilter(r, filterText) && matchesWorkspace(r, set)) }))
+      .filter(b => b.rows.length > 0);
+
+    expect(composed).toEqual([]);
+  });
+
+  it("workspaceMemberKey returns stable, collision-free keys", () => {
+    expect(workspaceMemberKey("a", "b")).not.toBe(workspaceMemberKey("ab", ""));
+    expect(workspaceMemberKey("api", "feat/x")).toBe(workspaceMemberKey("api", "feat/x"));
+  });
+});
+
+describe("computeBrokenMemberWarnings", () => {
+  it("reports members whose worktree is not present", () => {
+    const members = [
+      { repo: "api", branch: "feat/x" },
+      { repo: "web", branch: "feat/y" },
+      { repo: "cli", branch: "feat/z" },
+    ];
+    const presentKeys = new Set<string>([workspaceMemberKey("api", "feat/x")]);
+    const warnings = computeBrokenMemberWarnings("shipfeature", members, presentKeys);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]!.repoName).toBe("web");
+    expect(warnings[0]!.message).toContain("shipfeature");
+    expect(warnings[0]!.message).toContain("web:feat/y");
+    expect(warnings[1]!.repoName).toBe("cli");
+    expect(warnings[1]!.message).toContain("cli:feat/z");
+  });
+
+  it("returns no warnings when all members present", () => {
+    const members = [
+      { repo: "api", branch: "feat/x" },
+      { repo: "web", branch: "feat/y" },
+    ];
+    const presentKeys = new Set<string>([
+      workspaceMemberKey("api", "feat/x"),
+      workspaceMemberKey("web", "feat/y"),
+    ]);
+    expect(computeBrokenMemberWarnings("shipfeature", members, presentKeys)).toEqual([]);
+  });
+
+  it("returns no warnings for empty members list", () => {
+    expect(computeBrokenMemberWarnings("empty", [], new Set())).toEqual([]);
   });
 });

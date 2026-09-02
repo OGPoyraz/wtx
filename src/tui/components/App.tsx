@@ -24,9 +24,21 @@ import { ChoiceModal } from "./ChoiceModal.js";
 import type { ChoiceOption } from "./ChoiceModal.js";
 import { ConfigOverlay } from "./ConfigOverlay.js";
 import { WarningsOverlay } from "./WarningsOverlay.js";
-import { matchesFilter, toggleSelection, withCreatePlaceholders, sortBlocks, clampSplitRatio, DIVIDER_WIDTH } from "../utils.js";
+import {
+  matchesFilter,
+  toggleSelection,
+  withCreatePlaceholders,
+  sortBlocks,
+  clampSplitRatio,
+  DIVIDER_WIDTH,
+  buildWorkspaceMemberSet,
+  matchesWorkspace,
+  computeBrokenMemberWarnings,
+  workspaceMemberKey,
+} from "../utils.js";
 import { copyTextToClipboard, readTextFromClipboard } from "../platform.js";
 import { loadConfig, saveConfig } from "../../lib/config.js";
+import { getWorkspaceRoot, listWorkspaces, verify as verifyWorkspace, type WorkspaceInfo } from "../../lib/workspace.js";
 import { useSpinnerFrame } from "../hooks/useSpinnerFrame.js";
 import { MAX_TERMINAL_SESSIONS, useTerminalSessions } from "../hooks/useTerminalSessions.js";
 import { ThemeContext } from "../theme.js";
@@ -299,6 +311,11 @@ export function App({ opts }: AppProps) {
   const [isFiltering, setIsFiltering] = useState(false);
   const [selection, setSelection] = useState<Set<string>>(new Set());
 
+  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
+  const [workspaceBrokenWarnings, setWorkspaceBrokenWarnings] = useState<{ repoName: string; message: string }[]>([]);
+
   const [splitRatio, setSplitRatio] = useState(() => {
     try {
       const cfg = loadConfig();
@@ -351,6 +368,49 @@ export function App({ opts }: AppProps) {
       setModal({ type: "error", message: error });
     }
   }, [error]);
+
+  const loadWorkspaces = useCallback(async () => {
+    try {
+      const cfg = loadConfig();
+      const root = getWorkspaceRoot(cfg);
+      const list = await listWorkspaces(root);
+      setWorkspaces(list);
+      setActiveWorkspace((prev) => (prev ? list.find((w) => w.name === prev.name) ?? null : null));
+    } catch {
+      setWorkspaces([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadWorkspaces();
+  }, [loadWorkspaces, lastRefreshed]);
+
+  useEffect(() => {
+    if (!activeWorkspace) {
+      setWorkspaceBrokenWarnings([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await verifyWorkspace(activeWorkspace.path);
+        if (cancelled) return;
+        const next: { repoName: string; message: string }[] = [];
+        for (const name of result.broken) {
+          next.push({ repoName: activeWorkspace.name, message: `Workspace "${activeWorkspace.name}" symlink broken: ${name}` });
+        }
+        for (const name of result.cycles) {
+          next.push({ repoName: activeWorkspace.name, message: `Workspace "${activeWorkspace.name}" symlink cycle: ${name}` });
+        }
+        setWorkspaceBrokenWarnings(next);
+      } catch {
+        if (!cancelled) setWorkspaceBrokenWarnings([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWorkspace, lastRefreshed]);
 
   const flash = useCallback((message: string, ms = 3000) => {
     if (messageTimer.current) clearTimeout(messageTimer.current);
@@ -415,12 +475,34 @@ export function App({ opts }: AppProps) {
   const anyRunning = ops.some(o => o.status === "running");
   const spinnerFrame = useSpinnerFrame(anyRunning || loading || refreshing);
 
+  const workspaceMemberSet = useMemo(
+    () => (activeWorkspace ? buildWorkspaceMemberSet(activeWorkspace.members) : null),
+    [activeWorkspace]
+  );
+
   const baseFiltered = useMemo(
     () =>
       blocks
-        .map(b => ({ ...b, rows: b.rows.filter(r => matchesFilter(r, filterText)) }))
-        .filter(b => b.rows.length > 0 || pendingRepos.includes(b.repoName)),
-    [blocks, filterText, pendingRepos]
+        .map(b => ({
+          ...b,
+          rows: b.rows.filter(r => matchesFilter(r, filterText) && matchesWorkspace(r, workspaceMemberSet)),
+        }))
+        .filter(b => b.rows.length > 0 || (workspaceMemberSet === null && pendingRepos.includes(b.repoName))),
+    [blocks, filterText, pendingRepos, workspaceMemberSet]
+  );
+
+  const missingMemberWarnings = useMemo(() => {
+    if (!activeWorkspace) return [];
+    const presentKeys = new Set<string>();
+    for (const b of blocks) {
+      for (const r of b.rows) presentKeys.add(workspaceMemberKey(r.repoName, r.branch));
+    }
+    return computeBrokenMemberWarnings(activeWorkspace.name, activeWorkspace.members, presentKeys);
+  }, [activeWorkspace, blocks]);
+
+  const combinedWarnings = useMemo(
+    () => [...warnings, ...workspaceBrokenWarnings, ...missingMemberWarnings],
+    [warnings, workspaceBrokenWarnings, missingMemberWarnings]
   );
 
   const pendingBlocks = useMemo<RepoBlock[]>(() => {
