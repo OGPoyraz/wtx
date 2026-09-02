@@ -1,5 +1,82 @@
-import { describe, expect, it } from "vitest";
-import { MAX_TERMINAL_SESSIONS, nextTerminalSessionLabel, relabelTerminalSessions, worktreeKeyFor, type TerminalSession } from "../src/tui/hooks/useTerminalSessions.js";
+import { describe, expect, it, vi } from "vitest";
+import { MAX_TERMINAL_SESSIONS, nextTerminalSessionLabel, relabelTerminalSessions, useTerminalSessions, worktreeKeyFor, type TerminalSession } from "../src/tui/hooks/useTerminalSessions.js";
+
+type HookSlot = {
+  state?: unknown;
+  deps?: readonly unknown[];
+  value?: unknown;
+  ref?: { current: unknown };
+};
+
+const reactMock = vi.hoisted(() => {
+  const hookState: HookSlot[] = [];
+  let hookIndex = 0;
+
+  function depsEqual(a: readonly unknown[] | undefined, b: readonly unknown[] | undefined): boolean {
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!Object.is(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  return {
+    beginRender() {
+      hookIndex = 0;
+    },
+    useState<T>(initialState: T | (() => T)) {
+      const slot = hookState[hookIndex] ?? (hookState[hookIndex] = {});
+      if (!Object.prototype.hasOwnProperty.call(slot, "state")) {
+        slot.state = typeof initialState === "function" ? (initialState as () => T)() : initialState;
+      }
+      const currentIndex = hookIndex++;
+      return [
+        slot.state as T,
+        (next: T | ((prev: T) => T)) => {
+          const prev = hookState[currentIndex]!.state as T;
+          hookState[currentIndex]!.state = typeof next === "function" ? (next as (prev: T) => T)(prev) : next;
+        },
+      ] as const;
+    },
+    useRef<T>(initialValue: T) {
+      const slot = hookState[hookIndex] ?? (hookState[hookIndex] = {});
+      if (!slot.ref) {
+        slot.ref = { current: initialValue };
+      }
+      hookIndex++;
+      return slot.ref as { current: T };
+    },
+    useCallback<T>(fn: T, deps: readonly unknown[]) {
+      const slot = hookState[hookIndex] ?? (hookState[hookIndex] = {});
+      if (!depsEqual(slot.deps, deps)) {
+        slot.deps = deps;
+        slot.value = fn;
+      }
+      hookIndex++;
+      return slot.value as T;
+    },
+    useMemo<T>(factory: () => T, deps: readonly unknown[]) {
+      const slot = hookState[hookIndex] ?? (hookState[hookIndex] = {});
+      if (!depsEqual(slot.deps, deps)) {
+        slot.deps = deps;
+        slot.value = factory();
+      }
+      hookIndex++;
+      return slot.value as T;
+    },
+    useEffect() {
+      hookIndex++;
+    },
+  };
+});
+
+vi.mock("react", () => ({
+  useState: reactMock.useState,
+  useRef: reactMock.useRef,
+  useCallback: reactMock.useCallback,
+  useMemo: reactMock.useMemo,
+  useEffect: reactMock.useEffect,
+}));
 
 function session(id: string, label: string): TerminalSession {
   return {
@@ -38,5 +115,17 @@ describe("useTerminalSessions helpers", () => {
 
   it("keeps the documented cap constant", () => {
     expect(MAX_TERMINAL_SESSIONS).toBe(5);
+  });
+
+  it("keeps the returned API reference stable across no-op session re-renders", () => {
+    function Probe() {
+      reactMock.beginRender();
+      return useTerminalSessions();
+    }
+
+    const first = Probe();
+    const second = Probe();
+
+    expect(Object.is(first, second)).toBe(true);
   });
 });

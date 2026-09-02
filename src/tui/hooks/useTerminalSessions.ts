@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 
 export interface TerminalSession {
   id: string;
@@ -416,5 +416,32 @@ export function useTerminalSessions() {
     });
   }, []);
 
-  return { sessionsByKey, getSessions, getKey, createSession, removeSession, sendInput, resizeSession, registerListener, unregisterListener, pruneKey, cleanupAll };
+  return useMemo(
+    () => ({
+      sessionsByKey,
+      getSessions,
+      getKey,
+      createSession,
+      removeSession,
+      sendInput,
+      resizeSession,
+      registerListener,
+      unregisterListener,
+      pruneKey,
+      cleanupAll,
+    }),
+    [
+      sessionsByKey,
+      getSessions,
+      getKey,
+      createSession,
+      removeSession,
+      sendInput,
+      resizeSession,
+      registerListener,
+      unregisterListener,
+      pruneKey,
+      cleanupAll,
+    ]
+  );
 }
