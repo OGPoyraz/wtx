@@ -1,0 +1,58 @@
+Commands Coverage:
+✓ config
+✓ create
+✓ pull
+✓ pull-branch
+✓ remove
+✓ prune
+✓ ls
+✓ init
+✓ rebase
+✓ fetch
+✓ sync
+✓ deps
+✓ open
+✓ rename
+✓ status
+✓ prs
+✓ skill
+✓ terminal
+✓ mcp
+✓ history
+✓ stack
+✓ workspace
+
+Config Coverage:
+✓ version
+✓ root
+✓ postfix
+✓ ide
+✓ default_main_branch
+✓ user
+✓ favorites
+✓ workspace_root
+✓ ports (min, max)
+✓ tui (leftPaneWidthWeight, rightPaneWidthWeight, theme, custom_theme)
+✓ repos (main_branch, fetch_main_on_create, sync_files, post_create, post_sync, install_script, check_prs, forge_provider, pr_lookup_repo, deps)
+
+Keybinds Coverage:
+✓ ↑/↓, k/j
+✓ /
+✓ Space
+✓ p
+✓ i
+✓ b / R
+✓ n
+✓ d / D
+✓ m
+✓ s
+✓ t / T
+✓ F
+✓ W
+✓ o
+✓ c
+✓ ?
+✓ H
+✓ Ctrl+G
+✓ Esc
+✓ q
