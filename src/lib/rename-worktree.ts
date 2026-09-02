@@ -5,6 +5,7 @@ import { gitExec, getWorktreeList, localBranchExists } from "./git.js";
 import { findWorktreeForBranch, getWorktreePath } from "./resolver.js";
 import { cleanupEmptyParents } from "./path-safety.js";
 import { syncEntry } from "./worktree-setup.js";
+import { addMember, findWorkspacesForMember, removeMember } from "./workspace.js";
 
 export interface RenameOutcome {
   oldBranch: string;
@@ -17,6 +18,7 @@ export interface RenameOutcome {
   lostDirtyFiles: string[];
   resyncedFiles: string[];
   keptLocalSyncFiles: string[];
+  workspaceWarnings: string[];
 }
 
 async function getUpstream(wtPath: string): Promise<string | null> {
@@ -92,6 +94,7 @@ export async function renameWorktree(params: {
   const planned = await planRename(repo, oldBranch, newBranch, opts);
   const cleanedDirs: string[] = [];
   const dirtyBefore = await getDirtyEntries(planned.worktreePath);
+  const workspaceWarnings: string[] = [];
 
   if (opts.dryRun) {
     return {
@@ -105,6 +108,7 @@ export async function renameWorktree(params: {
       lostDirtyFiles: [],
       resyncedFiles: [],
       keptLocalSyncFiles: [],
+      workspaceWarnings,
     };
   }
 
@@ -155,6 +159,25 @@ export async function renameWorktree(params: {
     keptLocalSyncFiles.push(entry);
   }
 
+  const workspaceRoot = path.resolve(
+    repo.config.workspace_root ?? path.join(path.dirname(repo.mainPath), "wtx-workspaces")
+  );
+
+  const affectedWorkspaces = await findWorkspacesForMember(workspaceRoot, repo.name, oldBranch);
+  for (const workspaceName of affectedWorkspaces) {
+    const workspacePath = path.join(workspaceRoot, workspaceName);
+    try {
+      await removeMember({ workspacePath, repo: repo.name, branch: oldBranch });
+      await addMember({
+        workspacePath,
+        member: { repo: repo.name, branch: newBranch, path: planned.newPath },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      workspaceWarnings.push(`workspace "${workspaceName}": ${message}`);
+    }
+  }
+
   return {
     oldBranch,
     newBranch,
@@ -166,5 +189,6 @@ export async function renameWorktree(params: {
     lostDirtyFiles,
     resyncedFiles,
     keptLocalSyncFiles,
+    workspaceWarnings,
   };
 }

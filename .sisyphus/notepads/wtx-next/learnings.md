@@ -117,6 +117,11 @@
 - `useWorktrees` sequence guard is sufficient for stale discard as long as streamed updates check `seq === seqRef.current` before mutating state.
 - The dashboard now needs a distinct PR-fetching state separate from “no PR”, so the table can show a loading marker while PR status is still pending.
 
+### [2026-09-02] Task 22 changes scope selector
+- `useChangesTabModel` is directly testable with the existing React hook mock; no OpenTUI test utilities are needed.
+- Session-only changes scope memory can live as a module-level `Map` keyed by App's existing worktree key, keeping the state inside the hook while mirroring the per-worktree tab behavior.
+- The changes core already caches per `(repoPath, branch, scope)`; the TUI hook adds a scope-local file-list cache so cycling back to a loaded scope avoids another `getChangedFiles` call entirely.
+
 ## T16 — Theme context extraction
 
 - `ThemeTokensSchema` in `src/types.ts` is a *user-facing partial override* for `custom_theme` (bg/fg/muted/accent/success/warning/error/border/selection).

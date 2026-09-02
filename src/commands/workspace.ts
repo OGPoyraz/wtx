@@ -2,7 +2,7 @@ import { Command } from "commander";
 import fs from "fs";
 import path from "path";
 import type { GlobalOptions } from "../types.js";
-import { expandTilde, loadConfig } from "../lib/config.js";
+import { loadConfig } from "../lib/config.js";
 import {
   info,
   indented,
@@ -21,9 +21,11 @@ import {
   resolveRepos,
 } from "../lib/resolver.js";
 import { canProceedDeletion, confirm, isInteractive } from "../lib/prompts.js";
+import { createWorktreeForRepo, type CreateOptions } from "./create.js";
 import {
   addMember,
   createWorkspace,
+  getWorkspaceRoot,
   listWorkspaces,
   removeMember,
   verify,
@@ -33,6 +35,19 @@ import {
 interface WorkspaceCreateOptions {
   repo?: string[];
   branch?: string;
+  base?: string;
+  track?: boolean;
+  local?: boolean;
+  deps?: string;
+}
+
+const DEPS_STRATEGIES = ["auto", "link", "symlink", "install", "off"] as const;
+
+interface WorkspaceCreateResult {
+  repo: string;
+  ok: boolean;
+  member?: WorkspaceMember;
+  error?: string;
 }
 
 interface WorkspaceLsOptions {
@@ -48,8 +63,7 @@ function errorMessage(err: unknown): string {
 }
 
 function workspaceRootFor(config: ReturnType<typeof loadConfig>): string {
-  const raw = config.workspace_root ?? path.join(config.root, "wtx-workspaces");
-  return path.resolve(expandTilde(raw));
+  return getWorkspaceRoot(config);
 }
 
 function workspacePathFor(config: ReturnType<typeof loadConfig>, name: string): string {
@@ -74,25 +88,41 @@ async function resolveWorktreePathForMember(
   return null;
 }
 
-async function collectMembers(
-  config: ReturnType<typeof loadConfig>,
-  repoFilter: string[] | undefined,
-  branch: string
-): Promise<{ members: WorkspaceMember[]; missing: Array<{ repo: string; branch: string }> }> {
-  const repos = resolveRepos(config, repoFilter);
-  const members: WorkspaceMember[] = [];
-  const missing: Array<{ repo: string; branch: string }> = [];
+async function createOrResolveMember(params: {
+  config: ReturnType<typeof loadConfig>;
+  repo: ReturnType<typeof resolveRepos>[number];
+  branch: string;
+  options: Pick<CreateOptions, "base" | "track" | "local" | "deps">;
+  globalOpts: GlobalOptions;
+}): Promise<WorkspaceCreateResult> {
+  const { config, repo, branch, options, globalOpts } = params;
 
-  for (const repo of repos) {
-    const wtPath = await resolveWorktreePathForMember(config, repo.name, branch);
-    if (wtPath) {
-      members.push({ repo: repo.name, branch, path: wtPath });
-    } else {
-      missing.push({ repo: repo.name, branch });
-    }
+  const existingPath = await resolveWorktreePathForMember(config, repo.name, branch);
+  if (existingPath) {
+    stepSuccess("Worktree found", existingPath);
+    return { repo: repo.name, ok: true, member: { repo: repo.name, branch, path: existingPath } };
   }
 
-  return { members, missing };
+  try {
+    const result = await createWorktreeForRepo({ config, repo, branch, options, globalOpts });
+    if (result.skipped) {
+      const resolvedPath = await resolveWorktreePathForMember(config, repo.name, branch);
+      if (resolvedPath) {
+        return { repo: repo.name, ok: true, member: { repo: repo.name, branch, path: resolvedPath } };
+      }
+      return { repo: repo.name, ok: false, error: "worktree skipped" };
+    }
+
+    if (!result.ok) {
+      if (result.hookFailed) return { repo: repo.name, ok: false, error: "post-create hook failed" };
+      if (result.depsFailed) return { repo: repo.name, ok: false, error: "dependency setup failed" };
+      return { repo: repo.name, ok: false, error: "worktree create failed" };
+    }
+
+    return { repo: repo.name, ok: true, member: { repo: repo.name, branch, path: result.wtPath } };
+  } catch (err) {
+    return { repo: repo.name, ok: false, error: errorMessage(err) };
+  }
 }
 
 function requireConfirmation(
@@ -116,13 +146,22 @@ function requireConfirmation(
 function registerCreateSub(workspace: Command): void {
   workspace
     .command("create <name>")
-    .description("Create a workspace linking existing worktrees")
+    .description("Create worktrees if needed, then link them into a workspace")
     .option("-r, --repo <repos...>", "Target specific repo(s)")
     .option("-b, --branch <branch>", "Branch to include for each repo")
+    .option("--base <ref>", "Base ref to create missing worktrees from")
+    .option("--track", "Track existing remote branch even if owned by someone else")
+    .option("--local", "Use local branch even if diverged from remote")
+    .option("--deps <strategy>", `Dependency strategy for newly created worktrees: ${DEPS_STRATEGIES.join("|")}`)
     .action(async (name: string, options: WorkspaceCreateOptions) => {
       const globalOpts = workspace.parent!.opts<GlobalOptions>();
       const config = loadConfig();
       const repoFilter = parseRepoFlag(options.repo);
+
+      if (options.deps && !DEPS_STRATEGIES.includes(options.deps as (typeof DEPS_STRATEGIES)[number])) {
+        stepError(`Invalid --deps strategy: ${options.deps}`, `Expected one of: ${DEPS_STRATEGIES.join(", ")}`);
+        process.exit(1);
+      }
 
       if (!options.branch) {
         stepError("--branch is required", "specify the branch shared across members");
@@ -135,23 +174,38 @@ function registerCreateSub(workspace: Command): void {
         process.exit(1);
       }
 
-      let members: WorkspaceMember[];
-      let missing: Array<{ repo: string; branch: string }>;
+      let repos: ReturnType<typeof resolveRepos>;
       try {
-        const result = await collectMembers(config, repoFilter, options.branch);
-        members = result.members;
-        missing = result.missing;
+        repos = resolveRepos(config, repoFilter);
       } catch (err) {
         stepError("Failed to resolve repos", errorMessage(err));
         process.exit(1);
       }
 
-      for (const m of missing) {
-        stepWarning("No worktree found", `${m.repo}:${m.branch} (skipped)`);
+      const results: WorkspaceCreateResult[] = [];
+      for (const repo of repos) {
+        repoHeader(repo.name);
+        const result = await createOrResolveMember({
+          config,
+          repo,
+          branch: options.branch,
+          options,
+          globalOpts,
+        });
+        results.push(result);
+
+        if (result.ok) {
+          stepSuccess("Workspace member ready", `${repo.name}:${options.branch}`);
+        } else {
+          stepError("Workspace member failed", `${repo.name}:${options.branch} — ${result.error ?? "unknown error"}`);
+        }
       }
 
+      const members = results.flatMap((result) => result.member ? [result.member] : []);
+      const failures = results.filter((result) => !result.ok);
+
       if (members.length === 0) {
-        stepError("No members to link", "create the worktrees first (e.g. `wtx create <branch>`)");
+        stepError("No members to link", "all worktree creates failed");
         process.exit(1);
       }
 
@@ -169,6 +223,10 @@ function registerCreateSub(workspace: Command): void {
         stepSuccess("Workspace created", wsPath);
         for (const m of members) {
           indented(`${m.repo}:${m.branch} → ${m.path}`);
+        }
+        if (failures.length > 0) {
+          summaryWarning(`Done with failures — workspace ${name} created with ${members.length} member${members.length === 1 ? "" : "s"}; ${failures.length} failed`);
+          process.exit(1);
         }
         summary(`Done — workspace ${name} created with ${members.length} member${members.length === 1 ? "" : "s"}`);
       } catch (err) {

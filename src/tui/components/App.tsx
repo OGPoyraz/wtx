@@ -593,7 +593,7 @@ export function App({ opts }: AppProps) {
       {
         id: "changes",
         label: "Changes",
-        render: ({ worktree, isActive, focused }) => <ChangesContent selectedRow={worktree} isActive={isActive} focused={focused} />,
+        render: ({ worktree, isActive, focused }) => <ChangesContent selectedRow={worktree} isActive={isActive} focused={focused} worktreeKey={worktreeKey} />,
       },
     ];
     for (const s of sessionsForSelected) {
@@ -605,7 +605,7 @@ export function App({ opts }: AppProps) {
       });
     }
     return base;
-  }, [sessionsForSelected]);
+  }, [sessionsForSelected, worktreeKey]);
 
   const { repoVerbs, rowVerbs } = useMemo(() => {
     const rv = new Map<string, VerbIndicator>();

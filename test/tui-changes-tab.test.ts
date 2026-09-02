@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useChangesTabModel } from "../src/tui/components/ChangesTab.js";
+import type { ChangeScope } from "../src/lib/changes.js";
+import type { WorktreeRow } from "../src/tui/types.js";
 
 type HookSlot = {
   state?: unknown;
@@ -9,6 +11,24 @@ type HookSlot = {
   effect?: () => void | (() => void);
   cleanup?: void | (() => void);
 };
+
+type ChangedFileFixture = {
+  path: string;
+  status: string;
+  added: number;
+  removed: number;
+  binary: boolean;
+};
+
+type DiffFixture = {
+  path: string;
+  scope: ChangeScope;
+  binary: boolean;
+  diff: string;
+  truncated: boolean;
+};
+
+type HookResult = ReturnType<typeof useChangesTabModel>;
 
 const reactMock = vi.hoisted(() => {
   const hookState: HookSlot[] = [];
@@ -87,7 +107,7 @@ const reactMock = vi.hoisted(() => {
           if (slot.cleanup && typeof slot.cleanup === "function") {
             slot.cleanup();
           }
-          slot.cleanup = effect() as any;
+          slot.cleanup = effect() ?? undefined;
         });
       }
       hookIndex++;
@@ -105,15 +125,16 @@ vi.mock("react", () => ({
   useContext: vi.fn(),
 }));
 
-const mockRow = {
-  repoName: "wtx",
-  branch: "feat/foo",
-  path: "/tmp/wtx/feat/foo",
-  commitShort: "a1b2c3d",
-  isMainCheckout: false,
-  isLocked: false,
-  isPrunable: false,
-  dirtyFiles: [],
+  const mockRow: WorktreeRow = {
+    repoName: "wtx",
+    branch: "feat/foo",
+    path: "/tmp/wtx/feat/foo",
+    commitShort: "a1b2c3d",
+    isMainCheckout: false,
+    isLocked: false,
+    isPrunable: false,
+    isBare: false,
+    dirtyFiles: [],
   ahead: 0,
   behind: 0,
   prNumber: null,
@@ -127,17 +148,31 @@ const mockRow = {
 };
 
 describe("ChangesTab hooks", () => {
+  let testRun = 0;
+
   beforeEach(() => {
+    testRun += 1;
     reactMock.reset();
   });
 
-  function renderHook(isActive: boolean, row: any, getChangedFilesImpl: any, getFileDiffImpl: any) {
+  function renderHook(
+    isActive: boolean,
+    row: typeof mockRow | null,
+    getChangedFilesImpl: (opts: { repoPath: string; branch: string; scope: string }) => Promise<ChangedFileFixture[]>,
+    getFileDiffImpl: (opts: { repoPath: string; branch: string; scope: string; filePath: string }) => Promise<DiffFixture>,
+    worktreeKey = row ? `${row.repoName}:${row.branch}:${row.path}:${testRun}` : "",
+    getStackBaseImpl: (repoPath: string, branch: string) => Promise<string | null> = vi.fn().mockResolvedValue(null)
+  ): HookResult {
     reactMock.beginRender();
-    useChangesTabModel(isActive, row, getChangedFilesImpl, getFileDiffImpl);
+    useChangesTabModel(isActive, row, worktreeKey, getChangedFilesImpl, getFileDiffImpl, getStackBaseImpl);
     reactMock.runEffects();
     reactMock.beginRender();
-    const result = useChangesTabModel(isActive, row, getChangedFilesImpl, getFileDiffImpl);
+    const result = useChangesTabModel(isActive, row, worktreeKey, getChangedFilesImpl, getFileDiffImpl, getStackBaseImpl);
     return result;
+  }
+
+  async function flush() {
+    await new Promise((r) => setTimeout(r, 0));
   }
 
   it("returns default empty state when not active or no row", () => {
@@ -145,6 +180,7 @@ describe("ChangesTab hooks", () => {
     expect(api.files).toBeNull();
     expect(api.loadingList).toBe(false);
     expect(api.diffs).toEqual({});
+    expect(api.scope).toBe("worktree");
   });
 
   it("loads files on activate", async () => {
@@ -159,7 +195,7 @@ describe("ChangesTab hooks", () => {
     expect(first.files).toBeNull();
     
     resolveFiles!(files);
-    await new Promise((r) => setTimeout(r, 0));
+    await flush();
     
     const second = renderHook(true, mockRow, getChangedFilesMock, vi.fn().mockResolvedValue({}));
     
@@ -180,13 +216,13 @@ describe("ChangesTab hooks", () => {
     const getFileDiffMock = vi.fn().mockImplementation(() => new Promise(r => resolveDiff = r));
     
     renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
-    await new Promise((r) => setTimeout(r, 0));
+    await flush();
     
     const res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
     expect(res.loadingDiff).toBe(true);
     
     resolveDiff!(diff);
-    await new Promise((r) => setTimeout(r, 0));
+    await flush();
     
     const res2 = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
     
@@ -211,5 +247,110 @@ describe("ChangesTab hooks", () => {
     expect(res.loadingList).toBe(false);
     expect(res.listError).toContain("Git error");
     expect(res.files).toBeNull();
+  });
+
+  it("cycles scopes in worktree staged base order and reloads the list", async () => {
+    const getChangedFilesMock = vi.fn()
+      .mockResolvedValueOnce([{ path: "worktree.ts", status: "M", added: 1, removed: 0, binary: false }])
+      .mockResolvedValueOnce([{ path: "staged.ts", status: "A", added: 2, removed: 0, binary: false }])
+      .mockResolvedValueOnce([{ path: "base.ts", status: "M", added: 3, removed: 1, binary: false }]);
+    const getFileDiffMock = vi.fn().mockResolvedValue({ path: "worktree.ts", scope: "worktree", binary: false, diff: "diff", truncated: false });
+
+    renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    await flush();
+    let res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    expect(res.scope).toBe("worktree");
+
+    res.cycleScope();
+    res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    expect(res.scope).toBe("staged");
+    expect(res.files).toBeNull();
+    await flush();
+
+    res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    expect(res.files?.[0]?.path).toBe("staged.ts");
+    expect(getChangedFilesMock).toHaveBeenLastCalledWith({
+      repoPath: mockRow.path,
+      branch: mockRow.branch,
+      scope: "staged",
+    });
+
+    res.cycleScope();
+    res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    expect(res.scope).toBe("base");
+    await flush();
+
+    res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    expect(res.files?.[0]?.path).toBe("base.ts");
+
+    res.cycleScope();
+    res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    expect(res.scope).toBe("worktree");
+  });
+
+  it("labels base scope with the recorded stack base", async () => {
+    const getChangedFilesMock = vi.fn().mockResolvedValue([]);
+    const getStackBaseMock = vi.fn().mockResolvedValue("refs/heads/feat/api");
+
+    let res = renderHook(true, mockRow, getChangedFilesMock, vi.fn(), undefined, getStackBaseMock);
+    await flush();
+    res = renderHook(true, mockRow, getChangedFilesMock, vi.fn(), undefined, getStackBaseMock);
+
+    res.cycleScope();
+    res = renderHook(true, mockRow, getChangedFilesMock, vi.fn(), undefined, getStackBaseMock);
+    res.cycleScope();
+    res = renderHook(true, mockRow, getChangedFilesMock, vi.fn(), undefined, getStackBaseMock);
+
+    expect(res.scope).toBe("base");
+    expect(res.scopeLabel).toBe("vs feat/api");
+  });
+
+  it("does not re-fetch when cycling back to a cached scope", async () => {
+    const getChangedFilesMock = vi.fn()
+      .mockResolvedValueOnce([{ path: "worktree.ts", status: "M", added: 1, removed: 0, binary: false }])
+      .mockResolvedValueOnce([{ path: "staged.ts", status: "A", added: 2, removed: 0, binary: false }])
+      .mockResolvedValueOnce([{ path: "base.ts", status: "M", added: 3, removed: 1, binary: false }]);
+    const getFileDiffMock = vi.fn().mockResolvedValue({ path: "x", scope: "worktree", binary: false, diff: "diff", truncated: false });
+
+    renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    await flush();
+    let res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+
+    res.cycleScope();
+    renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    await flush();
+    res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+
+    res.cycleScope();
+    renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    await flush();
+    res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+
+    expect(getChangedFilesMock).toHaveBeenCalledTimes(3);
+
+    res.cycleScope();
+    res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock);
+    expect(getChangedFilesMock).toHaveBeenCalledTimes(3);
+    expect(res.files?.[0]?.path).toBe("worktree.ts");
+  });
+
+  it("remembers scope per worktree for the session", async () => {
+    const getChangedFilesMock = vi.fn().mockResolvedValue([]);
+    const getFileDiffMock = vi.fn().mockResolvedValue({ path: "x", scope: "worktree", binary: false, diff: "diff", truncated: false });
+    const otherRow = { ...mockRow, branch: "feat/bar", path: "/tmp/wtx/feat/bar" };
+
+    renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock, "wtx:feat/foo");
+    await flush();
+    let res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock, "wtx:feat/foo");
+    res.cycleScope();
+    renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock, "wtx:feat/foo");
+    await flush();
+
+    res = renderHook(true, otherRow, getChangedFilesMock, getFileDiffMock, "wtx:feat/bar");
+    expect(res.scope).toBe("worktree");
+    await flush();
+
+    res = renderHook(true, mockRow, getChangedFilesMock, getFileDiffMock, "wtx:feat/foo");
+    expect(res.scope).toBe("staged");
   });
 });

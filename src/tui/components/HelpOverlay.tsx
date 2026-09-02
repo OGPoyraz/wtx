@@ -13,6 +13,7 @@ const HELP_ENTRIES: [string, string][] = [
   ["P (shift+p)", "Pull PR by link (force-override if exists)"],
   ["b", "Rebase selected onto base (or main)"],
   ["s", "Sync selected (env files + hooks)"],
+  ["s / Tab (Changes)", "Cycle changes scope: worktree → staged → base"],
   ["i", "Install dependencies in selection (worktrees and main)"],
   ["m", "Rename selected worktree (branch + directory)"],
   ["o", "Open selected in IDE"],

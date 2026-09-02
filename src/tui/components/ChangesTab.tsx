@@ -1,23 +1,67 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import type { WorktreeRow } from "../types.js";
 import { useTheme } from "../theme.js";
-import { getChangedFiles, getFileDiff, type ChangedFile, type FileDiff } from "../../lib/changes.js";
+import { getChangedFiles, getFileDiff, type ChangedFile, type ChangeScope, type FileDiff } from "../../lib/changes.js";
+import { getStackBase } from "../../lib/stack.js";
 import { useSpinnerFrame } from "../hooks/useSpinnerFrame.js";
 
 interface ChangesContentProps {
   selectedRow: WorktreeRow | null;
   isActive: boolean;
   focused?: boolean;
+  worktreeKey?: string;
+}
+
+const CHANGE_SCOPES: readonly ChangeScope[] = ["worktree", "staged", "base"];
+const defaultScope: ChangeScope = "worktree";
+const rememberedScopeByWorktree = new Map<string, ChangeScope>();
+
+interface ScopeState {
+  worktreeKey: string;
+  scope: ChangeScope;
+}
+
+function fallbackWorktreeKey(selectedRow: WorktreeRow | null): string {
+  if (!selectedRow) return "";
+  return [selectedRow.repoName, selectedRow.branch, selectedRow.path].join("\0");
+}
+
+function rememberedScope(worktreeKey: string): ChangeScope {
+  return rememberedScopeByWorktree.get(worktreeKey) ?? defaultScope;
+}
+
+function nextChangeScope(scope: ChangeScope): ChangeScope {
+  const index = CHANGE_SCOPES.indexOf(scope);
+  return CHANGE_SCOPES[(index + 1) % CHANGE_SCOPES.length] ?? defaultScope;
+}
+
+function scopeCacheKey(worktreeKey: string, scope: ChangeScope): string {
+  return `${worktreeKey}\0${scope}`;
+}
+
+function formatBaseRef(baseRef: string | null): string {
+  return (baseRef ?? "main")
+    .replace(/^refs\/heads\//, "")
+    .replace(/^refs\/remotes\/[^/]+\//, "");
 }
 
 export function useChangesTabModel(
   isActive: boolean,
   selectedRow: WorktreeRow | null,
+  worktreeKey = fallbackWorktreeKey(selectedRow),
   getChangedFilesImpl = getChangedFiles,
-  getFileDiffImpl = getFileDiff
+  getFileDiffImpl = getFileDiff,
+  getStackBaseImpl = getStackBase
 ) {
+  const [scopeState, setScopeState] = useState<ScopeState>(() => ({
+    worktreeKey,
+    scope: rememberedScope(worktreeKey),
+  }));
+  const scope = scopeState.worktreeKey === worktreeKey ? scopeState.scope : rememberedScope(worktreeKey);
+  const [baseRef, setBaseRef] = useState("main");
+
   const [files, setFiles] = useState<ChangedFile[] | null>(null);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -27,21 +71,86 @@ export function useChangesTabModel(
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
+  const filesByScopeRef = useRef<Map<string, ChangedFile[]>>(new Map());
+
+  const scopeLabel = useMemo(() => {
+    if (scope === "base") return `vs ${formatBaseRef(baseRef)}`;
+    return scope;
+  }, [scope, baseRef]);
+
+  useEffect(() => {
+    if (!worktreeKey) return;
+    const nextScope = rememberedScope(worktreeKey);
+    setScopeState((prev) => {
+      if (prev.worktreeKey === worktreeKey && prev.scope === nextScope) return prev;
+      return { worktreeKey, scope: nextScope };
+    });
+    setFiles(null);
+    setSelectedIndex(0);
+    setDiffs({});
+    setLoadingDiff(false);
+    setDiffError(null);
+  }, [worktreeKey]);
+
+  useEffect(() => {
+    if (!selectedRow) {
+      setBaseRef("main");
+      return;
+    }
+
+    let canceled = false;
+    getStackBaseImpl(selectedRow.path, selectedRow.branch)
+      .then((res) => {
+        if (!canceled) setBaseRef(formatBaseRef(res));
+      })
+      .catch(() => {
+        if (!canceled) setBaseRef("main");
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [selectedRow?.path, selectedRow?.branch, getStackBaseImpl]);
+
+  const cycleScope = useCallback(() => {
+    if (!worktreeKey) return;
+    const nextScope = nextChangeScope(scope);
+    rememberedScopeByWorktree.set(worktreeKey, nextScope);
+    setScopeState({ worktreeKey, scope: nextScope });
+    setFiles(null);
+    setSelectedIndex(0);
+    setDiffs({});
+    setLoadingDiff(false);
+    setDiffError(null);
+  }, [scope, worktreeKey]);
 
   useEffect(() => {
     if (!isActive || !selectedRow) return;
 
+    const cachedFiles = filesByScopeRef.current.get(scopeCacheKey(worktreeKey, scope));
+    if (cachedFiles) {
+      setFiles(cachedFiles);
+      setSelectedIndex(0);
+      setLoadingList(false);
+      setListError(null);
+      return;
+    }
+
     let canceled = false;
+    setFiles(null);
     setLoadingList(true);
     setListError(null);
+    setDiffs({});
+    setDiffError(null);
 
     getChangedFilesImpl({
       repoPath: selectedRow.path,
       branch: selectedRow.branch,
-      scope: "worktree",
+      scope,
     })
       .then((res) => {
         if (canceled) return;
+        filesByScopeRef.current.set(scopeCacheKey(worktreeKey, scope), res);
         setFiles(res);
         setSelectedIndex(0);
         setLoadingList(false);
@@ -55,7 +164,7 @@ export function useChangesTabModel(
     return () => {
       canceled = true;
     };
-  }, [isActive, selectedRow?.path, selectedRow?.branch, getChangedFilesImpl]);
+  }, [isActive, selectedRow?.path, selectedRow?.branch, worktreeKey, scope, getChangedFilesImpl]);
 
   const selectedFile = files?.[selectedIndex];
   useEffect(() => {
@@ -69,7 +178,7 @@ export function useChangesTabModel(
     getFileDiffImpl({
       repoPath: selectedRow.path,
       branch: selectedRow.branch,
-      scope: "worktree",
+      scope,
       filePath: selectedFile.path,
     })
       .then((res) => {
@@ -86,9 +195,12 @@ export function useChangesTabModel(
     return () => {
       canceled = true;
     };
-  }, [isActive, selectedRow?.path, selectedRow?.branch, selectedFile, diffs, getFileDiffImpl]);
+  }, [isActive, selectedRow?.path, selectedRow?.branch, scope, selectedFile, diffs, getFileDiffImpl]);
 
   return {
+    scope,
+    scopeLabel,
+    cycleScope,
     files,
     loadingList,
     listError,
@@ -101,9 +213,11 @@ export function useChangesTabModel(
   };
 }
 
-export function ChangesContent({ selectedRow, isActive, focused }: ChangesContentProps) {
+export function ChangesContent({ selectedRow, isActive, focused, worktreeKey }: ChangesContentProps) {
   const theme = useTheme();
   const {
+    scopeLabel,
+    cycleScope,
     files,
     loadingList,
     listError,
@@ -113,7 +227,7 @@ export function ChangesContent({ selectedRow, isActive, focused }: ChangesConten
     loadingDiff,
     diffError,
     selectedFile,
-  } = useChangesTabModel(isActive, selectedRow);
+  } = useChangesTabModel(isActive, selectedRow, worktreeKey);
 
   const spinner = useSpinnerFrame(loadingList || loadingDiff);
   const listScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -133,6 +247,12 @@ export function ChangesContent({ selectedRow, isActive, focused }: ChangesConten
     }
     if (key.name === "k" || key.name === "up") {
       setSelectedIndex((prev) => Math.max(prev - 1, 0));
+      key.stopPropagation();
+      key.preventDefault();
+      return;
+    }
+    if (key.name === "s" || key.name === "tab") {
+      cycleScope();
       key.stopPropagation();
       key.preventDefault();
       return;
@@ -191,7 +311,7 @@ export function ChangesContent({ selectedRow, isActive, focused }: ChangesConten
     <box flexGrow={1} width="100%" height="100%" flexDirection="row">
       <box width={35} height="100%" border={["right"]} borderColor={theme.border} flexDirection="column">
         <box paddingX={1} paddingBottom={1}>
-          <text fg={theme.bright}>Files changed</text>
+          <text fg={theme.bright}>Files changed · {scopeLabel}</text>
         </box>
         <scrollbox ref={listScrollRef} flexGrow={1} width="100%" focused={false} paddingX={1}>
           {files?.map((f, idx) => {

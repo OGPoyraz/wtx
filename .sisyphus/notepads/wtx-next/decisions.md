@@ -21,3 +21,12 @@
 
 - PR cache entries now store timestamps and are only used as offline/error fallback for 5 minutes; successful fetches still overwrite the cache on every lookup.
 - Cache eviction is oldest-first with a hard cap of 500 entries so long-lived TUI sessions do not accumulate unbounded stale PR metadata.
+
+## T20 changes library
+- Base scope resolves recorded stack metadata first and falls back to main/master only if no recorded base is available/resolvable.
+- Diff bodies are loaded only through getFileDiff; getChangedFiles uses --numstat/--name-status metadata only.
+
+## T22 changes scope selector
+- Scope cycling order is fixed as `worktree → staged → base`; the Changes tab accepts both `s` and `Tab` while focused.
+- The base header label strips `refs/heads/` and remote prefixes from recorded stack refs, rendering `base` scope as `vs <base>` with `main` fallback.
+- Switching scope clears selected-file diffs and selection, while cached file lists are restored without invalidating or re-fetching.
