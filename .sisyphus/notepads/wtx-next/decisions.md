@@ -7,3 +7,4 @@
 - Chose Contributor Covenant v2.1 for the Code of Conduct as it is a widely recognized standard.
 - Included specific environmental request fields in the bug report template to facilitate faster debugging (version, OS, terminal, CLI vs terminal).
 - No `.gitignore` exclusions were needed because the repo does not block `demo/` or `*.gif`.
+- Evidence captured in .sisyphus/evidence/task-32-version.txt and task-32-changelog.txt after version/changelog update.

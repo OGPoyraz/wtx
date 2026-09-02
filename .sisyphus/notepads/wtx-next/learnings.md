@@ -7,3 +7,10 @@
 - Standard OSS hygiene files (CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, ISSUE_TEMPLATES, PR_TEMPLATE) are essential for repository health and contributor onboarding.
 - Followed the project's strict rule against 'Co-authored-by' trailers, explicitly documenting it in CONTRIBUTING.md and the PR template.
 - Demo placeholder landing spot is ready with an empty `demo/.gitkeep`; README already contains the owner-provided GIF comment and `demo/wtx.gif` reference.
+- package.json version bumped to 0.9.0 to match next release and wtx --version behavior.
+- CHANGELOG Unreleased entry added with Added/Changed/Fixed sections matching the current plan scope.
+## Wave 6: Workspaces and TUI v2 updates
+- Updated agent skill files (opencode, claude, cursor) to reflect new commands and config v2.
+- Added wtx workspace commands: create, ls, add, rm, remove, verify.
+- Added new TUI keybinds and features: favorites, themes, workspaces, changes scope.
+- Updated config schema documentation to version 2.
