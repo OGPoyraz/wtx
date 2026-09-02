@@ -514,14 +514,17 @@ export function App({ opts }: AppProps) {
 
   const displayBlocks = useMemo(
     () =>
-      sortBlocks([
-        ...withCreatePlaceholders(
-          baseFiltered,
-          ops.filter(o => o.branch !== undefined).map(o => ({ repoName: o.repoNames[0]!, branch: o.branch! }))
-        ),
-        ...pendingBlocks,
-      ]),
-    [baseFiltered, ops, pendingBlocks]
+      sortBlocks(
+        [
+          ...withCreatePlaceholders(
+            baseFiltered,
+            ops.filter(o => o.branch !== undefined).map(o => ({ repoName: o.repoNames[0]!, branch: o.branch! }))
+          ),
+          ...pendingBlocks,
+        ],
+        favorites
+      ),
+    [baseFiltered, ops, pendingBlocks, favorites]
   );
 
   const flatRows = useMemo(
@@ -627,9 +630,26 @@ export function App({ opts }: AppProps) {
 
   const handleCloseSession = useCallback(
     (id: string) => {
-      if (!selectedRow) return;
-      terminalSessions.removeSession(selectedRow.repoName, selectedRow.branch, selectedRow.path, id);
-      const key = terminalSessions.getKey(selectedRow.repoName, selectedRow.branch, selectedRow.path);
+      let targetRepo: string | undefined;
+      let targetBranch: string | undefined;
+      let targetPath: string | undefined;
+      for (const sessions of terminalSessions.sessionsByKey.values()) {
+        const found = sessions.find((s) => s.id === id);
+        if (found) {
+          targetRepo = found.repoName;
+          targetBranch = found.branch;
+          targetPath = found.worktreePath;
+          break;
+        }
+      }
+      if (!targetRepo || !targetBranch || !targetPath) {
+        if (!selectedRow) return;
+        targetRepo = selectedRow.repoName;
+        targetBranch = selectedRow.branch;
+        targetPath = selectedRow.path;
+      }
+      terminalSessions.removeSession(targetRepo, targetBranch, targetPath, id);
+      const key = terminalSessions.getKey(targetRepo, targetBranch, targetPath);
       setActiveTabByWorktree((prev) => {
         const next = new Map(prev);
         const current = next.get(key);

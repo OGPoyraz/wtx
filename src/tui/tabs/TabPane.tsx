@@ -44,6 +44,8 @@ export function TabPane({
   const borderColor = focused ? tokens.accent : tokens.border;
   const mountedSessions = allSessionsFlat?.filter((s) => activeTabId === s.id || recentSessionIds?.has(s.id));
 
+  const nonSessionTabs = tabs.filter((t) => !t.closable);
+
   return (
     <box
       flexDirection="column"
@@ -58,9 +60,9 @@ export function TabPane({
     >
       <TabBar tabs={tabs} activeId={activeId} canAdd={canAdd} onSelect={onSelect} onAdd={onAdd} onClose={onClose} />
       <box flexGrow={1} width="100%" flexDirection="column">
-        {tabs.map((t) => (
+        {nonSessionTabs.map((t) => (
           <box key={t.id} flexGrow={1} width="100%" flexDirection="column" visible={t.id === activeId}>
-            {t.render({ worktree: selectedRow, isActive: t.id === activeId, focused: focused && t.id === activeId })}
+            {t.render({ worktree: selectedRow, isActive: t.id === activeId, focused: !terminalFocused && t.id === activeId })}
           </box>
         ))}
         {mountedSessions?.map((s) => (
@@ -76,7 +78,7 @@ export function TabPane({
             />
           </box>
         ))}
-        {tabs.length === 0 && (!mountedSessions || mountedSessions.length === 0) && <text fg={tokens.dim}>No tab</text>}
+        {nonSessionTabs.length === 0 && (!mountedSessions || mountedSessions.length === 0) && <text fg={tokens.dim}>No tab</text>}
       </box>
     </box>
   );

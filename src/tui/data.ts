@@ -213,14 +213,13 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
 
   let repos: RepoContext[];
   try {
-    repos = resolveRepos(config);
+    if (scope && scope.length > 0) {
+      repos = resolveRepos(config, scope);
+    } else {
+      repos = resolveRepos(config, Object.keys(config.repos));
+    }
   } catch (err: unknown) {
     throw new Error(`Failed to resolve repos: ${errorMessage(err)}`);
-  }
-
-  if (scope) {
-    const scopeSet = new Set(scope);
-    repos = repos.filter(r => scopeSet.has(r.name));
   }
 
   const semaphore = new Semaphore(4);

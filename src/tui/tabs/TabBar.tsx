@@ -36,8 +36,8 @@ function TabItem({
         {label}
       </text>
       {closable ? (
-        <box {...closeTap} style={{ marginLeft: 1 }}>
-          <text fg={active ? tokens.accent : tokens.dim}>✕</text>
+        <box {...closeTap} style={{ marginLeft: 1, paddingLeft: 1, paddingRight: 1 }}>
+          <text fg={tokens.accent}>✕</text>
         </box>
       ) : null}
       <text> </text>
