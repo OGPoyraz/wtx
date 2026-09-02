@@ -27,9 +27,23 @@ export const PortsConfigSchema = z.object({
 
 export type PortsConfig = z.infer<typeof PortsConfigSchema>;
 
+export const ThemeTokensSchema = z.object({
+  bg: z.string().optional(),
+  fg: z.string().optional(),
+  muted: z.string().optional(),
+  accent: z.string().optional(),
+  success: z.string().optional(),
+  warning: z.string().optional(),
+  error: z.string().optional(),
+  border: z.string().optional(),
+  selection: z.string().optional(),
+});
+
 export const TuiConfigSchema = z.object({
   leftPaneWidthWeight: z.number().int().min(1).max(10).default(3),
   rightPaneWidthWeight: z.number().int().min(1).max(10).default(7),
+  theme: z.string().default("tokyonight"),
+  custom_theme: ThemeTokensSchema.partial().nullable().default(null),
 });
 
 export type TuiConfig = z.infer<typeof TuiConfigSchema>;
@@ -52,6 +66,13 @@ function migrateLegacyRepoKeys(raw: unknown): unknown {
   return obj;
 }
 
+function migrateConfigVersion(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null) return raw;
+  const obj = raw as Record<string, unknown>;
+  if (obj.version !== 1 && obj.version !== undefined) return raw;
+  return { ...obj, version: 2 };
+}
+
 export const RepoConfigSchema = z.preprocess(
   migrateLegacyRepoKeys,
   z.object({
@@ -72,8 +93,8 @@ export const RepoConfigSchema = z.preprocess(
   })
 );
 
-export const ConfigSchema = z.object({
-  version: z.literal(1),
+export const ConfigSchema = z.preprocess(migrateConfigVersion, z.object({
+  version: z.literal(2),
   root: z.string().trim().min(1, { message: "must not be empty" }).superRefine((val, ctx) => {
     let expanded = val;
     if (expanded.startsWith("~/") || expanded === "~") {
@@ -95,13 +116,20 @@ export const ConfigSchema = z.object({
     z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/, "Invalid repo key format"),
     RepoConfigSchema
   ),
+  favorites: z.array(z.string()).default([]),
+  workspace_root: z.string().nullable().default(null),
   agents: z.record(
     z.string().regex(/^[a-z][a-z0-9_-]*$/, "Agent names must be lowercase alphanumeric with dashes/underscores"),
     AgentConfigSchema
   ).optional(),
   ports: PortsConfigSchema.default({ min: 4100, max: 4999 }),
-  tui: TuiConfigSchema.default({ leftPaneWidthWeight: 3, rightPaneWidthWeight: 7 }),
-});
+  tui: TuiConfigSchema.default({
+    leftPaneWidthWeight: 3,
+    rightPaneWidthWeight: 7,
+    theme: "tokyonight",
+    custom_theme: null,
+  }),
+}));
 
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
 export type Config = z.infer<typeof ConfigSchema>;

@@ -4,8 +4,23 @@ import os from "os";
 import { spawnSync } from "child_process";
 import { ConfigSchema } from "../types.js";
 import type { Config } from "../types.js";
-import { stepWarning } from "./log.js";
+import { stepProgress, stepWarning } from "./log.js";
 import { isWithin, safeResolve } from "./path-safety.js";
+
+const loggedV2Migrations = new Set<string>();
+
+function migrateV1Config(raw: unknown): { config: unknown; migrated: boolean } {
+  if (typeof raw !== "object" || raw === null) {
+    return { config: raw, migrated: false };
+  }
+
+  const obj = raw as Record<string, unknown>;
+  if (obj.version !== 1 && obj.version !== undefined) {
+    return { config: raw, migrated: false };
+  }
+
+  return { config: { ...obj, version: 2 }, migrated: true };
+}
 
 export function expandTilde(value: string): string {
   if (value.startsWith("~/") || value === "~") {
@@ -56,7 +71,7 @@ export function loadConfig(): Config {
       throw new Error(`Config file not found at ${configPath}.
 Run 'wtx config init' to create one interactively, or create it manually with:
 {
-  "version": 1,
+  "version": 2,
   "root": "~/Repos",
   "postfix": "-wt",
   "ide": "cursor",
@@ -74,7 +89,13 @@ Run 'wtx config init' to create one interactively, or create it manually with:
     throw new Error(`Failed to parse config file at ${configPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  const result = ConfigSchema.safeParse(parsed);
+  const migrated = migrateV1Config(parsed);
+  if (migrated.migrated && !loggedV2Migrations.has(configPath)) {
+    loggedV2Migrations.add(configPath);
+    stepProgress("migrated config to v2");
+  }
+
+  const result = ConfigSchema.safeParse(migrated.config);
   if (!result.success) {
     const messages = result.error.issues.map((issue) => {
       const pathStr = issue.path.join(".");
