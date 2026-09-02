@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { resolveActionLauncher } from "../src/tui/actions.js";
 import { matchesFilter, toggleSelection, computeScrollWindow, mergeBlocks, sortBlocks, rowSort, sortRowsHierarchically, clampSplitRatio, MIN_PANE_COLS } from "../src/tui/utils.js";
 import type { WorktreeRow, RepoBlock } from "../src/tui/types.js";
+import { readFileSync } from "node:fs";
 
 const mockRow: WorktreeRow = {
   repoName: "wtx",
@@ -177,5 +178,15 @@ describe("clampSplitRatio", () => {
   it("keeps ratio within bounds for various widths", () => {
     expect(clampSplitRatio(80, 0.6)).toBeGreaterThanOrEqual(MIN_PANE_COLS / 80);
     expect(clampSplitRatio(80, 0.6)).toBeLessThanOrEqual((80 - MIN_PANE_COLS - 3) / 80);
+  });
+});
+
+describe("InputModal controlled value", () => {
+  it("binds rendered value to component state and keeps initialValue in state only", () => {
+    const source = readFileSync(new URL("../src/tui/components/InputModal.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('const [value, setValue] = useState(initialValue ?? "")');
+    expect(source).toContain('value={value}');
+    expect(source).not.toContain('value={initialValue ?? ""}');
   });
 });
