@@ -96,7 +96,7 @@ If origin already has a branch with that name owned by someone else, `wtx` warns
 | `stack` | `<branch>` | `--repo`, `--json` | Show recorded parent and descendant branches |
 | `prs` | | `--repo`, `--json`, `--all` | Pull request status across worktrees |
 | `exec` | `<branch> <command...>` | `--repo` | Run a command inside a worktree (`WTX_PORT` injected) |
-| `terminal` | | | Interactive worktree dashboard (requires Bun) |
+| `terminal` | | `--wo-details` | Interactive worktree dashboard (requires Bun) |
 | `mcp` | | | Run MCP server exposing worktree tools over stdio |
 | `cd` | `<repo> <branch>` | | cd into worktree (requires shell integration) |
 | `history` | | `--limit`, `--json`, `--source` | Show recent action history (`~/.local/state/wtx/history.jsonl`) |
@@ -304,6 +304,7 @@ Stack metadata is stored under the repository's common Git directory and is not 
 
 Launch the TUI with `wtx terminal` (requires [Bun](https://bun.sh)). Navigation never locks, and actions run in the background.
 `wtx terminal` opens a full-screen dashboard across all configured repos (requires the [Bun](https://bun.sh) runtime).
+Pass `--wo-details` for a repositories-only view: the right pane (Details, Changes, terminal sessions) is hidden and the worktree list takes the full width.
 
 | Key | Action |
 |---|---|

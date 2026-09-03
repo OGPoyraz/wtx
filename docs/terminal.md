@@ -11,6 +11,12 @@ The `wtx terminal` command opens an interactive dashboard for managing worktrees
   - **Details**: Shows worktree metadata, PR description, and a Changes explorer.
   - **Terminal**: Interactive PTY sessions (up to 5 per worktree).
 
+### Repositories-only mode
+
+`wtx terminal --wo-details` hides the right pane and stretches the repositories table
+full-width. Terminal sessions (`t`) and the Changes view are unavailable in this mode —
+use it when you only need the worktree list and lifecycle actions (`n`/`d`/`m`/`p`/`b`/`s`/`i`/`f`).
+
 ## Keybindings
 
 ### Navigation and Selection

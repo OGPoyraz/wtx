@@ -99,6 +99,9 @@ complete -c wtx -n "__fish_seen_subcommand_from ls" -l pr -d "Include pull reque
 # prs flags
 complete -c wtx -n "__fish_seen_subcommand_from prs" -l all -d "Include drafts and closed/merged PRs"
 
+# terminal flags
+complete -c wtx -n "__fish_seen_subcommand_from terminal" -l wo-details -d "Repositories panel only (hide details/right pane)"
+
 # stack-aware flags
 complete -c wtx -n "__fish_seen_subcommand_from rebase" -l onto -xa "main master develop dev" -d "Override recorded base"
 complete -c wtx -n "__fish_seen_subcommand_from status" -l base -xa "main master develop dev" -d "Override recorded base"

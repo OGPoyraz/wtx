@@ -124,6 +124,7 @@ Manage AI agent skill files.
 
 ### `terminal`
 Launch the interactive dashboard.
+- `--wo-details`: Repositories panel only (hide the details/right pane — no terminal sessions or Changes view).
 
 ### `mcp`
 Run the MCP server for AI agent integration.

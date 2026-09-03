@@ -89,11 +89,16 @@ function tryRelaunchViaBun(forwardedArgs: string[]): never | null {
   return null;
 }
 
+export interface TerminalOptions {
+  woDetails?: boolean;
+}
+
 export function registerTerminalCommand(program: Command) {
   program
     .command("terminal")
     .description("Interactive worktree dashboard (requires Bun)")
-    .action(async () => {
+    .option("--wo-details", "Repositories panel only (hide details/right pane)")
+    .action(async (options: TerminalOptions) => {
       const opts = program.optsWithGlobals() as GlobalOptions;
 
       if (typeof Bun === "undefined") {
@@ -134,6 +139,6 @@ export function registerTerminalCommand(program: Command) {
       process.env.PAGE_LIST_LOG ??= "off";
       process.env.OPENTUI_LOG ??= "off";
       const { runTerminal } = await import("../tui/index.js");
-      await runTerminal(opts);
+      await runTerminal(opts, { withoutDetails: Boolean(options.woDetails) });
     });
 }

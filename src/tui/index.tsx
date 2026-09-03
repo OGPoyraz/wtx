@@ -21,7 +21,11 @@ declare module "@opentui/core" {
 
 extend({ "text-table": TextTableRenderable, "embedded-terminal": EmbeddedTerminalRenderable });
 
-export async function runTerminal(opts: GlobalOptions): Promise<void> {
+export interface TerminalRunOptions {
+  withoutDetails?: boolean;
+}
+
+export async function runTerminal(opts: GlobalOptions, runOpts: TerminalRunOptions = {}): Promise<void> {
   setQuiet(true);
   const prevLog = console.log;
   const prevInfo = console.info;
@@ -97,7 +101,7 @@ export async function runTerminal(opts: GlobalOptions): Promise<void> {
   const root = createRoot(renderer);
 
   try {
-    root.render(<App opts={opts} />);
+    root.render(<App opts={opts} withoutDetails={runOpts.withoutDetails ?? false} />);
   } catch (err) {
     restoreConsole();
     renderer.destroy();
