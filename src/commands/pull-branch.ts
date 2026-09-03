@@ -16,6 +16,7 @@ import {
   findWorktreeForBranch,
   getWorktreePath,
   parseRepoFlag,
+  resolveMainBranch,
 } from "../lib/resolver.js";
 
 interface PullBranchOptions {
@@ -67,17 +68,24 @@ export function registerPullBranchCommand(program: Command) {
           }
         }
 
-        const candidatePath = getWorktreePath(repo, branchToPull);
-        const list = await getWorktreeList(repo.mainPath);
-        const target = findWorktreeForBranch(list, branchToPull, repo.mainPath, candidatePath);
+        const mainBranch = await resolveMainBranch(repo, config);
+        let wtPath: string;
 
-        if (!target) {
-          stepError(`No worktree found for branch '${branchToPull}'`, candidatePath);
-          failCount++;
-          continue;
+        if (branchToPull === mainBranch) {
+          wtPath = repo.mainPath;
+        } else {
+          const candidatePath = getWorktreePath(repo, branchToPull);
+          const list = await getWorktreeList(repo.mainPath);
+          const target = findWorktreeForBranch(list, branchToPull, repo.mainPath, candidatePath);
+
+          if (!target) {
+            stepError(`No worktree found for branch '${branchToPull}'`, candidatePath);
+            failCount++;
+            continue;
+          }
+
+          wtPath = target.path;
         }
-
-        const wtPath = target.path;
 
         try {
           stepProgress(`Pulling ${branchToPull}...`);

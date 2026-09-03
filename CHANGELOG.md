@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `pull-branch`: pulling the repo's main branch (e.g. `wtx pull-branch main`, or `p` in the TUI on the main checkout row) now fast-forwards the main checkout instead of failing with "No worktree found for branch 'main'"
+
 ## [0.9.4] - 2026-09-03
 
 ### Added
