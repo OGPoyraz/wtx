@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-09-03
+
+### Fixed
+
+- TUI: refresh (`r`) now pulls each repo's main checkout (`git pull --ff-only`) before reloading data, so the dashboard shows up-to-date main state; pull failures surface as data warnings instead of breaking refresh
+
 ## [0.9.5] - 2026-09-03
 
 ### Fixed
@@ -359,7 +365,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.9.5...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.9.6...HEAD
+[0.9.6]: https://github.com/OGPoyraz/wtx/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/OGPoyraz/wtx/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/OGPoyraz/wtx/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/OGPoyraz/wtx/compare/v0.9.2...v0.9.3
