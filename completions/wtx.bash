@@ -102,6 +102,7 @@ _wtx_completions() {
       status)  flags="-r --repo --base --json -q --quiet --verbose --dry-run --help" ;;
       stack)   flags="-r --repo --json -q --quiet --verbose --dry-run --help" ;;
       prs)     flags="-r --repo --json --all -q --quiet --verbose --dry-run --help" ;;
+      terminal) flags="--wo-details -q --quiet --verbose --dry-run --help" ;;
       config)
         case "$subsubcommand" in
           add-repo) flags="--sync-files --post-create --post-sync --help" ;;

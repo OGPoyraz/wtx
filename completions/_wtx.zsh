@@ -73,6 +73,7 @@ _wtx() {
         'prs[Show pull request status across worktrees]' \
         'init[Output shell integration code]' \
         'skill[Manage AI agent skills]' \
+        'terminal[Interactive terminal dashboard]' \
         'mcp[Run MCP server exposing worktree tools]' \
         'exec[Execute commands across worktrees]'
       ;;
@@ -223,6 +224,13 @@ _wtx() {
             {-r,--repo}'[Target specific repo(s)]:repo:_wtx_repos' \
             '--json[Output machine-readable JSON]' \
             '--all[Include drafts and closed/merged PRs]' \
+            {-q,--quiet}'[Suppress output]' \
+            '--verbose[Show git commands]' \
+            '--dry-run[Show what would happen]'
+          ;;
+        terminal)
+          _arguments \
+            '--wo-details[Repositories panel only (hide details/right pane)]' \
             {-q,--quiet}'[Suppress output]' \
             '--verbose[Show git commands]' \
             '--dry-run[Show what would happen]'
