@@ -93,7 +93,7 @@ function runCli(env: Env, args: string[], cwd: string = env.mainPath) {
 
 function advanceOrigin(env: Env): string {
   const clonePath = path.join(env.tmpDir, "advance-clone");
-  run(`git clone -q "${env.bareOrigin}" "${clonePath}"`, env.tmpDir);
+  run(`git clone -q -b main "${env.bareOrigin}" "${clonePath}"`, env.tmpDir);
   run('git config user.name "Test"', clonePath);
   run('git config user.email "test@example.com"', clonePath);
   run("git commit -q --allow-empty -m advance", clonePath);
