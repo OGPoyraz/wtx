@@ -60,7 +60,7 @@ const HELP_GROUPS: HelpGroup[] = [
       ["T (shift+t)", "Cycle theme presets"],
       ["c", "Open configuration"],
       ["e", "View data warnings (when count > 0)"],
-      ["r", "Refresh data"],
+      ["r", "Refresh data (pull main)"],
       ["H", "Action history"],
       ["?", "Toggle help"],
       ["mouse drag", "Select text — copied to clipboard automatically"],

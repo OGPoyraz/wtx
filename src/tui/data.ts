@@ -232,6 +232,13 @@ export async function fetchWorktreeData(opts: GlobalOptions, scope?: string[]): 
     let hasMain = false;
     try {
       mainBranch = await resolveMainBranch(repo, config);
+      if (!opts.dryRun) {
+        try {
+          await gitExec(["-C", repo.mainPath, "pull", "--ff-only"], { dryRun: opts.dryRun });
+        } catch (err: unknown) {
+          warnings.push({ repoName: repo.name, message: `Failed to pull main for ${repo.name}: ${errorMessage(err).split("\n")[0]}` });
+        }
+      }
       const wts = await getWorktreeList(repo.mainPath);
       let stackMetadata: StackMetadata = { version: 1, branches: {} };
       try {
