@@ -24,6 +24,7 @@ import {
 } from "../lib/resolver.js";
 import { resolveBaseRemote } from "../lib/remotes.js";
 import { runPostCreateSetup } from "../lib/worktree-setup.js";
+import { isRecoverableWorktreeRemoveError, removeWorktreeSafely } from "../lib/worktree-remove.js";
 import { parsePrLink, descriptorFor, detectRepoForge } from "../lib/forge/index.js";
 import { recordStackEntry } from "../lib/stack.js";
 
@@ -199,13 +200,15 @@ export function registerPullCommand(program: Command) {
         if (options.force && (localBranchFound || dirExists)) {
           if (existingWorktree) {
             try {
-              await gitExec(
-                ["-C", target.mainPath, "worktree", "remove", "--force", existingWorktree.path],
-                { verbose: globalOpts.verbose, dryRun: globalOpts.dryRun }
-              );
+              await removeWorktreeSafely({
+                mainPath: target.mainPath,
+                wtPath: existingWorktree.path,
+                force: true,
+                opts: { verbose: globalOpts.verbose, dryRun: globalOpts.dryRun },
+              });
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : String(err);
-              if (!message.includes("not a working tree")) {
+              if (!isRecoverableWorktreeRemoveError(message)) {
                 stepWarning("Worktree removal failed", message.split("\n")[0] ?? message);
               }
             }

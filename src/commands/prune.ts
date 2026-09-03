@@ -12,7 +12,8 @@ import {
   summaryWarning,
   indented,
 } from "../lib/log.js";
-import { gitExec, getDirtyFiles, getWorktreeList } from "../lib/git.js";
+import { getDirtyFiles, getWorktreeList } from "../lib/git.js";
+import { isRecoverableWorktreeRemoveError, removeWorktreeSafely } from "../lib/worktree-remove.js";
 import type { Worktree } from "../lib/git.js";
 import { resolveRepos, parseRepoFlag } from "../lib/resolver.js";
 import type { RepoContext } from "../types.js";
@@ -185,17 +186,17 @@ export function registerPruneCommand(program: Command) {
           currentRepo = repo.name;
         }
 
-        const args = ["-C", repo.mainPath, "worktree", "remove", candidate.path];
-        if (options.force) {
-          args.push("--force");
-        }
-
         try {
-          await gitExec(args, globalOpts);
+          await removeWorktreeSafely({
+            mainPath: repo.mainPath,
+            wtPath: candidate.path,
+            force: !!options.force,
+            opts: globalOpts,
+          });
           stepSuccess("Worktree removed", label);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes("not a working tree") || msg.includes("already removed")) {
+          if (isRecoverableWorktreeRemoveError(msg)) {
             stepWarning("Worktree already removed or invalid", msg);
             skippedCount++;
             continue;
