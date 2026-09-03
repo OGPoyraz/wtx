@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-09-03
+
+### Added
+
+- Terminal: `wtx terminal --wo-details` opens a repositories-only dashboard — the details/right pane (Details, Changes, terminal sessions) is hidden and the worktree list takes the full width; `t` shows a notice instead of spawning a session, and the help overlay hides the Terminal & Changes sections (with bash/zsh/fish completions)
+
 ## [0.9.3] - 2026-09-03
 
 ### Fixed
@@ -347,7 +353,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.9.3...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.9.4...HEAD
+[0.9.4]: https://github.com/OGPoyraz/wtx/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/OGPoyraz/wtx/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/OGPoyraz/wtx/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/OGPoyraz/wtx/compare/v0.9.0...v0.9.1
