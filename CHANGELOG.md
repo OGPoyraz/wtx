@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-09-03
+
+### Fixed
+
+- Remove: force-delete worktrees containing submodules without surfacing the git error — new shared `removeWorktreeSafely` helper auto-escalates to `git worktree remove --force` on submodule errors and falls back to `prune` + `rm -rf` for other recoverable states; applied to `remove`, `prune`, `pull --force` cleanup, and the MCP `remove_worktree` tool (fixes `fatal: working trees containing submodules cannot be moved or removed` in TUI/CLI deletes)
+
 ## [0.9.2] - 2026-09-02
 
 ### Fixed
@@ -341,7 +347,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.9.3...HEAD
+[0.9.3]: https://github.com/OGPoyraz/wtx/compare/v0.9.2...v0.9.3
+[0.9.2]: https://github.com/OGPoyraz/wtx/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/OGPoyraz/wtx/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/OGPoyraz/wtx/compare/v0.8.10...v0.9.0
 [0.8.10]: https://github.com/OGPoyraz/wtx/compare/v0.8.9...v0.8.10
