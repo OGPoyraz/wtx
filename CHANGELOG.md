@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-09-03
+
 ### Fixed
 
 - `pull-branch`: pulling the repo's main branch (e.g. `wtx pull-branch main`, or `p` in the TUI on the main checkout row) now fast-forwards the main checkout instead of failing with "No worktree found for branch 'main'"
@@ -357,7 +359,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow (typecheck, test, build)
 - Release workflow (npm publish, cross-platform binary builds)
 
-[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.9.4...HEAD
+[Unreleased]: https://github.com/OGPoyraz/wtx/compare/v0.9.5...HEAD
+[0.9.5]: https://github.com/OGPoyraz/wtx/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/OGPoyraz/wtx/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/OGPoyraz/wtx/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/OGPoyraz/wtx/compare/v0.9.1...v0.9.2
