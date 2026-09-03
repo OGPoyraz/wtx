@@ -46,6 +46,7 @@ import { THEMES, resolveThemeName, nextThemeName, DEFAULT_THEME_NAME } from "../
 
 export interface AppProps {
   opts: GlobalOptions;
+  withoutDetails?: boolean;
 }
 
 type ModalState =
@@ -281,7 +282,7 @@ export function createTerminalResizeScheduler(
   };
 }
 
-export function App({ opts }: AppProps) {
+export function App({ opts, withoutDetails = false }: AppProps) {
   const renderer = useRenderer();
   const { blocks, loading, refreshing, error, warnings, lastRefreshed, pendingRepos, favorites, refresh, clearWarnings, applyFavorites } = useWorktrees(opts);
 
@@ -628,6 +629,10 @@ export function App({ opts }: AppProps) {
   );
 
   const handleAddSession = useCallback(() => {
+    if (withoutDetails) {
+      flash("Terminal sessions disabled (--wo-details)");
+      return;
+    }
     if (!selectedRow) {
       flash("No worktree selected");
       return;
@@ -652,7 +657,7 @@ export function App({ opts }: AppProps) {
     setTerminalFocused(true);
     setChangesFocused(false);
     flash(`Session ${session.label} created`, 2000);
-  }, [selectedRow, terminalSessions, flash, totalWidth, splitRatio, totalHeight, activeTabId, sessionsForSelected]);
+  }, [selectedRow, terminalSessions, flash, totalWidth, splitRatio, totalHeight, activeTabId, sessionsForSelected, withoutDetails]);
 
   const handleCloseSession = useCallback(
     (id: string) => {
@@ -1030,6 +1035,10 @@ export function App({ opts }: AppProps) {
         return;
       }
       if (key === "t") {
+        if (withoutDetails) {
+          flash("Terminal sessions disabled (--wo-details)");
+          return;
+        }
         if (!selectedRow) return;
         const sessions = terminalSessions.getSessions(selectedRow.repoName, selectedRow.branch, selectedRow.path);
         if (sessions.length >= MAX_TERMINAL_SESSIONS) {
@@ -1041,7 +1050,7 @@ export function App({ opts }: AppProps) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedRow, selection, combinedWarnings, busyRepos, busyRowPaths, doRefresh, flash, blocks, terminalSessions]
+    [selectedRow, selection, combinedWarnings, busyRepos, busyRowPaths, doRefresh, flash, blocks, terminalSessions, withoutDetails]
   );
 
   useKeyboard(
@@ -1098,6 +1107,7 @@ export function App({ opts }: AppProps) {
         return;
       }
       if (key.ctrl && key.name === "g") {
+        if (withoutDetails) return;
         if (sessionsForSelected.length > 0) {
           const targetId = activeTabId !== "details" ? activeTabId : sessionsForSelected[0]!.id;
           if (worktreeKey) {
@@ -1490,6 +1500,10 @@ export function App({ opts }: AppProps) {
       }
 
       if (key.name === "t") {
+        if (withoutDetails) {
+          flash("Terminal sessions disabled (--wo-details)");
+          return;
+        }
         if (!selectedRow) {
           flash("No worktree selected");
           return;
@@ -1506,7 +1520,9 @@ export function App({ opts }: AppProps) {
   );
 
   const rawLeft = Math.floor(totalWidth * splitRatio);
-  const leftCols = Math.max(20, Math.min(totalWidth - 20 - DIVIDER_WIDTH, rawLeft));
+  const leftCols = withoutDetails
+    ? totalWidth
+    : Math.max(20, Math.min(totalWidth - 20 - DIVIDER_WIDTH, rawLeft));
   const rightCols = Math.max(20, totalWidth - leftCols - DIVIDER_WIDTH);
   const paneCols = Math.max(20, rightCols - 4);
   const paneRows = Math.max(10, totalHeight - 10);
@@ -1562,26 +1578,30 @@ export function App({ opts }: AppProps) {
             onToggleSelect={(path) => setSelection((prev) => toggleSelection(prev, path))}
           />
         </box>
-        <Divider splitRatio={splitRatio} totalWidth={totalWidth} onChange={setSplitRatio} onDraggingChange={setIsResizing} />
-        <box width={rightCols} height="100%" flexDirection="column">
-          <TabPane
-            selectedRow={selectedRow}
-            tabs={tabsForSelected}
-            activeId={activeTabId}
-            focused={(terminalFocused || changesFocused) && activeTabId !== "details"}
-            canAdd={sessionsForSelected.length < MAX_TERMINAL_SESSIONS}
-            onSelect={handleSelectTab}
-            onAdd={handleAddSession}
-            onClose={handleCloseSession}
-            allSessionsFlat={allSessionsFlat}
-            terminalFocused={terminalFocused}
-            changesFocused={changesFocused}
-            onChangesFocus={() => { setChangesFocused(true); setTerminalFocused(false); }}
-            activeTabId={activeTabId}
-            recentSessionIds={mountedRecentSessionIds}
-            terminalSessions={terminalSessions}
-          />
-        </box>
+        {!withoutDetails && (
+          <Divider splitRatio={splitRatio} totalWidth={totalWidth} onChange={setSplitRatio} onDraggingChange={setIsResizing} />
+        )}
+        {!withoutDetails && (
+          <box width={rightCols} height="100%" flexDirection="column">
+            <TabPane
+              selectedRow={selectedRow}
+              tabs={tabsForSelected}
+              activeId={activeTabId}
+              focused={(terminalFocused || changesFocused) && activeTabId !== "details"}
+              canAdd={sessionsForSelected.length < MAX_TERMINAL_SESSIONS}
+              onSelect={handleSelectTab}
+              onAdd={handleAddSession}
+              onClose={handleCloseSession}
+              allSessionsFlat={allSessionsFlat}
+              terminalFocused={terminalFocused}
+              changesFocused={changesFocused}
+              onChangesFocus={() => { setChangesFocused(true); setTerminalFocused(false); }}
+              activeTabId={activeTabId}
+              recentSessionIds={mountedRecentSessionIds}
+              terminalSessions={terminalSessions}
+            />
+          </box>
+        )}
       </box>
       {isFiltering && (
         <box flexDirection="row" paddingX={1} border={true} borderColor="magenta" width="100%">
@@ -1627,7 +1647,7 @@ export function App({ opts }: AppProps) {
         />
       )}
 
-      {modal.type === "help" && <HelpOverlay />}
+      {modal.type === "help" && <HelpOverlay withoutDetails={withoutDetails} />}
       {modal.type === "history" && <HistoryOverlay />}
       {modal.type === "warnings" && (
         <WarningsOverlay

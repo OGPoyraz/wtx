@@ -70,13 +70,16 @@ const HELP_GROUPS: HelpGroup[] = [
   },
 ];
 
-export function HelpOverlay() {
+export function HelpOverlay({ withoutDetails = false }: { withoutDetails?: boolean }) {
   const theme = useTheme();
+  const groups = withoutDetails
+    ? HELP_GROUPS.filter((g) => g.title !== "Terminal & Tabs" && !g.title.startsWith("Changes Explorer"))
+    : HELP_GROUPS;
   return (
-    <Overlay title="Help" borderColor={theme.border} width={100}>
+    <Overlay title={withoutDetails ? "Help (repositories only)" : "Help"} borderColor={theme.border} width={100}>
       <box flexDirection="column" style={{ maxHeight: 38 }}>
         <scrollbox flexGrow={1}>
-          {HELP_GROUPS.map((group) => (
+          {groups.map((group) => (
             <box key={group.title} flexDirection="column" style={{ marginBottom: 1 }}>
               <box style={{ marginBottom: 1 }}>
                 <text fg={theme.accent} attributes={1}>{group.title}</text>
