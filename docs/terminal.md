@@ -50,7 +50,7 @@ use it when you only need the worktree list and lifecycle actions (`n`/`d`/`m`/`
 | `T` | Cycle through available themes |
 | `W` | Toggle or pick workspace scope |
 | `c` | Open configuration editor |
-| `r` | Refresh data manually |
+| `r` | Refresh data manually (pulls main) |
 | `H` | Show action history |
 | `?` | Show help overlay |
 
