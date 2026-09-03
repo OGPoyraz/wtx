@@ -31,6 +31,7 @@ import {
   cleanupEmptyParents,
   safeResolve,
 } from "../path-safety.js";
+import { removeWorktreeSafely } from "../worktree-remove.js";
 import fs from "fs";
 import { getStackChildren, readStackMetadata, recordStackEntry, removeStackEntry } from "../stack.js";
 
@@ -413,7 +414,12 @@ async function handleToolCall(name: string, args: any, config: any, _opts: McpSe
         }
       }
 
-      await gitExec(["-C", repo.mainPath, "worktree", "remove", args.force ? "--force" : "", wtPath].filter(Boolean));
+      await removeWorktreeSafely({
+        mainPath: repo.mainPath,
+        wtPath,
+        force: args.force === true,
+        opts: { verbose: _opts.verbose === true, dryRun: false },
+      });
       cleanupEmptyParents(repo.wtRoot, repo.mainPath, wtPath);
       await removeStackEntry(repo.mainPath, args.branch, { verbose: _opts.verbose === true, dryRun: false });
 
